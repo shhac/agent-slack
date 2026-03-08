@@ -972,7 +972,7 @@
       if (!IS_MAC) {
         document.getElementById('modKey').textContent = 'Ctrl';
         document.querySelectorAll('[data-tip]').forEach(el => {
-          el.dataset.tip = el.dataset.tip.replace(/\\u2318/g, 'Ctrl+').replace(/\\u21E7/g, 'Shift+');
+          el.dataset.tip = el.dataset.tip.replace(/\u2318/g, 'Ctrl+').replace(/\u21E7/g, 'Shift+');
         });
       }
       if (CONFIG.threadTs) {
@@ -1024,17 +1024,17 @@
       function mrkdwnToHtml(text) {
         if (!text) { return ''; }
         const codeBlocks = [];
-        text = text.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, (_, code) => {
+        text = text.replace(/\`\`\`([\s\S]*?)\`\`\`/g, (_, code) => {
           codeBlocks.push('<pre>' + escapeHtml(code.trim()) + '</pre>');
-          return '\\x00CB' + (codeBlocks.length - 1) + '\\x00';
+          return '\x00CB' + (codeBlocks.length - 1) + '\x00';
         });
         const inlineCodes = [];
-        text = text.replace(/\`([^\`\\n]+)\`/g, (_, code) => {
+        text = text.replace(/\`([^\`\n]+)\`/g, (_, code) => {
           inlineCodes.push('<code>' + escapeHtml(code) + '</code>');
-          return '\\x00IC' + (inlineCodes.length - 1) + '\\x00';
+          return '\x00IC' + (inlineCodes.length - 1) + '\x00';
         });
 
-        const lines = text.split('\\n');
+        const lines = text.split('\n');
         let html = '', idx = 0;
         while (idx < lines.length) {
           const line = lines[idx];
@@ -1043,28 +1043,28 @@
             while (idx < lines.length && lines[idx].startsWith('> ')) { q.push(fmtInline(lines[idx].slice(2))); idx++; }
             html += '<blockquote>' + q.join('<br>') + '</blockquote>'; continue;
           }
-          if (/^[\\u2022\\-\\*] /.test(line)) {
+          if (/^[\u2022\-\*] /.test(line)) {
             const items = [];
-            while (idx < lines.length && /^[\\u2022\\-\\*] /.test(lines[idx])) { items.push('<li>' + fmtInline(lines[idx].replace(/^[\\u2022\\-\\*] /, '')) + '</li>'); idx++; }
+            while (idx < lines.length && /^[\u2022\-\*] /.test(lines[idx])) { items.push('<li>' + fmtInline(lines[idx].replace(/^[\u2022\-\*] /, '')) + '</li>'); idx++; }
             html += '<ul>' + items.join('') + '</ul>'; continue;
           }
-          if (/^\\d+[\\.\\)] /.test(line)) {
+          if (/^\d+[\.\)] /.test(line)) {
             const items = [];
-            while (idx < lines.length && /^\\d+[\\.\\)] /.test(lines[idx])) { items.push('<li>' + fmtInline(lines[idx].replace(/^\\d+[\\.\\)] /, '')) + '</li>'); idx++; }
+            while (idx < lines.length && /^\d+[\.\)] /.test(lines[idx])) { items.push('<li>' + fmtInline(lines[idx].replace(/^\d+[\.\)] /, '')) + '</li>'); idx++; }
             html += '<ol>' + items.join('') + '</ol>'; continue;
           }
           html += (line ? fmtInline(line) : '') + '<br>';
           idx++;
         }
-        codeBlocks.forEach((b, i) => { html = html.replace('\\x00CB' + i + '\\x00', b); });
-        inlineCodes.forEach((c, i) => { html = html.replace('\\x00IC' + i + '\\x00', c); });
+        codeBlocks.forEach((b, i) => { html = html.replace('\x00CB' + i + '\x00', b); });
+        inlineCodes.forEach((c, i) => { html = html.replace('\x00IC' + i + '\x00', c); });
         return html.replace(/(<br>)+$/, '');
       }
 
       function fmtInline(t) {
-        t = t.replace(/<(https?:\\/\\/[^|>]+)\\|([^>]+)>/g, '<a href="$1" target="_blank">$2</a>');
-        t = t.replace(/<(https?:\\/\\/[^>]+)>/g, '<a href="$1" target="_blank">$1</a>');
-        t = t.replace(/\\*([^\\*]+)\\*/g, '<b>$1</b>');
+        t = t.replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g, '<a href="$1" target="_blank">$2</a>');
+        t = t.replace(/<(https?:\/\/[^>]+)>/g, '<a href="$1" target="_blank">$1</a>');
+        t = t.replace(/\*([^\*]+)\*/g, '<b>$1</b>');
         t = t.replace(/(?<![a-zA-Z0-9])_([^_]+)_(?![a-zA-Z0-9])/g, '<i>$1</i>');
         t = t.replace(/~([^~]+)~/g, '<s>$1</s>');
         return t;
@@ -1094,19 +1094,19 @@
                 visited.add(next);
                 next = next.nextElementSibling;
               }
-              return '\`\`\`\\n' + lines.filter(l => l).join('\\n') + '\\n\`\`\`\\n';
+              return '\`\`\`\n' + lines.filter(l => l).join('\n') + '\n\`\`\`\n';
             }
-            case 'blockquote': { const c = kids().trim(); return c.split('\\n').map(l => '> ' + l).join('\\n') + '\\n'; }
-            case 'ul': { let r = ''; for (const li of el.querySelectorAll(':scope > li')) { r += '\\u2022 ' + walk(li).trim() + '\\n'; } return r; }
-            case 'ol': { let r = '', n = 1; for (const li of el.querySelectorAll(':scope > li')) { r += n + '. ' + walk(li).trim() + '\\n'; n++; } return r; }
+            case 'blockquote': { const c = kids().trim(); return c.split('\n').map(l => '> ' + l).join('\n') + '\n'; }
+            case 'ul': { let r = ''; for (const li of el.querySelectorAll(':scope > li')) { r += '\u2022 ' + walk(li).trim() + '\n'; } return r; }
+            case 'ol': { let r = '', n = 1; for (const li of el.querySelectorAll(':scope > li')) { r += n + '. ' + walk(li).trim() + '\n'; n++; } return r; }
             case 'li': return kids();
             case 'a':  { const h = el.getAttribute('href'); const t = kids(); return (h && t && h !== t) ? '<' + h + '|' + t + '>' : (h || t); }
-            case 'br': return '\\n';
+            case 'br': return '\n';
             case 'div': case 'p': {
               const c = kids();
               const p = el.parentElement;
               if (p && ['li','blockquote','td'].includes(p.tagName.toLowerCase())) { return c; }
-              return c.endsWith('\\n') ? c : c + '\\n';
+              return c.endsWith('\n') ? c : c + '\n';
             }
             case 'span': {
               const st = el.style;
@@ -1119,11 +1119,14 @@
             default: return kids();
           }
         }
-        return walk(root).replace(/\\n{3,}/g, '\\n\\n').trim();
+        return walk(root).replace(/\n{3,}/g, '\n\n').trim();
       }
 
       // ─── Init editor content ───
-      if (CONFIG.initialText) { editor.innerHTML = mrkdwnToHtml(CONFIG.initialText); }
+      if (CONFIG.initialText) {
+        editor.innerHTML = mrkdwnToHtml(CONFIG.initialText);
+        requestAnimationFrame(() => updateSendBtn());
+      }
 
       // ─── Toolbar execution ───
       function execCmd(command) {
@@ -1532,7 +1535,7 @@
         sending = true;
         const btn = document.getElementById('sendBtn');
         btn.disabled = true;
-        btn.innerHTML = '\\u2026';
+        btn.innerHTML = '\u2026';
 
         try {
           const resp = await fetch('/send', {
@@ -1545,11 +1548,11 @@
             let sub = 'You can close this tab.';
             if (data.ts && CONFIG.workspaceUrl && CONFIG.channelId) {
               const tsNoDot = data.ts.replace('.', '');
-              const baseUrl = CONFIG.workspaceUrl.replace(/\\/$/, '');
+              const baseUrl = CONFIG.workspaceUrl.replace(/\/$/, '');
               const msgUrl = baseUrl + '/archives/' + CONFIG.channelId + '/p' + tsNoDot;
-              sub = '<a href="' + msgUrl + '" target="_blank" style="color:var(--accent);text-decoration:none;">View in Slack \\u2197</a><br><span style="opacity:0.6;font-size:12px;">You can close this tab.</span>';
+              sub = '<a href="' + msgUrl + '" target="_blank" style="color:var(--accent);text-decoration:none;">View in Slack \u2197</a><br><span style="opacity:0.6;font-size:12px;">You can close this tab.</span>';
             }
-            showOverlay('Message sent \\u2705', sub, 'success');
+            showOverlay('Message sent \u2705', sub, 'success');
           } else {
             throw new Error(data.error || 'Send failed');
           }
