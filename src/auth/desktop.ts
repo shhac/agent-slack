@@ -81,7 +81,7 @@ function getWindowsStoreSlackPath(): string | null {
   return null;
 }
 
-function getSlackPaths(): { leveldbDir: string; cookiesDb: string; baseDir: string } {
+function getAllSlackPaths(): { leveldbDir: string; cookiesDb: string; baseDir: string }[] {
   let candidates: string[];
   if (IS_MACOS) {
     candidates = [SLACK_SUPPORT_DIR_ELECTRON, SLACK_SUPPORT_DIR_APPSTORE];
@@ -101,19 +101,24 @@ function getSlackPaths(): { leveldbDir: string; cookiesDb: string; baseDir: stri
     throw new Error(`Slack Desktop extraction is not supported on ${PLATFORM}.`);
   }
 
+  const results: { leveldbDir: string; cookiesDb: string; baseDir: string }[] = [];
   for (const dir of candidates) {
     const leveldbDir = join(dir, "Local Storage", "leveldb");
     if (existsSync(leveldbDir)) {
       const cookiesDbCandidates = [join(dir, "Network", "Cookies"), join(dir, "Cookies")];
       const cookiesDb =
         cookiesDbCandidates.find((candidate) => existsSync(candidate)) || cookiesDbCandidates[0]!;
-      return { leveldbDir, cookiesDb, baseDir: dir };
+      results.push({ leveldbDir, cookiesDb, baseDir: dir });
     }
   }
 
-  throw new Error(
-    `Slack Desktop data not found. Checked:\n  - ${candidates.map((d) => join(d, "Local Storage", "leveldb")).join("\n  - ")}`,
-  );
+  if (results.length === 0) {
+    throw new Error(
+      `Slack Desktop data not found. Checked:\n  - ${candidates.map((d) => join(d, "Local Storage", "leveldb")).join("\n  - ")}`,
+    );
+  }
+
+  return results;
 }
 
 function toDesktopTeam(value: unknown): DesktopTeam | null {
@@ -477,12 +482,25 @@ async function extractCookieDFromSlackCookiesDb(
 }
 
 export async function extractFromSlackDesktop(): Promise<DesktopExtracted> {
-  const { leveldbDir, cookiesDb, baseDir } = getSlackPaths();
-  const teams = await extractTeamsFromSlackLevelDb(leveldbDir);
-  const cookie_d = await extractCookieDFromSlackCookiesDb(cookiesDb, baseDir);
-  return {
-    cookie_d,
-    teams,
-    source: { leveldb_path: leveldbDir, cookies_path: cookiesDb },
-  };
+  const allPaths = getAllSlackPaths();
+
+  // Try each candidate path; use the first one where both LevelDB and cookie extraction succeed.
+  const errors: string[] = [];
+  for (const { leveldbDir, cookiesDb, baseDir } of allPaths) {
+    try {
+      const teams = await extractTeamsFromSlackLevelDb(leveldbDir);
+      const cookie_d = await extractCookieDFromSlackCookiesDb(cookiesDb, baseDir);
+      return {
+        cookie_d,
+        teams,
+        source: { leveldb_path: leveldbDir, cookies_path: cookiesDb },
+      };
+    } catch (err: unknown) {
+      errors.push(`${baseDir}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  throw new Error(
+    `Could not extract Slack Desktop credentials from any location:\n  - ${errors.join("\n  - ")}`,
+  );
 }
