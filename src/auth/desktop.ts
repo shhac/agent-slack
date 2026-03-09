@@ -263,8 +263,29 @@ async function extractTeamsFromSlackLevelDb(leveldbDir: string): Promise<Desktop
 
 function getSafeStoragePasswords(prefix: string): string[] {
   if (IS_MACOS) {
-    const services = ["Slack Safe Storage", "Chrome Safe Storage", "Chromium Safe Storage"];
     const passwords: string[] = [];
+
+    // Electron ("Slack Key") and Mac App Store ("Slack App Store Key") builds
+    // store separate Safe Storage passwords under the same service name.
+    // Query each known account explicitly so we collect all passwords.
+    const slackAccounts = ["Slack Key", "Slack App Store Key"];
+    for (const acct of slackAccounts) {
+      try {
+        const out = execFileSync(
+          "security",
+          ["find-generic-password", "-w", "-s", "Slack Safe Storage", "-a", acct],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        ).trim();
+        if (out) {
+          passwords.push(out);
+        }
+      } catch {
+        // continue
+      }
+    }
+
+    // Fallback: service-only lookup catches unknown account names
+    const services = ["Slack Safe Storage", "Chrome Safe Storage", "Chromium Safe Storage"];
     for (const service of services) {
       try {
         const out = execFileSync("security", ["find-generic-password", "-w", "-s", service], {
@@ -279,7 +300,7 @@ function getSafeStoragePasswords(prefix: string): string[] {
       }
     }
     if (passwords.length > 0) {
-      return passwords;
+      return [...new Set(passwords)];
     }
   }
 
