@@ -112,7 +112,9 @@ export async function downloadMessageFiles(input: {
           });
           downloadedPaths[file.id] = { ok: true, path };
         } catch (err) {
-          if (!(err instanceof SlackDownloadError)) throw err;
+          if (!(err instanceof SlackDownloadError)) {
+            throw err;
+          }
           console.error(`Warning: skipping file ${file.id}: ${err.message}`);
         }
       } else {

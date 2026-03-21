@@ -2,11 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  SlackDownloadError,
-  downloadSlackFile,
-  tryDownloadSlackFile,
-} from "../src/slack/files.ts";
+import { SlackDownloadError, downloadSlackFile, tryDownloadSlackFile } from "../src/slack/files.ts";
 import type { SlackAuth } from "../src/slack/client.ts";
 
 const AUTH: SlackAuth = { auth_type: "standard", token: "xoxb-test" };
@@ -22,9 +18,7 @@ function setFetchMock(fn: (...args: unknown[]) => Promise<Response>) {
 
 function mockFetchOk(body: string | Buffer, contentType = "application/octet-stream") {
   return setFetchMock(() =>
-    Promise.resolve(
-      new Response(body, { status: 200, headers: { "content-type": contentType } }),
-    ),
+    Promise.resolve(new Response(body, { status: 200, headers: { "content-type": contentType } })),
   );
 }
 
