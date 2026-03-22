@@ -6,6 +6,7 @@ import {
   SlackDownloadError,
   downloadSlackFile,
   tryDownloadSlackFile,
+  writeDownloadErrorFile,
 } from "../slack/files.ts";
 import { htmlToMarkdown } from "../slack/html-to-md.ts";
 import { readFile, writeFile } from "node:fs/promises";
@@ -115,7 +116,17 @@ export async function downloadMessageFiles(input: {
           if (!(err instanceof SlackDownloadError)) {
             throw err;
           }
-          downloadedPaths[file.id] = { ok: false, error: err.message, httpStatus: err.httpStatus };
+          const path = await writeDownloadErrorFile({
+            destDir: downloadsDir,
+            fileId: file.id,
+            error: err.message,
+          });
+          downloadedPaths[file.id] = {
+            ok: false,
+            error: err.message,
+            httpStatus: err.httpStatus,
+            path,
+          };
           console.error(`Warning: skipping file ${file.id}: ${err.message}`);
         }
       } else {

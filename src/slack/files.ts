@@ -16,7 +16,7 @@ export class SlackDownloadError extends Error {
 
 export type DownloadResult =
   | { ok: true; path: string }
-  | { ok: false; error: string; httpStatus?: number };
+  | { ok: false; error: string; httpStatus?: number; path?: string };
 
 export async function downloadSlackFile(input: {
   auth: SlackAuth;
@@ -100,6 +100,18 @@ export async function tryDownloadSlackFile(
     }
     throw err;
   }
+}
+
+export async function writeDownloadErrorFile(input: {
+  destDir: string;
+  fileId: string;
+  error: string;
+}): Promise<string> {
+  const absDir = resolve(input.destDir);
+  await mkdir(absDir, { recursive: true });
+  const path = join(absDir, sanitizeFilename(`${input.fileId}.download-error.txt`));
+  await writeFile(path, `${input.error}\n`, "utf8");
+  return path;
 }
 
 function sanitizeFilename(name: string): string {

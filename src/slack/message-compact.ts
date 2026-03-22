@@ -55,7 +55,13 @@ export function toCompactMessage(
       }
       return entry.ok
         ? { name: f.name, mimetype: f.mimetype, mode: f.mode, path: entry.path }
-        : { name: f.name, mimetype: f.mimetype, mode: f.mode, error: entry.error };
+        : {
+            name: f.name,
+            mimetype: f.mimetype,
+            mode: f.mode,
+            path: entry.path,
+            error: entry.error,
+          };
     })
     .filter((f): f is NonNullable<typeof f> => Boolean(f));
 

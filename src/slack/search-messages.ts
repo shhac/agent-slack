@@ -3,7 +3,7 @@ import type { CompactSlackMessage, SlackFileSummary, SlackMessageSummary } from 
 import { fetchMessage, toCompactMessage } from "./messages.ts";
 import { resolveChannelId } from "./channels.ts";
 import { ensureDownloadsDir } from "../lib/tmp-paths.ts";
-import { type DownloadResult, tryDownloadSlackFile } from "./files.ts";
+import { type DownloadResult, tryDownloadSlackFile, writeDownloadErrorFile } from "./files.ts";
 import { renderSlackMessageContent } from "./render.ts";
 import { parseSlackMessageUrl } from "./url.ts";
 import { inferExt } from "./search-file-ext.ts";
@@ -271,9 +271,18 @@ async function downloadFilesForMessage(input: {
       destDir: input.downloadsDir,
       preferredName: `${f.id}${ext ? `.${ext}` : ""}`,
     });
-    input.downloadedPaths[f.id] = result;
     if (!result.ok) {
+      input.downloadedPaths[f.id] = {
+        ...result,
+        path: await writeDownloadErrorFile({
+          destDir: input.downloadsDir,
+          fileId: f.id,
+          error: result.error,
+        }),
+      };
       console.warn(`Warning: file ${f.id}: ${result.error}`);
+    } else {
+      input.downloadedPaths[f.id] = result;
     }
   }
 }

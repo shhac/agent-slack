@@ -272,6 +272,7 @@ describe("downloadMessageFiles", () => {
         ok: false,
         error: "Downloaded auth/login page instead of canvas content (token may be expired)",
         httpStatus: undefined,
+        path: join(tempDir, "agent-slack", "tmp", "downloads", "F1.download-error.txt"),
       });
     } finally {
       process.env.XDG_RUNTIME_DIR = originalXdg;

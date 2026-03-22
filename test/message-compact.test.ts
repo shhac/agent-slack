@@ -46,13 +46,19 @@ describe("toCompactMessage", () => {
       },
     ]);
     const downloadedPaths: Record<string, DownloadResult> = {
-      F1: { ok: false, error: "Failed to download file (404)", httpStatus: 404 },
+      F1: {
+        ok: false,
+        error: "Failed to download file (404)",
+        httpStatus: 404,
+        path: "/tmp/F1.download-error.txt",
+      },
     };
     const compact = toCompactMessage(msg, { downloadedPaths });
     expect(compact.files).toHaveLength(1);
     expect(compact.files![0]).toMatchObject({
       name: "diagram.png",
       mimetype: "image/png",
+      path: "/tmp/F1.download-error.txt",
       error: "Failed to download file (404)",
     });
   });
@@ -77,7 +83,12 @@ describe("toCompactMessage", () => {
     ]);
     const downloadedPaths: Record<string, DownloadResult> = {
       F1: { ok: true, path: "/tmp/F1.png" },
-      F2: { ok: false, error: "Failed to download file (401)", httpStatus: 401 },
+      F2: {
+        ok: false,
+        error: "Failed to download file (401)",
+        httpStatus: 401,
+        path: "/tmp/F2.download-error.txt",
+      },
     };
     const compact = toCompactMessage(msg, { downloadedPaths });
     expect(compact.files).toHaveLength(2);
@@ -89,6 +100,7 @@ describe("toCompactMessage", () => {
     expect(compact.files![1]).toMatchObject({
       mimetype: "text/plain",
       mode: "snippet",
+      path: "/tmp/F2.download-error.txt",
       error: "Failed to download file (401)",
     });
   });
@@ -98,7 +110,12 @@ describe("toCompactMessage", () => {
       { id: "F1", mimetype: "image/png", url_private: "https://example.com/f1" },
     ]);
     const downloadedPaths: Record<string, DownloadResult> = {
-      F1: { ok: false, error: "Failed to download file (404)", httpStatus: 404 },
+      F1: {
+        ok: false,
+        error: "Failed to download file (404)",
+        httpStatus: 404,
+        path: "/tmp/F1.download-error.txt",
+      },
     };
     const compact = toCompactMessage(msg, { downloadedPaths });
     expect(compact.files).toHaveLength(1);
@@ -112,7 +129,12 @@ describe("passesContentTypeFilter with failed downloads", () => {
       { id: "F1", mimetype: "image/png", url_private: "https://example.com/f1" },
     ]);
     const downloadedPaths: Record<string, DownloadResult> = {
-      F1: { ok: false, error: "Failed to download file (404)", httpStatus: 404 },
+      F1: {
+        ok: false,
+        error: "Failed to download file (404)",
+        httpStatus: 404,
+        path: "/tmp/F1.download-error.txt",
+      },
     };
     const compact = toCompactMessage(msg, { downloadedPaths });
     expect(passesContentTypeFilter(compact, "image")).toBe(true);
@@ -125,7 +147,12 @@ describe("passesContentTypeFilter with failed downloads", () => {
       { id: "F1", mimetype: "text/plain", mode: "snippet", url_private: "https://example.com/f1" },
     ]);
     const downloadedPaths: Record<string, DownloadResult> = {
-      F1: { ok: false, error: "Failed to download file (401)", httpStatus: 401 },
+      F1: {
+        ok: false,
+        error: "Failed to download file (401)",
+        httpStatus: 401,
+        path: "/tmp/F1.download-error.txt",
+      },
     };
     const compact = toCompactMessage(msg, { downloadedPaths });
     expect(passesContentTypeFilter(compact, "snippet")).toBe(true);
