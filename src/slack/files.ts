@@ -58,14 +58,32 @@ export async function downloadSlackFile(input: {
   }
   const contentType = resp.headers.get("content-type") || "";
   if (!options?.allowHtml && contentType.includes("text/html")) {
-    const text = await resp.text();
+    let text: string;
+    try {
+      text = await resp.text();
+    } catch (err) {
+      throw new SlackDownloadError(
+        `Failed to read download response body: ${err instanceof Error ? err.message : String(err)}`,
+        resp.status,
+      );
+    }
     throw new SlackDownloadError(
       `Downloaded HTML instead of file (auth likely failed). First bytes: ${JSON.stringify(
         text.slice(0, 120),
       )}`,
+      resp.status,
     );
   }
-  const buf = Buffer.from(await resp.arrayBuffer());
+  let arrayBuffer: ArrayBuffer;
+  try {
+    arrayBuffer = await resp.arrayBuffer();
+  } catch (err) {
+    throw new SlackDownloadError(
+      `Failed to read download response body: ${err instanceof Error ? err.message : String(err)}`,
+      resp.status,
+    );
+  }
+  const buf = Buffer.from(arrayBuffer);
   await writeFile(path, buf);
   return path;
 }

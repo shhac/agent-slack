@@ -31,6 +31,10 @@ function mockFetchReject(err: Error) {
   return setFetchMock(() => Promise.reject(err));
 }
 
+function mockFetchResponse(response: Response) {
+  return setFetchMock(() => Promise.resolve(response));
+}
+
 describe("downloadSlackFile", () => {
   let tempDir: string;
 
@@ -111,6 +115,48 @@ describe("downloadSlackFile", () => {
     }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(SlackDownloadError);
     expect((err as SlackDownloadError).message).toContain("Network error");
+  });
+
+  test("throws SlackDownloadError when reading html body fails", async () => {
+    mockFetchResponse({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "text/html" }),
+      text: async () => {
+        throw new TypeError("stream failed");
+      },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as unknown as Response);
+
+    const err = await downloadSlackFile({
+      auth: AUTH,
+      url: "https://files.slack.com/files/page.txt",
+      destDir: tempDir,
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(SlackDownloadError);
+    expect((err as SlackDownloadError).message).toContain("Failed to read download response body");
+  });
+
+  test("throws SlackDownloadError when reading binary body fails", async () => {
+    mockFetchResponse({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/octet-stream" }),
+      text: async () => "",
+      arrayBuffer: async () => {
+        throw new TypeError("stream failed");
+      },
+    } as unknown as Response);
+
+    const err = await downloadSlackFile({
+      auth: AUTH,
+      url: "https://files.slack.com/files/file.bin",
+      destDir: tempDir,
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(SlackDownloadError);
+    expect((err as SlackDownloadError).message).toContain("Failed to read download response body");
   });
 });
 

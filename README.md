@@ -293,7 +293,7 @@ When to use which:
 
 ### Files (snippets/images/attachments)
 
-`message get/list` auto-download attached files to an agent-friendly temp directory. Successful downloads include an absolute path in `message.files[].path`; failed downloads keep the attachment entry and include `message.files[].error` instead.
+`message get/list` auto-download attached files to an agent-friendly temp directory. Successful downloads include an absolute path in `message.files[].path`; failed downloads keep the attachment entry and include `message.files[].error` instead. `search messages` and `search all` use the same attachment shape for message results, while `search files` skips entries whose download fails.
 
 - macOS default: `~/.agent-slack/tmp/downloads/`
 
