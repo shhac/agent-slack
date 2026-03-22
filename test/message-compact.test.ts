@@ -168,3 +168,19 @@ describe("passesContentTypeFilter with failed downloads", () => {
     expect(passesContentTypeFilter(compact, "image")).toBe(false);
   });
 });
+
+describe("toCompactMessage filename preservation", () => {
+  test("does not fall back to title when name is missing", () => {
+    const msg = makeMessage([{ id: "F2", title: "My Document", mimetype: "text/plain" }]);
+    const downloadedPaths: Record<string, DownloadResult> = {
+      F2: { ok: true, path: "/tmp/F2/doc.txt" },
+    };
+    const compact = toCompactMessage(msg, { downloadedPaths });
+    expect(compact.files).toHaveLength(1);
+    expect(compact.files![0]).toMatchObject({
+      name: undefined,
+      mimetype: "text/plain",
+      path: "/tmp/F2/doc.txt",
+    });
+  });
+});
