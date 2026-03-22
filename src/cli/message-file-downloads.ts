@@ -115,6 +115,7 @@ export async function downloadMessageFiles(input: {
           if (!(err instanceof SlackDownloadError)) {
             throw err;
           }
+          downloadedPaths[file.id] = { ok: false, error: err.message, httpStatus: err.httpStatus };
           console.error(`Warning: skipping file ${file.id}: ${err.message}`);
         }
       } else {

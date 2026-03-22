@@ -17,26 +17,44 @@ function makeMessage(files?: SlackMessageSummary["files"]): SlackMessageSummary 
 describe("toCompactMessage", () => {
   test("includes file with path on successful download", () => {
     const msg = makeMessage([
-      { id: "F1", mimetype: "image/png", url_private: "https://example.com/f1" },
+      {
+        id: "F1",
+        name: "diagram.png",
+        mimetype: "image/png",
+        url_private: "https://example.com/f1",
+      },
     ]);
     const downloadedPaths: Record<string, DownloadResult> = {
       F1: { ok: true, path: "/tmp/F1.png" },
     };
     const compact = toCompactMessage(msg, { downloadedPaths });
-    expect(compact.files).toEqual([{ mimetype: "image/png", path: "/tmp/F1.png" }]);
+    expect(compact.files).toHaveLength(1);
+    expect(compact.files![0]).toMatchObject({
+      name: "diagram.png",
+      mimetype: "image/png",
+      path: "/tmp/F1.png",
+    });
   });
 
   test("includes file with error on failed download", () => {
     const msg = makeMessage([
-      { id: "F1", mimetype: "image/png", url_private: "https://example.com/f1" },
+      {
+        id: "F1",
+        name: "diagram.png",
+        mimetype: "image/png",
+        url_private: "https://example.com/f1",
+      },
     ]);
     const downloadedPaths: Record<string, DownloadResult> = {
       F1: { ok: false, error: "Failed to download file (404)", httpStatus: 404 },
     };
     const compact = toCompactMessage(msg, { downloadedPaths });
-    expect(compact.files).toEqual([
-      { mimetype: "image/png", error: "Failed to download file (404)" },
-    ]);
+    expect(compact.files).toHaveLength(1);
+    expect(compact.files![0]).toMatchObject({
+      name: "diagram.png",
+      mimetype: "image/png",
+      error: "Failed to download file (404)",
+    });
   });
 
   test("excludes files with no downloadedPaths entry", () => {
@@ -49,7 +67,12 @@ describe("toCompactMessage", () => {
 
   test("mixes successful and failed downloads", () => {
     const msg = makeMessage([
-      { id: "F1", mimetype: "image/png", url_private: "https://example.com/f1" },
+      {
+        id: "F1",
+        name: "diagram.png",
+        mimetype: "image/png",
+        url_private: "https://example.com/f1",
+      },
       { id: "F2", mimetype: "text/plain", mode: "snippet", url_private: "https://example.com/f2" },
     ]);
     const downloadedPaths: Record<string, DownloadResult> = {
@@ -57,10 +80,17 @@ describe("toCompactMessage", () => {
       F2: { ok: false, error: "Failed to download file (401)", httpStatus: 401 },
     };
     const compact = toCompactMessage(msg, { downloadedPaths });
-    expect(compact.files).toEqual([
-      { mimetype: "image/png", path: "/tmp/F1.png" },
-      { mimetype: "text/plain", mode: "snippet", error: "Failed to download file (401)" },
-    ]);
+    expect(compact.files).toHaveLength(2);
+    expect(compact.files![0]).toMatchObject({
+      name: "diagram.png",
+      mimetype: "image/png",
+      path: "/tmp/F1.png",
+    });
+    expect(compact.files![1]).toMatchObject({
+      mimetype: "text/plain",
+      mode: "snippet",
+      error: "Failed to download file (401)",
+    });
   });
 
   test("failed download preserves file metadata for content-type filtering", () => {

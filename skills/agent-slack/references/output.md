@@ -56,7 +56,10 @@ Use `--max-content-chars` (messages) and `--limit` to control size.
 
 ## Attachment downloads
 
-Attachments are downloaded to an agent-friendly temp directory and returned as absolute paths in output.
+Attachments are downloaded to an agent-friendly temp directory.
+
+- Successful downloads are returned as absolute paths in output.
+- `message get/list` preserves failed attachment downloads with `message.files[].error` so agents can still see the attachment metadata and the download failure reason.
 
 Default download root:
 

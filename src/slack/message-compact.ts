@@ -10,6 +10,7 @@ export type CompactSlackMessage = {
   author?: { user_id?: string; bot_id?: string };
   content?: string;
   files?: {
+    name?: string;
     mimetype?: string;
     mode?: string;
     path?: string;
@@ -53,8 +54,8 @@ export function toCompactMessage(
         return null;
       }
       return entry.ok
-        ? { mimetype: f.mimetype, mode: f.mode, path: entry.path }
-        : { mimetype: f.mimetype, mode: f.mode, error: entry.error };
+        ? { name: f.name, mimetype: f.mimetype, mode: f.mode, path: entry.path }
+        : { name: f.name, mimetype: f.mimetype, mode: f.mode, error: entry.error };
     })
     .filter((f): f is NonNullable<typeof f> => Boolean(f));
 
