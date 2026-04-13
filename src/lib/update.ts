@@ -230,6 +230,23 @@ export async function performUpdate(
       return { success: false, message: `Checksum mismatch: expected ${expected}, got ${actual}` };
     }
 
+    // Ad-hoc codesign on macOS — required for Gatekeeper on modern macOS.
+    // Cross-compiled Mach-O binaries may carry an invalid signature that
+    // causes macOS to SIGKILL (Killed: 9) on launch.
+    if (process.platform === "darwin") {
+      try {
+        execSync(`codesign --remove-signature ${JSON.stringify(binTmp)}`, {
+          stdio: "ignore",
+        });
+        execSync(`codesign --sign - ${JSON.stringify(binTmp)}`, {
+          stdio: "ignore",
+        });
+      } catch {
+        // codesign should always be available on macOS, but don't block the
+        // update if it somehow fails — the binary may still work.
+      }
+    }
+
     // Replace current binary
     const currentBin = process.execPath;
     const backupPath = `${currentBin}.bak`;

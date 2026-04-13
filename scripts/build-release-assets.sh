@@ -23,6 +23,25 @@ build() {
 
 build "bun-darwin-arm64" "agent-slack-darwin-arm64"
 build "bun-darwin-x64" "agent-slack-darwin-x64"
+
+# Ad-hoc codesign macOS binaries (required for Gatekeeper on modern macOS).
+# Cross-compiled Mach-O binaries from `bun build --compile` may carry an
+# invalid signature blob that causes macOS to SIGKILL (Killed: 9) on launch.
+# `codesign --sign -` stamps a valid ad-hoc signature.
+if command -v codesign >/dev/null 2>&1; then
+  for f in "$outdir"/agent-slack-darwin-*; do
+    printf '%s\n' "Signing $f"
+    codesign --sign - --force "$f"
+  done
+elif command -v rcodesign >/dev/null 2>&1; then
+  for f in "$outdir"/agent-slack-darwin-*; do
+    printf '%s\n' "Signing $f (rcodesign)"
+    rcodesign sign "$f"
+  done
+else
+  printf '%s\n' "warning: no codesign or rcodesign found — macOS binaries will be unsigned" >&2
+fi
+
 build "bun-linux-x64" "agent-slack-linux-x64"
 build "bun-linux-x64-musl" "agent-slack-linux-x64-musl"
 build "bun-linux-arm64" "agent-slack-linux-arm64"
