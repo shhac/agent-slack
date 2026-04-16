@@ -191,7 +191,6 @@ export async function runWorkflow(
     context: JSON.stringify({
       location: "bookmark",
       channel_id: input.channelId,
-      trigger_id: input.triggerId,
       bookmark_id: input.bookmarkId,
     }),
     run_precheck: true,
