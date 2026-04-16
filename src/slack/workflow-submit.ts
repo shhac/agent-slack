@@ -52,10 +52,11 @@ export async function submitWorkflow(input: {
   shortcutUrl: string;
   channelId: string;
   triggerId: string;
+  bookmarkId: string;
   fields: Map<string, string>;
   schema: WorkflowSchema;
 }): Promise<WorkflowSubmitResult> {
-  const { client, auth, shortcutUrl, channelId, triggerId, fields, schema } = input;
+  const { client, auth, shortcutUrl, channelId, triggerId, bookmarkId, fields, schema } = input;
   const cookie = `d=${encodeURIComponent(auth.xoxd_cookie)}`;
 
   // Build title→FormField lookup (case-insensitive)
@@ -83,7 +84,7 @@ export async function submitWorkflow(input: {
     );
 
     // Step 4: Trip trigger
-    const tripResult = await runWorkflow(client, { shortcutUrl, channelId, triggerId });
+    const tripResult = await runWorkflow(client, { shortcutUrl, channelId, triggerId, bookmarkId });
 
     // Step 5: Wait for view_opened
     const viewMsg = await viewPromise;
