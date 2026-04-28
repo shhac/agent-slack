@@ -162,6 +162,8 @@ Attach options for `message send`:
 
 - `--attach <path>` upload a local file (repeatable)
 
+`message send` returns `channel_id` plus the posted `ts` and a `permalink` (for non-attachment sends). `thread_ts` appears only when replying in a thread.
+
 ## List channels + create/invite users
 
 ```bash
