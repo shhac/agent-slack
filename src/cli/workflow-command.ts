@@ -6,7 +6,7 @@ import {
   getWorkflowSchema,
   listChannelWorkflows,
   previewWorkflow,
-  resolveShortcutUrl,
+  resolveShortcut,
   runWorkflow,
 } from "../slack/workflows.ts";
 import {
@@ -144,8 +144,8 @@ export function registerWorkflowCommand(input: { program: Command; ctx: CliConte
             work: async () => {
               const { client } = await input.ctx.getClientForWorkspace(workspaceUrl);
               const channelId = await resolveChannelId(client, options.channel);
-              const shortcutUrl = await resolveShortcutUrl(client, { channelId, triggerId });
-              return await runWorkflow(client, { shortcutUrl, channelId, triggerId });
+              const shortcut = await resolveShortcut(client, { channelId, triggerId });
+              return await runWorkflow(client, { shortcutUrl: shortcut.url, channelId, triggerId, bookmarkId: shortcut.bookmarkId });
             },
           });
           console.log(JSON.stringify(pruneEmpty(payload), null, 2));
@@ -176,13 +176,14 @@ export function registerWorkflowCommand(input: { program: Command; ctx: CliConte
                 throw new Error(errors.join("\n"));
               }
 
-              const shortcutUrl = await resolveShortcutUrl(client, { channelId, triggerId });
+              const shortcut = await resolveShortcut(client, { channelId, triggerId });
               return await submitWorkflow({
                 client,
                 auth,
-                shortcutUrl,
+                shortcutUrl: shortcut.url,
                 channelId,
                 triggerId,
+                bookmarkId: shortcut.bookmarkId,
                 fields,
                 schema,
               });

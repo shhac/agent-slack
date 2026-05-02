@@ -182,7 +182,7 @@ export type WorkflowRunResult = {
 
 export async function runWorkflow(
   client: SlackApiClient,
-  input: { shortcutUrl: string; channelId: string; triggerId: string },
+  input: { shortcutUrl: string; channelId: string; triggerId: string; bookmarkId: string },
 ): Promise<WorkflowRunResult> {
   const clientToken = `cli-${Date.now()}`;
   const resp = await client.api("workflows.triggers.trip", {
@@ -191,7 +191,7 @@ export async function runWorkflow(
     context: JSON.stringify({
       location: "bookmark",
       channel_id: input.channelId,
-      trigger_id: input.triggerId,
+      bookmark_id: input.bookmarkId,
     }),
     run_precheck: true,
   });
@@ -202,10 +202,15 @@ export async function runWorkflow(
   };
 }
 
-export async function resolveShortcutUrl(
+export type ResolvedShortcut = {
+  url: string;
+  bookmarkId: string;
+};
+
+export async function resolveShortcut(
   client: SlackApiClient,
   input: { channelId: string; triggerId: string },
-): Promise<string> {
+): Promise<ResolvedShortcut> {
   const { channelId, triggerId } = input;
   const resp = await client.api("bookmarks.list", {
     channel_id: channelId,
@@ -215,8 +220,9 @@ export async function resolveShortcutUrl(
     const shortcutId = getString(b.shortcut_id);
     if (shortcutId === triggerId) {
       const link = getString(b.link);
-      if (link) {
-        return link;
+      const bookmarkId = getString(b.id);
+      if (link && bookmarkId) {
+        return { url: link, bookmarkId };
       }
     }
   }
