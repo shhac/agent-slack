@@ -114,8 +114,13 @@ unit tests:
   already owns `~/.config/agent-slack/credentials.json` (same filename,
   different Keychain service); that legacy file is read once to seed a
   missing store — metadata only, never written. The cache dir matches:
-  `~/.cache/app.paulie.agent-slack`. `AGENT_SLACK_CREDENTIALS` overrides the
-  path.
+  `~/.cache/app.paulie.agent-slack` (`$XDG_CACHE_HOME`-aware), holding
+  `downloads/` and the `users-cache-*.json` files — cache rather than
+  `XDG_DATA_HOME` or `XDG_RUNTIME_DIR`, because both are re-derivable and
+  safe to purge (downloads re-fetch by immutable file ID; the user cache has
+  a 24h TTL). All directories are created `0700` and files `0600`; temp
+  snapshots (LevelDB/SQLite) use `os.MkdirTemp`. `AGENT_SLACK_CREDENTIALS`
+  overrides the credentials path.
 - `internal/credential`: tokens/cookies stored in the macOS Keychain under
   service `app.paulie.agent-slack` (matching `lin`'s `app.paulie.lin`), with the
   per-workspace key as the account field. A local index records which workspace

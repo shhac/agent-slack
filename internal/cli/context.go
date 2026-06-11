@@ -221,9 +221,12 @@ func workspaceHost(s string) string {
 	return strings.TrimSuffix(s, "/")
 }
 
-// appCacheDir is where downloads and the user cache live
-// (XDG_CACHE_HOME-aware). Named like the config dir — app.paulie.agent-slack
-// — to stay clear of the TS tool's paths.
+// appCacheDir is where downloads and the user cache live. XDG_CACHE_HOME is
+// the right home for both: they are re-derivable copies (downloads re-fetch
+// by immutable file ID, the user cache has a 24h TTL), safe to purge —
+// unlike XDG_RUNTIME_DIR (size-limited tmpfs, cleared per session) or
+// XDG_DATA_HOME (data the app owns). Named like the config dir —
+// app.paulie.agent-slack — to stay clear of the TS tool's paths.
 func appCacheDir() string {
 	const dirName = "app.paulie.agent-slack"
 	if xdg := os.Getenv("XDG_CACHE_HOME"); xdg != "" {
@@ -231,7 +234,8 @@ func appCacheDir() string {
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(os.TempDir(), dirName)
+		// Shared tmp: suffix the UID so another user can't pre-own the path.
+		return filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d", dirName, os.Getuid()))
 	}
 	return filepath.Join(home, ".cache", dirName)
 }
