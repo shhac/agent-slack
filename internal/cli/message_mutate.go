@@ -13,9 +13,10 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 	var ts string
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "edit <target> <text>",
-		Short: "Edit a message (destructive: requires --yes)",
-		Args:  cobra.ExactArgs(2),
+		Use:               "edit <target> <text>",
+		Short:             "Edit a message (destructive: requires --yes)",
+		Args:              cobra.ExactArgs(2),
+		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if err := requireYes(yes, fmt.Sprintf("would rewrite the message at %s with %d chars of new text", args[0], len(args[1]))); err != nil {
@@ -48,9 +49,10 @@ func registerMessageDelete(parent *cobra.Command, globals *GlobalFlags) {
 	var ts string
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "delete <target>",
-		Short: "Delete a message (destructive: requires --yes)",
-		Args:  cobra.ExactArgs(1),
+		Use:               "delete <target>",
+		Short:             "Delete a message (destructive: requires --yes)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if err := requireYes(yes, fmt.Sprintf("would permanently delete the message at %s", args[0])); err != nil {

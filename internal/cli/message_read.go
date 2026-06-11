@@ -15,9 +15,10 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 	flags := &readFlags{}
 	noDownload := false
 	cmd := &cobra.Command{
-		Use:   "get <target>",
-		Short: "Fetch one message (with thread summary); files download to the cache dir",
-		Args:  cobra.ExactArgs(1),
+		Use:               "get <target>",
+		Short:             "Fetch one message (with thread summary); files download to the cache dir",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cc, ref, err := resolveMessageTarget(ctx, globals, args[0], flags.ts, flags.threadTS)
@@ -71,9 +72,10 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 	var withReaction, withoutReaction []string
 	var download bool
 	cmd := &cobra.Command{
-		Use:   "list <target>",
-		Short: "List recent channel messages, or a full thread (--thread-ts/--ts or a thread permalink)",
-		Args:  cobra.ExactArgs(1),
+		Use:               "list <target>",
+		Short:             "List recent channel messages, or a full thread (--thread-ts/--ts or a thread permalink)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			target, err := render.ParseTarget(args[0])

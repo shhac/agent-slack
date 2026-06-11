@@ -194,9 +194,10 @@ func registerChannelInvite(parent *cobra.Command, globals *GlobalFlags) {
 func registerChannelMark(parent *cobra.Command, globals *GlobalFlags) {
 	var ts string
 	cmd := &cobra.Command{
-		Use:   "mark <target>",
-		Short: "Mark a channel/DM read up to a message",
-		Args:  cobra.ExactArgs(1),
+		Use:               "mark <target>",
+		Short:             "Mark a channel/DM read up to a message",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			target, err := render.ParseTarget(args[0])

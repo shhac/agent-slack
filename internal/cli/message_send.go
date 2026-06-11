@@ -30,9 +30,10 @@ type sendFlags struct {
 func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 	flags := &sendFlags{}
 	cmd := &cobra.Command{
-		Use:   "send <target> [text]",
-		Short: "Send or schedule a message (channel, #name, U…/DM, or permalink to reply in-thread)",
-		Args:  cobra.RangeArgs(1, 2),
+		Use:               "send <target> [text]",
+		Short:             "Send or schedule a message (channel, #name, U…/DM, or permalink to reply in-thread)",
+		Args:              cobra.RangeArgs(1, 2),
+		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			text := ""
