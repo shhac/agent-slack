@@ -115,13 +115,21 @@ func listFirefoxProfiles() ([]firefoxProfile, error) {
 	if err != nil {
 		return nil, err
 	}
+	return listFirefoxProfilesIn(baseDir, runtime.GOOS == "darwin"), nil
+}
+
+// listFirefoxProfilesIn discovers profiles under an explicit base dir —
+// parameterized so tests exercise the discovery rules (profiles.ini parsing,
+// unlisted-dir pickup, default-first ordering, existence filtering) against
+// a t.TempDir tree instead of the real home directory.
+func listFirefoxProfilesIn(baseDir string, darwinLayout bool) []firefoxProfile {
 	var candidates []firefoxProfile
 	if raw, err := os.ReadFile(filepath.Join(baseDir, "profiles.ini")); err == nil {
 		candidates = append(candidates, parseProfilesIni(string(raw), baseDir)...)
 	}
 
 	scanDir := baseDir
-	if runtime.GOOS == "darwin" {
+	if darwinLayout {
 		scanDir = filepath.Join(baseDir, "Profiles")
 	}
 	if entries, err := os.ReadDir(scanDir); err == nil {
@@ -152,7 +160,7 @@ func listFirefoxProfiles() ([]firefoxProfile, error) {
 	sort.SliceStable(existing, func(i, j int) bool {
 		return existing[i].isDefault && !existing[j].isDefault
 	})
-	return existing, nil
+	return existing
 }
 
 func pickFirefoxProfiles(candidates []firefoxProfile, selector string) []firefoxProfile {

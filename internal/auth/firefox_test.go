@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -85,5 +86,61 @@ func TestDecodeFirefoxCookie(t *testing.T) {
 	}
 	if got := decodeFirefoxCookie("xoxd-plain"); got != "xoxd-plain" {
 		t.Errorf("decodeFirefoxCookie plain = %q", got)
+	}
+}
+
+func TestListFirefoxProfilesIn(t *testing.T) {
+	base := t.TempDir()
+	// darwin layout: profiles live under Profiles/, profiles.ini at the root.
+	mk := func(rel string) string {
+		p := filepath.Join(base, rel)
+		if err := os.MkdirAll(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	defaultProfile := mk("Profiles/abc.default-release")
+	extraProfile := mk("Profiles/xyz.dev-edition")
+	mk("Profiles/not-a-profile.txt-dir") // picked up too: discovery is permissive
+
+	ini := `[Install4F96D1932A9F858E]
+Default=Profiles/abc.default-release
+
+[Profile0]
+Name=default-release
+IsRelative=1
+Path=Profiles/abc.default-release
+
+[Profile1]
+Name=missing
+IsRelative=1
+Path=Profiles/deleted-profile
+`
+	if err := os.WriteFile(filepath.Join(base, "profiles.ini"), []byte(ini), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	profiles := listFirefoxProfilesIn(base, true)
+
+	if len(profiles) != 3 { // default + extra + permissive dir; deleted-profile filtered (does not exist)
+		t.Fatalf("profiles = %+v", profiles)
+	}
+	if profiles[0].path != defaultProfile || !profiles[0].isDefault {
+		t.Errorf("default should sort first: %+v", profiles[0])
+	}
+	for _, p := range profiles {
+		if p.path == filepath.Join(base, "Profiles/deleted-profile") {
+			t.Error("nonexistent profile should be filtered out")
+		}
+	}
+	// The unlisted dir was discovered without duplicating the ini-listed one.
+	found := 0
+	for _, p := range profiles {
+		if p.path == extraProfile || p.path == defaultProfile {
+			found++
+		}
+	}
+	if found != 2 {
+		t.Errorf("expected ini + scanned dirs deduped, got %+v", profiles)
 	}
 }
