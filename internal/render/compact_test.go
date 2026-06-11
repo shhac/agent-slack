@@ -272,3 +272,23 @@ func TestToFileSummary(t *testing.T) {
 		t.Error("expected nil for non-record")
 	}
 }
+
+func TestTruncateBody(t *testing.T) {
+	cases := []struct {
+		s    string
+		max  int
+		want string
+	}{
+		{"hello", 10, "hello"},
+		{"hello", 3, "hel\n…"},
+		{"hello", -1, "hello"},
+		{"🚀🚀🚀🚀", 2, "🚀🚀\n…"}, // runes, not bytes
+		{"", 0, ""},
+		{"x", 0, "\n…"},
+	}
+	for _, tc := range cases {
+		if got := TruncateBody(tc.s, tc.max); got != tc.want {
+			t.Errorf("TruncateBody(%q, %d) = %q, want %q", tc.s, tc.max, got, tc.want)
+		}
+	}
+}

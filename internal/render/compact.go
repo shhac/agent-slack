@@ -126,6 +126,18 @@ type ForwardedThread struct {
 // DefaultMaxBodyChars is the default content truncation for read commands.
 const DefaultMaxBodyChars = 8000
 
+// TruncateBody caps s at maxChars runes (not bytes — bodies carry emoji),
+// marking the cut with "\n…". Negative maxChars means unlimited.
+func TruncateBody(s string, maxChars int) string {
+	if maxChars < 0 {
+		return s
+	}
+	if r := []rune(s); len(r) > maxChars {
+		return string(r[:maxChars]) + "\n…"
+	}
+	return s
+}
+
 // CompactOptions controls ToCompactMessage.
 type CompactOptions struct {
 	// MaxBodyChars truncates rendered content (with a "\n…" marker). Zero
@@ -144,12 +156,7 @@ func ToCompactMessage(msg MessageSummary, opts CompactOptions) CompactMessage {
 		maxBodyChars = DefaultMaxBodyChars
 	}
 
-	content := renderContent(msg.Text, msg.Blocks, msg.Attachments)
-	if maxBodyChars >= 0 {
-		if r := []rune(content); len(r) > maxBodyChars {
-			content = string(r[:maxBodyChars]) + "\n…"
-		}
-	}
+	content := TruncateBody(renderContent(msg.Text, msg.Blocks, msg.Attachments), maxBodyChars)
 
 	var files []CompactFile
 	for _, f := range msg.Files {

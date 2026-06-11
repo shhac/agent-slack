@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
+	"github.com/shhac/agent-slack/internal/render"
 )
 
 // CanvasRef identifies a canvas extracted from a /docs/ URL.
@@ -110,11 +111,6 @@ func FetchCanvasMarkdown(ctx context.Context, c *Client, canvasID string, opts C
 			WithHint(reimportHint)
 	}
 
-	markdown := strings.TrimSpace(opts.HTMLToMarkdown(string(htmlBytes)))
-	if maxChars >= 0 {
-		if r := []rune(markdown); len(r) > maxChars {
-			markdown = string(r[:maxChars]) + "\n…"
-		}
-	}
+	markdown := render.TruncateBody(strings.TrimSpace(opts.HTMLToMarkdown(string(htmlBytes))), maxChars)
 	return Canvas{ID: canvasID, Title: title, Markdown: markdown}, nil
 }

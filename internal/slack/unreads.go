@@ -209,12 +209,7 @@ func hydrateUnreadChannel(ctx context.Context, c *Client, raw map[string]any, ch
 	}
 
 	for _, m := range msgs {
-		content := render.RenderMessageContent(m)
-		if opts.maxBodyChars >= 0 {
-			if r := []rune(content); len(r) > opts.maxBodyChars {
-				content = string(r[:opts.maxBodyChars]) + "\n…"
-			}
-		}
+		content := render.TruncateBody(render.RenderMessageContent(m), opts.maxBodyChars)
 		um := UnreadMessage{
 			TS:         getStr(m, "ts"),
 			Content:    content,

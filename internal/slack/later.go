@@ -171,12 +171,7 @@ func fetchLaterMessage(ctx context.Context, c *Client, channelID, ts string, max
 	if msg == nil {
 		return nil
 	}
-	content := render.RenderMessageContent(msg)
-	if maxBodyChars >= 0 {
-		if r := []rune(content); len(r) > maxBodyChars {
-			content = string(r[:maxBodyChars]) + "\n…"
-		}
-	}
+	content := render.TruncateBody(render.RenderMessageContent(msg), maxBodyChars)
 	out := &LaterMessage{
 		Content:    content,
 		ThreadTS:   getStr(msg, "thread_ts"),
