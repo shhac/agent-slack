@@ -112,14 +112,16 @@ func ParseInviteUsersCSV(input string) []string {
 var likelyEmailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 // SplitEmailsFromInviteTargets separates email targets (external invites)
-// from user-ID/handle targets.
+// from user-ID/handle targets. Emails are trimmed before deduping so
+// " a@b.com" and "a@b.com" cannot produce two invites.
 func SplitEmailsFromInviteTargets(targets []string) (emails, nonEmails []string) {
 	seen := map[string]bool{}
 	for _, target := range targets {
-		if likelyEmailRe.MatchString(strings.TrimSpace(target)) {
-			if !seen[target] {
-				seen[target] = true
-				emails = append(emails, target)
+		email := strings.TrimSpace(target)
+		if likelyEmailRe.MatchString(email) {
+			if !seen[email] {
+				seen[email] = true
+				emails = append(emails, email)
 			}
 			continue
 		}

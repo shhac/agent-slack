@@ -36,7 +36,13 @@ type DownloadOptions struct {
 var unsafeFilenameRe = regexp.MustCompile(`[\\/<>:"|?*]`)
 
 func sanitizeFilename(name string) string {
-	return unsafeFilenameRe.ReplaceAllString(name, "_")
+	cleaned := unsafeFilenameRe.ReplaceAllString(name, "_")
+	// "." and ".." survive the character filter but would escape the dest
+	// dir when joined onto a path.
+	if cleaned == "." || cleaned == ".." {
+		return "_"
+	}
+	return cleaned
 }
 
 // DownloadFile fetches a Slack-hosted file to DestDir with the account's
