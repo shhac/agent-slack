@@ -125,6 +125,27 @@ type PreviewWorkflow struct {
 	AppName     string `json:"app_name,omitempty"`
 }
 
+// rejectedTriggerError maps a workflows.triggers.preview rejection code to a
+// typed error. Slack reports the real reason (e.g. trigger_not_found vs an
+// access denial) inside rejected_triggers[].error; the code decides whether an
+// agent can fix it (wrong/stale id) or a human must (sharing/permissions).
+func rejectedTriggerError(triggerID, code string) error {
+	switch code {
+	case "trigger_not_found", "trigger_does_not_exist", "not_found":
+		return agenterrors.Newf(agenterrors.FixableByAgent,
+			"trigger %s was rejected: %s", triggerID, code).
+			WithHint("the trigger id (Ft…) is wrong or stale; 'agent-slack workflow list <channel>' lists the triggers currently in a channel")
+	case "":
+		return agenterrors.Newf(agenterrors.FixableByHuman,
+			"trigger %s was rejected", triggerID).
+			WithHint("a workflow collaborator may need to share it with you; or verify the id with 'agent-slack workflow list <channel>'")
+	default:
+		return agenterrors.Newf(agenterrors.FixableByHuman,
+			"trigger %s was rejected: %s", triggerID, code).
+			WithHint("if this is a permissions error, ask a workflow collaborator to share it; otherwise verify the trigger id with 'agent-slack workflow list <channel>'")
+	}
+}
+
 func PreviewWorkflowTrigger(ctx context.Context, c *Client, triggerID string) (WorkflowPreview, error) {
 	resp, err := c.API(ctx, "workflows.triggers.preview", map[string]any{"trigger_ids": triggerID})
 	if err != nil {
@@ -132,10 +153,8 @@ func PreviewWorkflowTrigger(ctx context.Context, c *Client, triggerID string) (W
 	}
 	triggers := recItems(getArr(resp, "triggers"))
 	if len(triggers) == 0 {
-		if len(getArr(resp, "rejected_triggers")) > 0 {
-			return WorkflowPreview{}, agenterrors.Newf(agenterrors.FixableByHuman,
-				"trigger %s was rejected — you may not have access", triggerID).
-				WithHint("the workflow's collaborators must share it with you; ask one of them, or pick a trigger you can use from 'agent-slack workflow list <channel>'")
+		if rejected := recItems(getArr(resp, "rejected_triggers")); len(rejected) > 0 {
+			return WorkflowPreview{}, rejectedTriggerError(triggerID, getStr(rejected[0], "error"))
 		}
 		return WorkflowPreview{}, agenterrors.Newf(agenterrors.FixableByAgent,
 			"no preview data returned for trigger %s", triggerID).
