@@ -60,28 +60,19 @@ func warnTruncatedURL(ref *render.MessageRef) {
 	}
 }
 
-// userTargetPolicy says what a U… target means to a command: an error, or
-// "open the DM and use it as the channel".
-type userTargetPolicy int
-
-const (
-	rejectUserTargets userTargetPolicy = iota
-	openDMForUserTargets
-)
-
 // resolveTargetClient maps a parsed CLI <target> to a connected client and a
 // channel ID — the kernel every target-taking command shares. Permalinks pin
-// their workspace (overriding --workspace); channels resolve names to IDs;
-// user targets follow the caller's policy (rejectMsg is the per-command
-// error wording, preserved for output parity).
-func resolveTargetClient(ctx context.Context, globals *GlobalFlags, target render.Target, policy userTargetPolicy, rejectMsg string) (*clientContext, string, error) {
+// their workspace (overriding --workspace); channels resolve names to IDs.
+// rejectUserTargetMsg is the per-command error for U… targets (preserved for
+// output parity); empty means "open the DM and use it as the channel".
+func resolveTargetClient(ctx context.Context, globals *GlobalFlags, target render.Target, rejectUserTargetMsg string) (*clientContext, string, error) {
 	switch target.Kind {
 	case render.TargetURL:
 		cc, err := getClientForWorkspace(globals, target.Ref.WorkspaceURL)
 		return cc, target.Ref.ChannelID, err
 	case render.TargetUser:
-		if policy == rejectUserTargets {
-			return nil, "", agenterrors.New(rejectMsg, agenterrors.FixableByAgent).
+		if rejectUserTargetMsg != "" {
+			return nil, "", agenterrors.New(rejectUserTargetMsg, agenterrors.FixableByAgent).
 				WithHint("use a channel name, channel ID, or message URL")
 		}
 		cc, err := getClient(globals)
@@ -114,7 +105,7 @@ func resolveMessageTarget(ctx context.Context, globals *GlobalFlags, targetInput
 	if target.Kind == render.TargetURL {
 		warnTruncatedURL(target.Ref)
 	}
-	cc, channelID, err := resolveTargetClient(ctx, globals, target, rejectUserTargets, "this command does not support user ID targets")
+	cc, channelID, err := resolveTargetClient(ctx, globals, target, "this command does not support user ID targets")
 	if err != nil {
 		return nil, nil, err
 	}

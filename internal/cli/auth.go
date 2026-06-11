@@ -42,10 +42,6 @@ func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
 	registerAuthRemove(authCmd, globals)
 }
 
-func resolveFormat(globals *GlobalFlags, def output.Format) (output.Format, error) {
-	return output.ResolveFormat(globals.Format, def)
-}
-
 func registerAuthTest(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
 		Use:   "test",

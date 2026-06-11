@@ -220,7 +220,7 @@ func registerChannelMark(parent *cobra.Command, globals *GlobalFlags) {
 					return agenterrors.New("--ts is required when the target is a channel name or ID", agenterrors.FixableByAgent)
 				}
 			}
-			cc, channelID, err := resolveTargetClient(ctx, globals, target, rejectUserTargets, "user targets are not supported for channel mark")
+			cc, channelID, err := resolveTargetClient(ctx, globals, target, "user targets are not supported for channel mark")
 			if err != nil {
 				return err
 			}

@@ -7,6 +7,10 @@ import (
 	"github.com/shhac/agent-slack/internal/output"
 )
 
+func resolveFormat(globals *GlobalFlags, def output.Format) (output.Format, error) {
+	return output.ResolveFormat(globals.Format, def)
+}
+
 func printSingle(globals *GlobalFlags, payload any) error {
 	format, err := resolveFormat(globals, output.FormatJSON)
 	if err != nil {

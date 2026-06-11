@@ -212,17 +212,13 @@ func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext,
 }
 
 func normalizeReactionNames(raw []string) ([]string, error) {
-	var out []string
-	seen := map[string]bool{}
+	normalized := make([]string, 0, len(raw))
 	for _, value := range raw {
 		name, err := render.NormalizeReactionName(value)
 		if err != nil {
 			return nil, err
 		}
-		if !seen[name] {
-			seen[name] = true
-			out = append(out, name)
-		}
+		normalized = append(normalized, name)
 	}
-	return out, nil
+	return dedupeStrings(normalized), nil
 }

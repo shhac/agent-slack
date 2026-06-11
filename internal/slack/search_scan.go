@@ -217,15 +217,7 @@ func searchFilesInChannels(ctx context.Context, c *Client, opts SearchOptions, l
 					return out, nil
 				}
 			}
-			paging := getRec(resp, "paging")
-			if paging == nil {
-				paging = getRec(resp, "pagination")
-			}
-			pages := int(getNum(paging, "pages"))
-			if pages == 0 {
-				pages = int(getNum(paging, "page_count"))
-			}
-			if pages > 0 && page >= pages {
+			if pages := totalPages(resp); pages > 0 && page >= pages {
 				break
 			}
 			page++

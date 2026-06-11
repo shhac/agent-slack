@@ -88,7 +88,7 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 					return agenterrors.New("--reply-broadcast requires --thread-ts for channel targets", agenterrors.FixableByAgent)
 				}
 			}
-			cc, channelID, err := resolveTargetClient(ctx, globals, target, openDMForUserTargets, "")
+			cc, channelID, err := resolveTargetClient(ctx, globals, target, "")
 			if err != nil {
 				return err
 			}

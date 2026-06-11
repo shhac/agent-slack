@@ -96,5 +96,5 @@ func resolveScheduledChannel(ctx context.Context, globals *GlobalFlags, channel 
 	if err != nil {
 		return nil, "", err
 	}
-	return resolveTargetClient(ctx, globals, target, openDMForUserTargets, "")
+	return resolveTargetClient(ctx, globals, target, "")
 }
