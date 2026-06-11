@@ -134,10 +134,12 @@ func PreviewWorkflowTrigger(ctx context.Context, c *Client, triggerID string) (W
 	if len(triggers) == 0 {
 		if len(getArr(resp, "rejected_triggers")) > 0 {
 			return WorkflowPreview{}, agenterrors.Newf(agenterrors.FixableByHuman,
-				"trigger %s was rejected — you may not have access", triggerID)
+				"trigger %s was rejected — you may not have access", triggerID).
+				WithHint("the workflow's collaborators must share it with you; ask one of them, or pick a trigger you can use from 'agent-slack workflow list <channel>'")
 		}
 		return WorkflowPreview{}, agenterrors.Newf(agenterrors.FixableByAgent,
-			"no preview data returned for trigger %s", triggerID)
+			"no preview data returned for trigger %s", triggerID).
+			WithHint("check the trigger id (Ft…); 'agent-slack workflow list <channel>' lists the triggers in a channel")
 	}
 	t := triggers[0]
 	wf := getRec(t, "workflow")
@@ -252,7 +254,8 @@ func GetWorkflowSchema(ctx context.Context, c *Client, workflowID string) (Workf
 	}
 	wf := getRec(resp, "workflow")
 	if wf == nil {
-		return WorkflowSchema{}, agenterrors.Newf(agenterrors.FixableByAgent, "no workflow found for ID %s", workflowID)
+		return WorkflowSchema{}, agenterrors.Newf(agenterrors.FixableByAgent, "no workflow found for ID %s", workflowID).
+			WithHint("check the workflow id (Wf…); 'agent-slack workflow get <Ft-trigger>' resolves a trigger to its workflow")
 	}
 
 	schema := WorkflowSchema{
