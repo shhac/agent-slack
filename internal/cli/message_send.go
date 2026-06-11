@@ -16,10 +16,19 @@ import (
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
+// sendFlags are message send's raw flag values, kept separate so the
+// validation matrix (buildSendRequest) is a pure, table-testable function.
+type sendFlags struct {
+	threadTS       string
+	blocksPath     string
+	schedule       string
+	scheduleIn     string
+	attach         []string
+	replyBroadcast bool
+}
+
 func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
-	var threadTS, blocksPath, schedule, scheduleIn string
-	var attach []string
-	var replyBroadcast bool
+	flags := &sendFlags{}
 	cmd := &cobra.Command{
 		Use:   "send <target> [text]",
 		Short: "Send or schedule a message (channel, #name, U…/DM, or permalink to reply in-thread)",
@@ -30,62 +39,16 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 			if len(args) > 1 {
 				text = args[1]
 			}
-			if text == "" && len(attach) == 0 && blocksPath == "" {
-				return agenterrors.New("message text is required unless --attach or --blocks is provided", agenterrors.FixableByAgent)
-			}
-
-			postAt, err := slack.ResolveSchedulePostAt(schedule, scheduleIn, time.Now())
-			if err != nil {
-				return err
-			}
-			attachPaths := dedupeStrings(attach)
-			if postAt != 0 && len(attachPaths) > 0 {
-				return agenterrors.New("--schedule/--schedule-in cannot be combined with --attach (scheduled messages do not support uploads)", agenterrors.FixableByAgent)
-			}
-			if blocksPath != "" && len(attachPaths) > 0 {
-				return agenterrors.New("--blocks cannot be combined with --attach", agenterrors.FixableByAgent)
-			}
-
-			formatted := render.FormatOutboundText(text)
-			var blocks []any
-			if blocksPath != "" {
-				blocks, err = loadBlocksFromPath(cmd.InOrStdin(), blocksPath)
-				if err != nil {
-					return err
-				}
-			} else if text != "" {
-				for _, b := range render.TextToRichTextBlocks(text, render.RichTextOptions{}) {
-					blocks = append(blocks, b)
-				}
-			}
-
 			target, err := render.ParseTarget(args[0])
 			if err != nil {
 				return err
 			}
-
-			send := sendRequest{
-				text:           formatted,
-				blocks:         blocks,
-				threadTS:       strings.TrimSpace(threadTS),
-				replyBroadcast: replyBroadcast,
-				attachPaths:    attachPaths,
-				postAt:         postAt,
-			}
-
-			// Per-target send rules kept caller-side: DM targets reject
-			// --reply-broadcast; channel targets need --thread-ts with it.
-			switch target.Kind {
-			case render.TargetURL:
+			if target.Kind == render.TargetURL {
 				warnTruncatedURL(globals, target.Ref)
-			case render.TargetUser:
-				if replyBroadcast {
-					return agenterrors.New("--reply-broadcast is not supported for DM targets", agenterrors.FixableByAgent)
-				}
-			default:
-				if replyBroadcast && send.threadTS == "" {
-					return agenterrors.New("--reply-broadcast requires --thread-ts for channel targets", agenterrors.FixableByAgent)
-				}
+			}
+			send, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, *flags, time.Now())
+			if err != nil {
+				return err
 			}
 			cc, channelID, err := resolveTargetClient(ctx, globals, target, "")
 			if err != nil {
@@ -102,12 +65,12 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 			return runSend(ctx, globals, cc, send)
 		},
 	}
-	cmd.Flags().StringVar(&threadTS, "thread-ts", "", "Thread root ts to post into")
-	cmd.Flags().BoolVar(&replyBroadcast, "reply-broadcast", false, "Broadcast a thread reply to the channel")
-	cmd.Flags().StringArrayVar(&attach, "attach", nil, "Attach a local file (repeatable)")
-	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
-	cmd.Flags().StringVar(&schedule, "schedule", "", "Schedule at an ISO 8601 time with timezone, or a unix timestamp")
-	cmd.Flags().StringVar(&scheduleIn, "schedule-in", "", "Schedule after a duration (30m, 2d, tomorrow 9am, monday 9am)")
+	cmd.Flags().StringVar(&flags.threadTS, "thread-ts", "", "Thread root ts to post into")
+	cmd.Flags().BoolVar(&flags.replyBroadcast, "reply-broadcast", false, "Broadcast a thread reply to the channel")
+	cmd.Flags().StringArrayVar(&flags.attach, "attach", nil, "Attach a local file (repeatable)")
+	cmd.Flags().StringVar(&flags.blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
+	cmd.Flags().StringVar(&flags.schedule, "schedule", "", "Schedule at an ISO 8601 time with timezone, or a unix timestamp")
+	cmd.Flags().StringVar(&flags.scheduleIn, "schedule-in", "", "Schedule after a duration (30m, 2d, tomorrow 9am, monday 9am)")
 	parent.AddCommand(cmd)
 }
 
@@ -121,68 +84,98 @@ type sendRequest struct {
 	postAt         int64
 }
 
+func (req sendRequest) outgoing() slack.OutgoingMessage {
+	return slack.OutgoingMessage{
+		ChannelID:      req.channelID,
+		Text:           req.text,
+		ThreadTS:       req.threadTS,
+		ReplyBroadcast: req.replyBroadcast,
+		Blocks:         req.blocks,
+	}
+}
+
+// buildSendRequest validates the flag/target matrix and assembles the
+// request: text formatting, list→rich_text conversion or --blocks loading,
+// schedule resolution, and the per-target --reply-broadcast rules.
+func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string, flags sendFlags, now time.Time) (sendRequest, error) {
+	if text == "" && len(flags.attach) == 0 && flags.blocksPath == "" {
+		return sendRequest{}, agenterrors.New("message text is required unless --attach or --blocks is provided", agenterrors.FixableByAgent)
+	}
+	postAt, err := slack.ResolveSchedulePostAt(flags.schedule, flags.scheduleIn, now)
+	if err != nil {
+		return sendRequest{}, err
+	}
+	attachPaths := dedupeStrings(flags.attach)
+	if postAt != 0 && len(attachPaths) > 0 {
+		return sendRequest{}, agenterrors.New("--schedule/--schedule-in cannot be combined with --attach (scheduled messages do not support uploads)", agenterrors.FixableByAgent)
+	}
+	if flags.blocksPath != "" && len(attachPaths) > 0 {
+		return sendRequest{}, agenterrors.New("--blocks cannot be combined with --attach", agenterrors.FixableByAgent)
+	}
+
+	threadTS := strings.TrimSpace(flags.threadTS)
+	switch targetKind {
+	case render.TargetUser:
+		if flags.replyBroadcast {
+			return sendRequest{}, agenterrors.New("--reply-broadcast is not supported for DM targets", agenterrors.FixableByAgent)
+		}
+	case render.TargetChannel:
+		if flags.replyBroadcast && threadTS == "" {
+			return sendRequest{}, agenterrors.New("--reply-broadcast requires --thread-ts for channel targets", agenterrors.FixableByAgent)
+		}
+	}
+
+	var blocks []any
+	if flags.blocksPath != "" {
+		blocks, err = loadBlocksFromPath(stdin, flags.blocksPath)
+		if err != nil {
+			return sendRequest{}, err
+		}
+	} else if text != "" {
+		for _, b := range render.TextToRichTextBlocks(text, render.RichTextOptions{}) {
+			blocks = append(blocks, b)
+		}
+	}
+
+	return sendRequest{
+		text:           render.FormatOutboundText(text),
+		blocks:         blocks,
+		threadTS:       threadTS,
+		replyBroadcast: flags.replyBroadcast,
+		attachPaths:    attachPaths,
+		postAt:         postAt,
+	}, nil
+}
+
+// runSend dispatches to one of three mutually exclusive send modes.
 func runSend(ctx context.Context, globals *GlobalFlags, cc *clientContext, req sendRequest) error {
-	if req.postAt != 0 {
-		params := map[string]any{
-			"channel": req.channelID,
-			"text":    req.text,
-			"post_at": req.postAt,
-		}
-		addThreadParams(params, req)
-		resp, err := cc.Client.API(ctx, "chat.scheduleMessage", params)
-		if err != nil {
-			return err
-		}
-		channelID := req.channelID
-		if id, ok := resp["channel"].(string); ok && id != "" {
-			channelID = id
-		}
-		payload := map[string]any{
-			"ok":         true,
-			"channel_id": channelID,
-			"post_at":    req.postAt,
-		}
-		if id, ok := resp["scheduled_message_id"].(string); ok {
-			payload["scheduled_message_id"] = id
-		}
-		if at, ok := resp["post_at"].(float64); ok {
-			payload["post_at"] = int64(at)
-		}
-		if req.threadTS != "" {
-			payload["thread_ts"] = req.threadTS
-		}
-		return printSingle(globals, payload)
+	switch {
+	case req.postAt != 0:
+		return sendScheduled(ctx, globals, cc, req)
+	case len(req.attachPaths) > 0:
+		return sendAttachments(ctx, globals, cc, req)
+	default:
+		return sendPlain(ctx, globals, cc, req)
 	}
+}
 
-	if len(req.attachPaths) == 0 {
-		params := map[string]any{"channel": req.channelID, "text": req.text}
-		addThreadParams(params, req)
-		resp, err := cc.Client.API(ctx, "chat.postMessage", params)
-		if err != nil {
-			return err
-		}
-		channelID := req.channelID
-		if id, ok := resp["channel"].(string); ok && id != "" {
-			channelID = id
-		}
-		payload := map[string]any{"ok": true, "channel_id": channelID}
-		if req.threadTS != "" {
-			payload["thread_ts"] = req.threadTS
-		}
-		if ts, ok := resp["ts"].(string); ok && ts != "" {
-			payload["ts"] = ts
-			if cc.WorkspaceURL != "" {
-				payload["permalink"] = render.BuildMessageURL(render.MessageURLParts{
-					WorkspaceURL: cc.WorkspaceURL,
-					ChannelID:    channelID,
-					MessageTS:    ts,
-					ThreadTS:     req.threadTS,
-				})
-			}
-		}
-		return printSingle(globals, payload)
+func sendScheduled(ctx context.Context, globals *GlobalFlags, cc *clientContext, req sendRequest) error {
+	result, err := slack.ScheduleMessage(ctx, cc.Client, req.outgoing(), req.postAt)
+	if err != nil {
+		return err
 	}
+	return printSingle(globals, scheduledPayload(req, result))
+}
 
+func sendPlain(ctx context.Context, globals *GlobalFlags, cc *clientContext, req sendRequest) error {
+	result, err := slack.PostMessage(ctx, cc.Client, req.outgoing())
+	if err != nil {
+		return err
+	}
+	return printSingle(globals, postedPayload(req, result, cc.WorkspaceURL))
+}
+
+func sendAttachments(ctx context.Context, globals *GlobalFlags, cc *clientContext, req sendRequest) error {
 	if len(req.blocks) > 0 {
 		_, _ = fmt.Fprintln(globals.stderr, "Warning: rich text formatting is not supported with file attachments; sending as plain text.")
 	}
@@ -193,23 +186,41 @@ func runSend(ctx context.Context, globals *GlobalFlags, cc *clientContext, req s
 		}
 		initialComment = ""
 	}
-	payload := map[string]any{"ok": true, "channel_id": req.channelID}
+	return printSingle(globals, basePayload(req, req.channelID))
+}
+
+// basePayload is the success payload every send mode shares.
+func basePayload(req sendRequest, channelID string) map[string]any {
+	payload := map[string]any{"ok": true, "channel_id": channelID}
 	if req.threadTS != "" {
 		payload["thread_ts"] = req.threadTS
 	}
-	return printSingle(globals, payload)
+	return payload
 }
 
-func addThreadParams(params map[string]any, req sendRequest) {
-	if req.threadTS != "" {
-		params["thread_ts"] = req.threadTS
-		if req.replyBroadcast {
-			params["reply_broadcast"] = true
+func scheduledPayload(req sendRequest, r slack.ScheduleResult) map[string]any {
+	payload := basePayload(req, r.ChannelID)
+	payload["post_at"] = r.PostAt
+	if r.ScheduledMessageID != "" {
+		payload["scheduled_message_id"] = r.ScheduledMessageID
+	}
+	return payload
+}
+
+func postedPayload(req sendRequest, r slack.PostResult, workspaceURL string) map[string]any {
+	payload := basePayload(req, r.ChannelID)
+	if r.TS != "" {
+		payload["ts"] = r.TS
+		if workspaceURL != "" {
+			payload["permalink"] = render.BuildMessageURL(render.MessageURLParts{
+				WorkspaceURL: workspaceURL,
+				ChannelID:    r.ChannelID,
+				MessageTS:    r.TS,
+				ThreadTS:     req.threadTS,
+			})
 		}
 	}
-	if len(req.blocks) > 0 {
-		params["blocks"] = req.blocks
-	}
+	return payload
 }
 
 func loadBlocksFromPath(stdin io.Reader, path string) ([]any, error) {

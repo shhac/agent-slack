@@ -80,11 +80,6 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			if target.Kind == render.TargetUser {
-				return agenterrors.New("message list does not support user ID targets", agenterrors.FixableByAgent).
-					WithHint("use a channel name, channel ID, or message URL")
-			}
-
 			withReactions, err := normalizeReactionNames(withReaction)
 			if err != nil {
 				return err
@@ -95,11 +90,15 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 			}
 			hasReactionFilters := len(withReactions) > 0 || len(withoutReactions) > 0
 
-			// Permalink target → list that message's whole thread.
-			if target.Kind == render.TargetURL {
-				if hasReactionFilters {
-					return agenterrors.New("reaction filters are only supported for channel history mode", agenterrors.FixableByAgent)
-				}
+			ts := strings.TrimSpace(flags.ts)
+			threadTS := strings.TrimSpace(flags.threadTS)
+			mode, err := resolveListMode(target.Kind, ts, threadTS, strings.TrimSpace(oldest), hasReactionFilters)
+			if err != nil {
+				return err
+			}
+
+			switch mode {
+			case listModeURLThread:
 				warnTruncatedURL(globals, target.Ref)
 				cc, err := getClientForWorkspace(globals, target.Ref.WorkspaceURL)
 				if err != nil {
@@ -110,25 +109,11 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 					return err
 				}
 				return printThread(ctx, globals, cc, flags, target.Ref.ChannelID, rootTS, download)
-			}
 
-			cc, err := getClient(globals)
-			if err != nil {
-				return err
-			}
-			channelID, err := slack.ResolveChannelID(ctx, cc.Client, target.Channel)
-			if err != nil {
-				return err
-			}
-
-			threadTS := strings.TrimSpace(flags.threadTS)
-			ts := strings.TrimSpace(flags.ts)
-
-			// No thread specifier → recent channel history.
-			if threadTS == "" && ts == "" {
-				if hasReactionFilters && strings.TrimSpace(oldest) == "" {
-					return agenterrors.New(`reaction filters require --oldest "<seconds>.<micros>" to bound the scan`, agenterrors.FixableByAgent).
-						WithHint(`example: --with-reaction eyes --oldest "1770165109.628379"`)
+			case listModeHistory:
+				cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
+				if err != nil {
+					return err
 				}
 				messages, err := slack.FetchChannelHistory(ctx, cc.Client, slack.HistoryOptions{
 					ChannelID:        channelID,
@@ -143,21 +128,22 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 					return err
 				}
 				return printMessages(ctx, globals, cc, flags, messages, download, map[string]any{"channel_id": channelID}, false)
-			}
 
-			if hasReactionFilters {
-				return agenterrors.New("reaction filters are only supported for channel history mode (without --thread-ts/--ts)", agenterrors.FixableByAgent)
-			}
-
-			rootTS := threadTS
-			if rootTS == "" {
-				ref := &render.MessageRef{WorkspaceURL: cc.WorkspaceURL, ChannelID: channelID, MessageTS: ts, Raw: args[0]}
-				rootTS, err = threadRootTS(ctx, cc, ref, flags.includeReactions)
+			default: // listModeThread
+				cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
 				if err != nil {
 					return err
 				}
+				rootTS := threadTS
+				if rootTS == "" {
+					ref := &render.MessageRef{WorkspaceURL: cc.WorkspaceURL, ChannelID: channelID, MessageTS: ts, Raw: args[0]}
+					rootTS, err = threadRootTS(ctx, cc, ref, flags.includeReactions)
+					if err != nil {
+						return err
+					}
+				}
+				return printThread(ctx, globals, cc, flags, channelID, rootTS, download)
 			}
-			return printThread(ctx, globals, cc, flags, channelID, rootTS, download)
 		},
 	}
 	flags.register(cmd, render.DefaultMaxBodyChars)
@@ -168,6 +154,43 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringArrayVar(&withoutReaction, "without-reaction", nil, "Only messages without this reaction (repeatable; requires --oldest)")
 	cmd.Flags().BoolVar(&download, "download", false, "Download attached files to the cache dir")
 	parent.AddCommand(cmd)
+}
+
+// listMode is which of message list's three behaviors an invocation gets.
+type listMode int
+
+const (
+	listModeURLThread listMode = iota // permalink target → that message's thread
+	listModeHistory                   // channel target, no thread specifier
+	listModeThread                    // channel target + --ts/--thread-ts
+)
+
+const listRejectUserMsg = "message list does not support user ID targets"
+
+// resolveListMode classifies the invocation and enforces the reaction-filter
+// rules, keeping each mode's original error wording.
+func resolveListMode(targetKind render.TargetKind, ts, threadTS, oldest string, hasReactionFilters bool) (listMode, error) {
+	if targetKind == render.TargetUser {
+		return 0, agenterrors.New(listRejectUserMsg, agenterrors.FixableByAgent).
+			WithHint("use a channel name, channel ID, or message URL")
+	}
+	if targetKind == render.TargetURL {
+		if hasReactionFilters {
+			return 0, agenterrors.New("reaction filters are only supported for channel history mode", agenterrors.FixableByAgent)
+		}
+		return listModeURLThread, nil
+	}
+	if ts == "" && threadTS == "" {
+		if hasReactionFilters && oldest == "" {
+			return 0, agenterrors.New(`reaction filters require --oldest "<seconds>.<micros>" to bound the scan`, agenterrors.FixableByAgent).
+				WithHint(`example: --with-reaction eyes --oldest "1770165109.628379"`)
+		}
+		return listModeHistory, nil
+	}
+	if hasReactionFilters {
+		return 0, agenterrors.New("reaction filters are only supported for channel history mode (without --thread-ts/--ts)", agenterrors.FixableByAgent)
+	}
+	return listModeThread, nil
 }
 
 func printThread(ctx context.Context, globals *GlobalFlags, cc *clientContext, flags *readFlags, channelID, rootTS string, download bool) error {
