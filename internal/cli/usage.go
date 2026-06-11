@@ -51,8 +51,10 @@ ERRORS
   retry → wait and re-run.
 
 AUTH
-  Stored per workspace (macOS Keychain). Setup: 'auth import-desktop' (or
-  import-chrome/brave/firefox, parse-curl, add). Env override: SLACK_TOKEN
+  Stored per workspace (OS keychain where available). Setup: 'auth
+  import-desktop' (or import-chrome/brave/firefox, parse-curl, add; 'auth
+  add --form' opens a native dialog so a human can enter a token without it
+  ever appearing in chat). Env override: SLACK_TOKEN
   (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser tokens).
   Multiple workspaces: pass --workspace <substring> or 'auth set-default'.
   Expired browser tokens self-heal from Slack Desktop mid-command.
@@ -157,12 +159,14 @@ CALL  api call <method> [--params '<json>'|<file>|-] [--multipart]
       raw response. Prefer wrapped commands when they exist. --multipart for
       internal methods (saved.*) that ignore urlencoded params.`,
 
-	"auth": `agent-slack auth — credentials (stored in the macOS Keychain).
+	"auth": `agent-slack auth — credentials (stored in the OS keychain where available).
 
 SETUP   auth import-desktop — extract xoxc/xoxd from Slack Desktop (best).
         auth import-chrome | import-brave | import-firefox
         auth parse-curl — paste a copied 'Copy as cURL' Slack request (stdin)
         auth add --workspace-url <url> (--token xoxb…|--xoxc … --xoxd …)
+        auth add --workspace-url <url> --form — native OS dialog prompts the
+          human for the secret; use this so tokens never appear in chat.
 VERIFY  auth whoami — configured workspaces (secrets never printed).
         auth test — calls Slack's auth.test with the resolved credentials.
 MANAGE  auth set-default <url> | auth remove <url>

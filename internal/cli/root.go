@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/shhac/agent-slack/internal/auth"
 	"github.com/shhac/agent-slack/internal/credential"
+	"github.com/shhac/agent-slack/internal/dialog"
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/output"
 )
@@ -26,6 +28,7 @@ type GlobalFlags struct {
 	version        string
 	newStore       func() (*credential.Store, error)
 	desktopExtract func() (*auth.Extracted, error)
+	promptSecret   func(ctx context.Context, title, label, initial string) (string, error)
 	stdout         io.Writer
 	stderr         io.Writer
 }
@@ -36,6 +39,7 @@ type rootDeps struct {
 	version        string
 	newStore       func() (*credential.Store, error)
 	desktopExtract func() (*auth.Extracted, error)
+	promptSecret   func(ctx context.Context, title, label, initial string) (string, error)
 }
 
 func newRootCmd(version string) *cobra.Command {
@@ -43,6 +47,7 @@ func newRootCmd(version string) *cobra.Command {
 		version:        version,
 		newStore:       credential.New,
 		desktopExtract: auth.ExtractFromSlackDesktop,
+		promptSecret:   dialog.PromptSecret,
 	})
 }
 
@@ -51,6 +56,7 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 		version:        deps.version,
 		newStore:       deps.newStore,
 		desktopExtract: deps.desktopExtract,
+		promptSecret:   deps.promptSecret,
 	}
 	root := &cobra.Command{
 		Use:           "agent-slack",

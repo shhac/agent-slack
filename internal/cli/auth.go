@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"io"
 	"strings"
 
@@ -205,6 +206,7 @@ func registerAuthParseCurl(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 	var workspaceURL, token, xoxc, xoxd string
+	var form bool
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add credentials directly (standard xoxb/xoxp token, or browser xoxc/xoxd)",
@@ -213,6 +215,12 @@ func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			if form {
+				token, xoxc, xoxd, err = promptAddSecrets(cmd.Context(), globals, workspaceURL, token, xoxc, xoxd)
+				if err != nil {
+					return err
+				}
+			}
 			var ws credential.Workspace
 			switch {
 			case token != "":
@@ -220,7 +228,8 @@ func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 			case xoxc != "" && xoxd != "":
 				ws = credential.Workspace{URL: workspaceURL, Auth: credential.Auth{Type: credential.AuthBrowser, XOXC: xoxc, XOXD: xoxd}}
 			default:
-				return agenterrors.New("provide either --token or both --xoxc and --xoxd", agenterrors.FixableByAgent)
+				return agenterrors.New("provide either --token or both --xoxc and --xoxd", agenterrors.FixableByAgent).
+					WithHint("Agents should use 'auth add --workspace-url <url> --form' so the human types the secret into a native dialog and it never appears in chat.")
 			}
 			saved, err := store.Upsert(ws)
 			if err != nil {
@@ -233,8 +242,35 @@ func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringVar(&token, "token", "", "Standard Slack token (xoxb-/xoxp-)")
 	cmd.Flags().StringVar(&xoxc, "xoxc", "", "Browser token (xoxc-...)")
 	cmd.Flags().StringVar(&xoxd, "xoxd", "", "Browser cookie d (xoxd-...)")
+	cmd.Flags().BoolVar(&form, "form", false, "Prompt for missing secrets via a native OS dialog (keeps them out of chat and shell history)")
 	_ = cmd.MarkFlagRequired("workspace-url")
 	parent.AddCommand(cmd)
+}
+
+// promptAddSecrets fills whichever secrets --form still needs via native
+// dialogs. A single prompt accepts any token kind; an xoxc- answer routes to a
+// follow-up prompt for the xoxd cookie that browser auth also needs.
+func promptAddSecrets(ctx context.Context, globals *GlobalFlags, workspaceURL, token, xoxc, xoxd string) (string, string, string, error) {
+	title := "agent-slack: " + workspaceURL
+	if token == "" && xoxc == "" {
+		v, err := globals.promptSecret(ctx, title, "Slack token (xoxb-, xoxp-, or xoxc-)", "")
+		if err != nil {
+			return "", "", "", agenterrors.Wrap(err, agenterrors.FixableByHuman)
+		}
+		if v = strings.TrimSpace(v); strings.HasPrefix(v, "xoxc-") {
+			xoxc = v
+		} else {
+			token = v
+		}
+	}
+	if xoxc != "" && xoxd == "" {
+		v, err := globals.promptSecret(ctx, title, "Slack 'd' cookie (xoxd-...)", "")
+		if err != nil {
+			return "", "", "", agenterrors.Wrap(err, agenterrors.FixableByHuman)
+		}
+		xoxd = strings.TrimSpace(v)
+	}
+	return token, xoxc, xoxd, nil
 }
 
 func registerAuthSetDefault(parent *cobra.Command, globals *GlobalFlags) {
