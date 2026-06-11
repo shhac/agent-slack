@@ -203,37 +203,26 @@ func registerChannelMark(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			var cc *clientContext
-			var channelID, markTS string
+			// mark-specific rules before the shared resolution: a URL target
+			// carries its own workspace (and default ts); channel targets
+			// need an explicit --ts.
+			markTS := strings.TrimSpace(ts)
 			switch target.Kind {
 			case render.TargetURL:
 				if globals.Workspace != "" {
 					return agenterrors.New("--workspace cannot be used with a URL target; the workspace comes from the URL", agenterrors.FixableByAgent)
 				}
-				cc, err = getClientForWorkspace(globals, target.Ref.WorkspaceURL)
-				if err != nil {
-					return err
-				}
-				channelID = target.Ref.ChannelID
-				markTS = strings.TrimSpace(ts)
 				if markTS == "" {
 					markTS = target.Ref.MessageTS
 				}
 			case render.TargetChannel:
-				if strings.TrimSpace(ts) == "" {
+				if markTS == "" {
 					return agenterrors.New("--ts is required when the target is a channel name or ID", agenterrors.FixableByAgent)
 				}
-				cc, err = getClient(globals)
-				if err != nil {
-					return err
-				}
-				channelID, err = slack.ResolveChannelID(ctx, cc.Client, target.Channel)
-				if err != nil {
-					return err
-				}
-				markTS = strings.TrimSpace(ts)
-			default:
-				return agenterrors.New("user targets are not supported for channel mark", agenterrors.FixableByAgent)
+			}
+			cc, channelID, err := resolveTargetClient(ctx, globals, target, rejectUserTargets, "user targets are not supported for channel mark")
+			if err != nil {
+				return err
 			}
 			if err := slack.MarkConversation(ctx, cc.Client, channelID, markTS); err != nil {
 				return err

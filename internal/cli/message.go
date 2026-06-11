@@ -64,6 +64,46 @@ func warnTruncatedURL(ref *render.MessageRef) {
 	}
 }
 
+// userTargetPolicy says what a U… target means to a command: an error, or
+// "open the DM and use it as the channel".
+type userTargetPolicy int
+
+const (
+	rejectUserTargets userTargetPolicy = iota
+	openDMForUserTargets
+)
+
+// resolveTargetClient maps a parsed CLI <target> to a connected client and a
+// channel ID — the kernel every target-taking command shares. Permalinks pin
+// their workspace (overriding --workspace); channels resolve names to IDs;
+// user targets follow the caller's policy (rejectMsg is the per-command
+// error wording, preserved for output parity).
+func resolveTargetClient(ctx context.Context, globals *GlobalFlags, target render.Target, policy userTargetPolicy, rejectMsg string) (*clientContext, string, error) {
+	switch target.Kind {
+	case render.TargetURL:
+		cc, err := getClientForWorkspace(globals, target.Ref.WorkspaceURL)
+		return cc, target.Ref.ChannelID, err
+	case render.TargetUser:
+		if policy == rejectUserTargets {
+			return nil, "", agenterrors.New(rejectMsg, agenterrors.FixableByAgent).
+				WithHint("use a channel name, channel ID, or message URL")
+		}
+		cc, err := getClient(globals)
+		if err != nil {
+			return nil, "", err
+		}
+		channelID, err := slack.OpenDMChannel(ctx, cc.Client, target.UserID)
+		return cc, channelID, err
+	default:
+		cc, err := getClient(globals)
+		if err != nil {
+			return nil, "", err
+		}
+		channelID, err := slack.ResolveChannelID(ctx, cc.Client, target.Channel)
+		return cc, channelID, err
+	}
+}
+
 // resolveMessageTarget turns a CLI <target> (+ --ts/--thread-ts) into a
 // connected client and a concrete message ref. Permalinks pin the workspace.
 func resolveMessageTarget(ctx context.Context, globals *GlobalFlags, targetInput, ts, threadTS string) (*clientContext, *render.MessageRef, error) {
@@ -71,38 +111,40 @@ func resolveMessageTarget(ctx context.Context, globals *GlobalFlags, targetInput
 	if err != nil {
 		return nil, nil, err
 	}
-	switch target.Kind {
-	case render.TargetURL:
-		warnTruncatedURL(target.Ref)
-		cc, err := getClientForWorkspace(globals, target.Ref.WorkspaceURL)
-		if err != nil {
-			return nil, nil, err
-		}
-		return cc, target.Ref, nil
-	case render.TargetChannel:
-		if strings.TrimSpace(ts) == "" {
-			return nil, nil, agenterrors.New(`when targeting a channel, you must pass --ts "<seconds>.<micros>"`, agenterrors.FixableByAgent).
-				WithHint("'agent-slack message list <channel>' shows recent ts values")
-		}
-		cc, err := getClient(globals)
-		if err != nil {
-			return nil, nil, err
-		}
-		channelID, err := slack.ResolveChannelID(ctx, cc.Client, target.Channel)
-		if err != nil {
-			return nil, nil, err
-		}
-		return cc, &render.MessageRef{
-			WorkspaceURL: cc.WorkspaceURL,
-			ChannelID:    channelID,
-			MessageTS:    strings.TrimSpace(ts),
-			ThreadTSHint: strings.TrimSpace(threadTS),
-			Raw:          targetInput,
-		}, nil
-	default:
-		return nil, nil, agenterrors.New("this command does not support user ID targets", agenterrors.FixableByAgent).
-			WithHint("use a channel name, channel ID, or message URL")
+	if target.Kind == render.TargetChannel && strings.TrimSpace(ts) == "" {
+		return nil, nil, agenterrors.New(`when targeting a channel, you must pass --ts "<seconds>.<micros>"`, agenterrors.FixableByAgent).
+			WithHint("'agent-slack message list <channel>' shows recent ts values")
 	}
+	if target.Kind == render.TargetURL {
+		warnTruncatedURL(target.Ref)
+	}
+	cc, channelID, err := resolveTargetClient(ctx, globals, target, rejectUserTargets, "this command does not support user ID targets")
+	if err != nil {
+		return nil, nil, err
+	}
+	if target.Kind == render.TargetURL {
+		return cc, target.Ref, nil
+	}
+	return cc, &render.MessageRef{
+		WorkspaceURL: cc.WorkspaceURL,
+		ChannelID:    channelID,
+		MessageTS:    strings.TrimSpace(ts),
+		ThreadTSHint: strings.TrimSpace(threadTS),
+		Raw:          targetInput,
+	}, nil
+}
+
+// threadRootTS fetches the message a ref points at and returns its thread
+// root (the message's own ts when it isn't a reply).
+func threadRootTS(ctx context.Context, cc *clientContext, ref *render.MessageRef, includeReactions bool) (string, error) {
+	msg, err := slack.FetchMessage(ctx, cc.Client, ref, includeReactions)
+	if err != nil {
+		return "", err
+	}
+	if msg.ThreadTS != "" {
+		return msg.ThreadTS, nil
+	}
+	return msg.TS, nil
 }
 
 func messageDownloadOptions() slack.MessageDownloads {
@@ -219,13 +261,9 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 				if err != nil {
 					return err
 				}
-				msg, err := slack.FetchMessage(ctx, cc.Client, target.Ref, flags.includeReactions)
+				rootTS, err := threadRootTS(ctx, cc, target.Ref, flags.includeReactions)
 				if err != nil {
 					return err
-				}
-				rootTS := msg.ThreadTS
-				if rootTS == "" {
-					rootTS = msg.TS
 				}
 				return printThread(ctx, globals, cc, flags, target.Ref.ChannelID, rootTS, download)
 			}
@@ -270,13 +308,9 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 			rootTS := threadTS
 			if rootTS == "" {
 				ref := &render.MessageRef{WorkspaceURL: cc.WorkspaceURL, ChannelID: channelID, MessageTS: ts, Raw: args[0]}
-				msg, err := slack.FetchMessage(ctx, cc.Client, ref, flags.includeReactions)
+				rootTS, err = threadRootTS(ctx, cc, ref, flags.includeReactions)
 				if err != nil {
 					return err
-				}
-				rootTS = msg.ThreadTS
-				if rootTS == "" {
-					rootTS = msg.TS
 				}
 			}
 			return printThread(ctx, globals, cc, flags, channelID, rootTS, download)
@@ -406,50 +440,33 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 				postAt:         postAt,
 			}
 
+			// Per-target send rules kept caller-side: DM targets reject
+			// --reply-broadcast; channel targets need --thread-ts with it.
 			switch target.Kind {
 			case render.TargetURL:
 				warnTruncatedURL(target.Ref)
-				cc, err := getClientForWorkspace(globals, target.Ref.WorkspaceURL)
-				if err != nil {
-					return err
-				}
-				msg, err := slack.FetchMessage(ctx, cc.Client, target.Ref, false)
-				if err != nil {
-					return err
-				}
-				send.threadTS = msg.ThreadTS
-				if send.threadTS == "" {
-					send.threadTS = msg.TS
-				}
-				send.channelID = target.Ref.ChannelID
-				return runSend(ctx, globals, cc, send)
 			case render.TargetUser:
 				if replyBroadcast {
 					return agenterrors.New("--reply-broadcast is not supported for DM targets", agenterrors.FixableByAgent)
 				}
-				cc, err := getClient(globals)
-				if err != nil {
-					return err
-				}
-				send.channelID, err = slack.OpenDMChannel(ctx, cc.Client, target.UserID)
-				if err != nil {
-					return err
-				}
-				return runSend(ctx, globals, cc, send)
 			default:
 				if replyBroadcast && send.threadTS == "" {
 					return agenterrors.New("--reply-broadcast requires --thread-ts for channel targets", agenterrors.FixableByAgent)
 				}
-				cc, err := getClient(globals)
-				if err != nil {
-					return err
-				}
-				send.channelID, err = slack.ResolveChannelID(ctx, cc.Client, target.Channel)
-				if err != nil {
-					return err
-				}
-				return runSend(ctx, globals, cc, send)
 			}
+			cc, channelID, err := resolveTargetClient(ctx, globals, target, openDMForUserTargets, "")
+			if err != nil {
+				return err
+			}
+			send.channelID = channelID
+			if target.Kind == render.TargetURL {
+				// Permalink sends always reply in that message's thread.
+				send.threadTS, err = threadRootTS(ctx, cc, target.Ref, false)
+				if err != nil {
+					return err
+				}
+			}
+			return runSend(ctx, globals, cc, send)
 		},
 	}
 	cmd.Flags().StringVar(&threadTS, "thread-ts", "", "Thread root ts to post into")
@@ -787,23 +804,5 @@ func resolveScheduledChannel(ctx context.Context, globals *GlobalFlags, channel 
 	if err != nil {
 		return nil, "", err
 	}
-	switch target.Kind {
-	case render.TargetURL:
-		cc, err := getClientForWorkspace(globals, target.Ref.WorkspaceURL)
-		return cc, target.Ref.ChannelID, err
-	case render.TargetUser:
-		cc, err := getClient(globals)
-		if err != nil {
-			return nil, "", err
-		}
-		channelID, err := slack.OpenDMChannel(ctx, cc.Client, target.UserID)
-		return cc, channelID, err
-	default:
-		cc, err := getClient(globals)
-		if err != nil {
-			return nil, "", err
-		}
-		channelID, err := slack.ResolveChannelID(ctx, cc.Client, target.Channel)
-		return cc, channelID, err
-	}
+	return resolveTargetClient(ctx, globals, target, openDMForUserTargets, "")
 }
