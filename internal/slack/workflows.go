@@ -147,6 +147,9 @@ func rejectedTriggerError(triggerID, code string) error {
 }
 
 func PreviewWorkflowTrigger(ctx context.Context, c *Client, triggerID string) (WorkflowPreview, error) {
+	if p, ok := c.cachedWorkflowPreview(triggerID); ok {
+		return p, nil
+	}
 	resp, err := c.API(ctx, "workflows.triggers.preview", map[string]any{"trigger_ids": triggerID})
 	if err != nil {
 		return WorkflowPreview{}, err
@@ -186,6 +189,7 @@ func PreviewWorkflowTrigger(ctx context.Context, c *Client, triggerID string) (W
 		},
 		Collaborators: collaborators,
 	}
+	c.cacheWorkflowPreview(triggerID, preview)
 	return preview, nil
 }
 
@@ -267,6 +271,9 @@ type WorkflowSchema struct {
 }
 
 func GetWorkflowSchema(ctx context.Context, c *Client, workflowID string) (WorkflowSchema, error) {
+	if s, ok := c.cachedWorkflowSchema(workflowID); ok {
+		return s, nil
+	}
 	resp, err := c.API(ctx, "workflows.get", map[string]any{"workflow_id": workflowID})
 	if err != nil {
 		return WorkflowSchema{}, err
@@ -319,5 +326,6 @@ func GetWorkflowSchema(ctx context.Context, c *Client, workflowID string) (Workf
 			})
 		}
 	}
+	c.cacheWorkflowSchema(workflowID, schema)
 	return schema, nil
 }

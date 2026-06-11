@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/mockslack"
@@ -65,6 +66,56 @@ func TestPreviewWorkflowTriggerNoDataHasHint(t *testing.T) {
 	var apiErr *agenterrors.APIError
 	if !agenterrors.As(err, &apiErr) || apiErr.Hint == "" {
 		t.Errorf("expected an APIError with a hint, got %v", err)
+	}
+}
+
+func TestPreviewWorkflowTriggerCachesSuccessOnly(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("workflows.triggers.preview", map[string]any{
+		"ok": true,
+		"triggers": []any{map[string]any{
+			"id": "Ft0123ABCDEF", "name": "PRs", "shortcut_url": "https://slack.com/shortcuts/Ft0123ABCDEF/x",
+			"workflow": map[string]any{"workflow_id": "Wf0123ABCDEF", "title": "PRs"},
+		}},
+	})
+	dir := t.TempDir()
+	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+
+	c := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
+	if p, err := PreviewWorkflowTrigger(context.Background(), c, "Ft0123ABCDEF"); err != nil || p.Workflow.ID != "Wf0123ABCDEF" {
+		t.Fatalf("preview = %+v, %v", p, err)
+	}
+
+	server.Reset()
+	c2 := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
+	if p, err := PreviewWorkflowTrigger(context.Background(), c2, "Ft0123ABCDEF"); err != nil || p.Workflow.ID != "Wf0123ABCDEF" {
+		t.Errorf("cached preview = %+v, %v", p, err)
+	}
+	if calls := len(server.CallsFor("workflows.triggers.preview")); calls != 0 {
+		t.Errorf("expected preview served from cache, got %d calls", calls)
+	}
+}
+
+func TestPreviewWorkflowTriggerDoesNotCacheRejection(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("workflows.triggers.preview", map[string]any{
+		"ok": true, "triggers": []any{},
+		"rejected_triggers": []any{map[string]any{"id": "Ft0123ABCDEF", "error": "trigger_not_found"}},
+	})
+	dir := t.TempDir()
+	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+
+	c := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
+	if _, err := PreviewWorkflowTrigger(context.Background(), c, "Ft0123ABCDEF"); err == nil {
+		t.Fatal("expected rejection error")
+	}
+	// A second attempt must hit the API again — rejections are never cached.
+	c2 := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
+	if _, err := PreviewWorkflowTrigger(context.Background(), c2, "Ft0123ABCDEF"); err == nil {
+		t.Fatal("expected rejection error")
+	}
+	if calls := len(server.CallsFor("workflows.triggers.preview")); calls != 2 {
+		t.Errorf("rejection must not be cached; preview calls = %d, want 2", calls)
 	}
 }
 
