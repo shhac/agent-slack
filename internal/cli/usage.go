@@ -137,7 +137,7 @@ RUN      workflow run <Ft…> --channel <…>
 LIST     later list [--state in_progress|archived|completed|all]
          [--limit 20] [--counts-only] — items + {"@counts":…} meta line.
 MUTATE   later save|complete|archive|reopen|remove <target> [--ts …]
-REMIND   later remind <target> --in <30m|2d|tomorrow|monday>`,
+REMIND   later remind <target> --in <30m|2d|tomorrow 5pm|next friday>`,
 
 	"canvas": `agent-slack canvas — canvases as Markdown.
 

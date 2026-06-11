@@ -251,46 +251,16 @@ func SetLaterReminder(ctx context.Context, c *Client, channelID, ts string, date
 	return err
 }
 
-// ParseReminderDuration turns "30m", "2d", "tomorrow", "monday", or a unix
-// timestamp into an absolute unix time (named days resolve to 9am local).
+// ParseReminderDuration accepts the same time grammar as --schedule-in:
+// relative durations (30m, 2d), unix timestamps, and named times ("tomorrow
+// 5pm", "monday", "next friday noon" — bare days default to 9am local).
+// Deliberately wider than the TS original's reminder grammar so reminders
+// and schedules share one vocabulary.
 func ParseReminderDuration(input string, now time.Time) (int64, error) {
-	trimmed := strings.ToLower(strings.TrimSpace(input))
-
-	if m := relativeDurationRe.FindStringSubmatch(trimmed); m != nil {
-		amount, _ := strconv.ParseFloat(m[1], 64)
-		switch m[2][0] {
-		case 'm':
-			return now.Unix() + int64(amount*60), nil
-		case 'h':
-			return now.Unix() + int64(amount*3600), nil
-		case 'd':
-			return now.Unix() + int64(amount*86400), nil
-		}
+	at, err := parseRelativeSchedule(input, now)
+	if err != nil {
+		return 0, agenterrors.New(fmt.Sprintf("invalid duration: %q", input), agenterrors.FixableByAgent).
+			WithHint("use: 30m, 1h, 2d, tomorrow 5pm, next friday, or a unix timestamp")
 	}
-
-	if trimmed == "tomorrow" {
-		return nineAM(now, 1), nil
-	}
-	dayNames := []string{"sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"}
-	for i, day := range dayNames {
-		if trimmed == day {
-			daysUntil := i - int(now.Weekday())
-			if daysUntil <= 0 {
-				daysUntil += 7
-			}
-			return nineAM(now, daysUntil), nil
-		}
-	}
-
-	if n, err := strconv.ParseFloat(trimmed, 64); err == nil && n > 1_000_000_000 {
-		return int64(n), nil
-	}
-
-	return 0, agenterrors.New(fmt.Sprintf("invalid duration: %q", input), agenterrors.FixableByAgent).
-		WithHint("use: 30m, 1h, 3h, 2d, tomorrow, monday, or a unix timestamp")
-}
-
-func nineAM(now time.Time, daysFromNow int) int64 {
-	d := now.AddDate(0, 0, daysFromNow)
-	return time.Date(d.Year(), d.Month(), d.Day(), 9, 0, 0, 0, now.Location()).Unix()
+	return at, nil
 }

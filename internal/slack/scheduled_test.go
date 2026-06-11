@@ -72,6 +72,10 @@ func TestParseReminderDuration(t *testing.T) {
 		{"tomorrow", time.Date(2026, 6, 13, 9, 0, 0, 0, time.UTC).Unix()},
 		{"monday", time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC).Unix()},
 		{"2000000000", 2000000000},
+		// Widened grammar (shared with --schedule-in; diverges from TS on purpose):
+		{"tomorrow 5pm", time.Date(2026, 6, 13, 17, 0, 0, 0, time.UTC).Unix()},
+		{"next friday noon", time.Date(2026, 6, 19, 12, 0, 0, 0, time.UTC).Unix()},
+		{"mon", time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC).Unix()},
 	}
 	for _, tc := range cases {
 		got, err := ParseReminderDuration(tc.input, testNow)

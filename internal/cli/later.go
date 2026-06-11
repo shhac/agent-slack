@@ -124,7 +124,7 @@ func registerLaterRemind(parent *cobra.Command, globals *GlobalFlags) {
 			ctx := cmd.Context()
 			if strings.TrimSpace(in) == "" {
 				return agenterrors.New("--in is required", agenterrors.FixableByAgent).
-					WithHint("e.g. --in 3h, --in tomorrow, --in monday")
+					WithHint("e.g. --in 3h, --in \"tomorrow 5pm\", --in \"next friday\"")
 			}
 			remindAt, err := slack.ParseReminderDuration(in, time.Now())
 			if err != nil {
@@ -141,6 +141,6 @@ func registerLaterRemind(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel ID)")
-	cmd.Flags().StringVar(&in, "in", "", "When to remind: 30m, 1h, 2d, tomorrow, monday (required)")
+	cmd.Flags().StringVar(&in, "in", "", "When to remind: 30m, 1h, 2d, tomorrow 5pm, next friday (required)")
 	parent.AddCommand(cmd)
 }
