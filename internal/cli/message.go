@@ -9,7 +9,6 @@ import (
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/htmlmd"
-	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/render"
 	"github.com/shhac/agent-slack/internal/slack"
 )
@@ -53,9 +52,9 @@ func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
 func (f *readFlags) shouldResolveUsers() bool { return f.resolveUsers || f.refreshUsers }
 
 // warnTruncatedURL nudges about shell-eaten permalinks (thread_ts without cid).
-func warnTruncatedURL(ref *render.MessageRef) {
+func warnTruncatedURL(globals *GlobalFlags, ref *render.MessageRef) {
 	if ref.PossiblyTruncated {
-		_, _ = fmt.Fprintln(output.Stderr(),
+		_, _ = fmt.Fprintln(globals.stderr,
 			"Warning: the URL looks truncated (thread_ts without cid) — quote Slack URLs to stop the shell eating '&'")
 	}
 }
@@ -103,7 +102,7 @@ func resolveMessageTarget(ctx context.Context, globals *GlobalFlags, targetInput
 			WithHint("'agent-slack message list <channel>' shows recent ts values")
 	}
 	if target.Kind == render.TargetURL {
-		warnTruncatedURL(target.Ref)
+		warnTruncatedURL(globals, target.Ref)
 	}
 	cc, channelID, err := resolveTargetClient(ctx, globals, target, "this command does not support user ID targets")
 	if err != nil {
@@ -134,11 +133,11 @@ func threadRootTS(ctx context.Context, cc *clientContext, ref *render.MessageRef
 	return msg.TS, nil
 }
 
-func messageDownloadOptions() slack.MessageDownloads {
+func messageDownloadOptions(globals *GlobalFlags) slack.MessageDownloads {
 	return slack.MessageDownloads{
 		DestDir:        downloadsDir(),
 		CanvasMarkdown: htmlmd.Convert,
-		Warn:           output.Stderr(),
+		Warn:           globals.stderr,
 	}
 }
 

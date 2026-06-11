@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/agent-slack/internal/auth"
+	"github.com/shhac/agent-slack/internal/credential"
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/output"
 )
@@ -16,20 +19,59 @@ type GlobalFlags struct {
 	Debug     bool
 	Full      bool
 	BaseURL   string
+
+	// Injected seams — wired by newRootCmd, substituted by tests. Constructor
+	// injection (not package globals) so test roots are hermetic and
+	// parallelizable.
+	version        string
+	newStore       func() (*credential.Store, error)
+	desktopExtract func() (*auth.Extracted, error)
+	stdout         io.Writer
+	stderr         io.Writer
 }
 
-// cliVersion is captured at root construction for User-Agent strings.
-var cliVersion = "dev"
+// rootDeps are the production defaults newRootCmd wires; tests build roots
+// via newRootCmdWithDeps with fakes.
+type rootDeps struct {
+	version        string
+	newStore       func() (*credential.Store, error)
+	desktopExtract func() (*auth.Extracted, error)
+}
 
 func newRootCmd(version string) *cobra.Command {
-	cliVersion = version
-	globals := &GlobalFlags{}
+	return newRootCmdWithDeps(rootDeps{
+		version:        version,
+		newStore:       credential.New,
+		desktopExtract: auth.ExtractFromSlackDesktop,
+	})
+}
+
+func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
+	globals := &GlobalFlags{
+		version:        deps.version,
+		newStore:       deps.newStore,
+		desktopExtract: deps.desktopExtract,
+	}
 	root := &cobra.Command{
 		Use:           "agent-slack",
 		Short:         "Slack CLI for AI agents",
-		Version:       version,
+		Version:       deps.version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Writers resolve from cobra (tests inject via SetOut/SetErr), and
+		// --format validates once up front so a bad value can never surface
+		// AFTER a mutation has already run. No subcommand may define its own
+		// PersistentPreRunE — cobra only runs the nearest one.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			globals.stdout = cmd.OutOrStdout()
+			globals.stderr = cmd.ErrOrStderr()
+			if globals.Format != "" {
+				if _, err := output.ParseFormat(globals.Format); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 	}
 
 	root.PersistentFlags().StringVarP(&globals.Workspace, "workspace", "w", "", "Workspace URL or unique substring to disambiguate multi-workspace credentials")
@@ -83,7 +125,7 @@ func handleUnknownSubcommand(cmd *cobra.Command) {
 func execute(root *cobra.Command) error {
 	err := root.Execute()
 	if err != nil {
-		output.WriteError(output.Stderr(), err)
+		output.WriteError(root.ErrOrStderr(), err)
 	}
 	return err
 }

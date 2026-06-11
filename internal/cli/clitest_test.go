@@ -11,22 +11,22 @@ import (
 	"github.com/shhac/agent-slack/internal/mockslack"
 )
 
-// cliFixture is a hermetic store + mockslack server. Commands run with
+// cliFixture is a hermetic test env + mockslack server. Commands run with
 // --base-url pointed at the mock so the standard-token transport lands there.
 type cliFixture struct {
-	store  *credential.Store
+	env    *testEnv
 	server *mockslack.Server
 	url    string
 }
 
 func newCLIFixture(t *testing.T) *cliFixture {
 	t.Helper()
-	store := useHermeticStore(t)
+	env := newTestEnv(t)
 	server := mockslack.New()
 	ts := httptest.NewServer(server)
 	t.Cleanup(ts.Close)
 
-	if _, err := store.Upsert(credential.Workspace{
+	if _, err := env.store.Upsert(credential.Workspace{
 		URL:  "https://acme.slack.com",
 		Name: "Acme",
 		Auth: credential.Auth{Type: credential.AuthStandard, Token: "xoxb-test-token"},
@@ -35,13 +35,13 @@ func newCLIFixture(t *testing.T) *cliFixture {
 	}
 	// Keep the user cache + downloads out of the real home dir.
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	return &cliFixture{store: store, server: server, url: ts.URL}
+	return &cliFixture{env: env, server: server, url: ts.URL}
 }
 
 func (f *cliFixture) run(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	full := append([]string{"--base-url", f.url}, args...)
-	return runCLI(t, "", full...)
+	return f.env.run(t, "", full...)
 }
 
 func parseJSON(t *testing.T, s string) map[string]any {

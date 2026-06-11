@@ -4,7 +4,6 @@ import (
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
-	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
@@ -62,7 +61,7 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 				RefreshUsers:    refreshUsers,
 				DownloadsDir:    downloadsDir(),
 				UserCacheDir:    appCacheDir(),
-				Warn:            output.Stderr(),
+				Warn:            globals.stderr,
 			})
 			if err != nil {
 				return err

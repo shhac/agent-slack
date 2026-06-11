@@ -4,17 +4,9 @@ import (
 	"encoding/json"
 	"io"
 	"math"
-	"os"
-	"sync"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"gopkg.in/yaml.v3"
-)
-
-var (
-	writersMu sync.Mutex
-	stdout    io.Writer = os.Stdout
-	stderr    io.Writer = os.Stderr
 )
 
 type Format string
@@ -24,35 +16,6 @@ const (
 	FormatYAML   Format = "yaml"
 	FormatNDJSON Format = "jsonl"
 )
-
-func Stdout() io.Writer {
-	writersMu.Lock()
-	defer writersMu.Unlock()
-	return stdout
-}
-
-func Stderr() io.Writer {
-	writersMu.Lock()
-	defer writersMu.Unlock()
-	return stderr
-}
-
-func SetWriters(out, err io.Writer) func() {
-	writersMu.Lock()
-	oldOut, oldErr := stdout, stderr
-	if out != nil {
-		stdout = out
-	}
-	if err != nil {
-		stderr = err
-	}
-	writersMu.Unlock()
-	return func() {
-		writersMu.Lock()
-		stdout, stderr = oldOut, oldErr
-		writersMu.Unlock()
-	}
-}
 
 func ParseFormat(s string) (Format, error) {
 	switch s {
@@ -74,12 +37,13 @@ func ResolveFormat(flagFormat string, defaultFormat Format) (Format, error) {
 	return ParseFormat(flagFormat)
 }
 
-func Print(data any, format Format, prune bool) {
+// Print writes data to w in the given format, optionally pruning nulls.
+func Print(w io.Writer, data any, format Format, prune bool) {
 	switch format {
 	case FormatYAML:
-		printYAML(data, prune)
+		printYAML(w, data, prune)
 	default:
-		printJSON(data, prune)
+		printJSON(w, data, prune)
 	}
 }
 
@@ -124,17 +88,17 @@ type Pagination struct {
 	NextCursor string `json:"next_cursor,omitempty"`
 }
 
-func printJSON(data any, prune bool) {
+func printJSON(w io.Writer, data any, prune bool) {
 	if prune {
 		data = pruneNulls(data)
 	}
-	enc := json.NewEncoder(Stdout())
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(data)
 }
 
-func printYAML(data any, prune bool) {
+func printYAML(w io.Writer, data any, prune bool) {
 	b, err := json.Marshal(data)
 	if err != nil {
 		return
@@ -147,7 +111,7 @@ func printYAML(data any, prune bool) {
 		decoded = pruneNulls(decoded)
 	}
 	decoded = normalizeYAMLNumbers(decoded)
-	enc := yaml.NewEncoder(Stdout())
+	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)
 	_ = enc.Encode(decoded)
 }

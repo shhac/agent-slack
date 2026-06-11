@@ -11,8 +11,8 @@ import (
 )
 
 func TestNoCredentialsHint(t *testing.T) {
-	useHermeticStore(t)
-	_, stderr, err := runCLI(t, "", "auth", "test")
+	env := newTestEnv(t)
+	_, stderr, err := env.run(t, "", "auth", "test")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -23,7 +23,8 @@ func TestNoCredentialsHint(t *testing.T) {
 }
 
 func TestMultipleWorkspacesNeedSelectorOrDefault(t *testing.T) {
-	store := useHermeticStore(t)
+	env := newTestEnv(t)
+	store := env.store
 	for _, url := range []string{"https://one.slack.com", "https://two.slack.com"} {
 		if _, err := store.Upsert(credential.Workspace{
 			URL:  url,
@@ -42,7 +43,7 @@ func TestMultipleWorkspacesNeedSelectorOrDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, stderr, err := runCLI(t, "", "auth", "test")
+	_, stderr, err := env.run(t, "", "auth", "test")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -65,7 +66,7 @@ func TestWorkspaceSelectorNotFoundEnumerates(t *testing.T) {
 }
 
 func TestEnvCredentialsUsed(t *testing.T) {
-	useHermeticStore(t) // empty store: env must carry the auth
+	env := newTestEnv(t) // empty store: env vars must carry the auth
 	server := mockslack.New()
 	server.HandleBody("auth.test", map[string]any{"ok": true, "user": "envuser"})
 	ts := httptest.NewServer(server)
@@ -75,7 +76,7 @@ func TestEnvCredentialsUsed(t *testing.T) {
 	t.Setenv("SLACK_COOKIE_D", "xoxd-env-cookie")
 	t.Setenv("SLACK_WORKSPACE_URL", ts.URL) // browser path calls the workspace host directly
 
-	out, _, err := runCLI(t, "", "auth", "test")
+	out, _, err := env.run(t, "", "auth", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +91,8 @@ func TestEnvCredentialsUsed(t *testing.T) {
 }
 
 func TestDesktopAutoRefresh(t *testing.T) {
-	store := useHermeticStore(t)
+	env := newTestEnv(t)
+	store := env.store
 	server := mockslack.New()
 	server.ExpectToken = "xoxc-fresh"
 	server.HandleBody("auth.test", map[string]any{"ok": true, "user": "paul"})
@@ -106,18 +108,16 @@ func TestDesktopAutoRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prev := desktopExtract
 	extractions := 0
-	desktopExtract = func() (*auth.Extracted, error) {
+	env.desktopExtract = func() (*auth.Extracted, error) {
 		extractions++
 		return &auth.Extracted{
 			CookieD: "xoxd-new",
 			Teams:   []auth.Team{{URL: ts.URL, Name: "acme", Token: "xoxc-fresh"}},
 		}, nil
 	}
-	t.Cleanup(func() { desktopExtract = prev })
 
-	out, stderr, err := runCLI(t, "", "auth", "test")
+	out, stderr, err := env.run(t, "", "auth", "test")
 	if err != nil {
 		t.Fatalf("err = %v, stderr = %s", err, stderr)
 	}
@@ -142,7 +142,7 @@ func TestDesktopAutoRefresh(t *testing.T) {
 }
 
 func TestEnvCredentialsDoNotAutoRefresh(t *testing.T) {
-	useHermeticStore(t)
+	env := newTestEnv(t)
 	server := mockslack.New()
 	server.ExpectToken = "xoxc-good"
 	ts := httptest.NewServer(server)
@@ -152,15 +152,13 @@ func TestEnvCredentialsDoNotAutoRefresh(t *testing.T) {
 	t.Setenv("SLACK_COOKIE_D", "xoxd-x")
 	t.Setenv("SLACK_WORKSPACE_URL", ts.URL)
 
-	prev := desktopExtract
 	called := false
-	desktopExtract = func() (*auth.Extracted, error) {
+	env.desktopExtract = func() (*auth.Extracted, error) {
 		called = true
 		return nil, nil
 	}
-	t.Cleanup(func() { desktopExtract = prev })
 
-	_, stderr, err := runCLI(t, "", "auth", "test")
+	_, stderr, err := env.run(t, "", "auth", "test")
 	if err == nil {
 		t.Fatal("expected auth error")
 	}

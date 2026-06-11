@@ -34,7 +34,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 			}
 			downloads := map[string]render.DownloadResult{}
 			if !noDownload {
-				downloads = slack.DownloadMessageFiles(ctx, cc.Client, []render.MessageSummary{msg}, messageDownloadOptions())
+				downloads = slack.DownloadMessageFiles(ctx, cc.Client, []render.MessageSummary{msg}, messageDownloadOptions(globals))
 			}
 			compact := render.ToCompactMessage(msg, render.CompactOptions{
 				MaxBodyChars:     flags.maxBodyChars,
@@ -100,7 +100,7 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 				if hasReactionFilters {
 					return agenterrors.New("reaction filters are only supported for channel history mode", agenterrors.FixableByAgent)
 				}
-				warnTruncatedURL(target.Ref)
+				warnTruncatedURL(globals, target.Ref)
 				cc, err := getClientForWorkspace(globals, target.Ref.WorkspaceURL)
 				if err != nil {
 					return err
@@ -182,7 +182,7 @@ func printThread(ctx context.Context, globals *GlobalFlags, cc *clientContext, f
 func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext, flags *readFlags, messages []render.MessageSummary, download bool, meta map[string]any, threadMode bool) error {
 	downloads := map[string]render.DownloadResult{}
 	if download {
-		downloads = slack.DownloadMessageFiles(ctx, cc.Client, messages, messageDownloadOptions())
+		downloads = slack.DownloadMessageFiles(ctx, cc.Client, messages, messageDownloadOptions(globals))
 	}
 	items := make([]any, 0, len(messages))
 	for _, m := range messages {

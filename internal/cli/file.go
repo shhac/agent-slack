@@ -45,7 +45,7 @@ func registerFile(parent *cobra.Command, globals *GlobalFlags) {
 
 			downloads := slack.DownloadMessageFiles(ctx, cc.Client,
 				[]render.MessageSummary{{Files: []render.FileSummary{*summary}}},
-				messageDownloadOptions())
+				messageDownloadOptions(globals))
 			result, ok := downloads[summary.ID]
 			if !ok {
 				return agenterrors.New("file has no downloadable URL", agenterrors.FixableByAgent)

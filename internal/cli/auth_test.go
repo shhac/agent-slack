@@ -3,33 +3,45 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/shhac/agent-slack/internal/auth"
 	"github.com/shhac/agent-slack/internal/credential"
-	"github.com/shhac/agent-slack/internal/output"
 )
 
-// useHermeticStore points newStore at a temp file + in-memory keychain for the
-// duration of a test, so CLI auth tests never touch the real config or Keychain.
-func useHermeticStore(t *testing.T) *credential.Store {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "credentials.json")
-	store := credential.NewWithStore(path, credential.NewMemoryKeychain())
-	prev := newStore
-	newStore = func() (*credential.Store, error) { return store, nil }
-	t.Cleanup(func() { newStore = prev })
-	return store
+// testEnv carries the hermetic deps a test root is built with — a temp-file
+// store with an in-memory keychain, and a desktop extractor that fails unless
+// a test installs one. Constructor injection: no globals, tests can run in
+// parallel.
+type testEnv struct {
+	store          *credential.Store
+	desktopExtract func() (*auth.Extracted, error)
 }
 
-func runCLI(t *testing.T, stdin string, args ...string) (stdout, stderr string, err error) {
+func newTestEnv(t *testing.T) *testEnv {
 	t.Helper()
-	var out, errBuf bytes.Buffer
-	restore := output.SetWriters(&out, &errBuf)
-	defer restore()
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	return &testEnv{
+		store: credential.NewWithStore(path, credential.NewMemoryKeychain()),
+		desktopExtract: func() (*auth.Extracted, error) {
+			return nil, errors.New("desktop extraction unavailable in tests")
+		},
+	}
+}
 
-	root := newRootCmd("test")
+func (e *testEnv) run(t *testing.T, stdin string, args ...string) (stdout, stderr string, err error) {
+	t.Helper()
+	root := newRootCmdWithDeps(rootDeps{
+		version:        "test",
+		newStore:       func() (*credential.Store, error) { return e.store, nil },
+		desktopExtract: func() (*auth.Extracted, error) { return e.desktopExtract() },
+	})
+	var out, errBuf bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&errBuf)
 	root.SetIn(strings.NewReader(stdin))
 	root.SetArgs(args)
 	err = execute(root)
@@ -37,13 +49,13 @@ func runCLI(t *testing.T, stdin string, args ...string) (stdout, stderr string, 
 }
 
 func TestAuthAddStandardAndWhoami(t *testing.T) {
-	useHermeticStore(t)
+	env := newTestEnv(t)
 
-	if _, _, err := runCLI(t, "", "auth", "add", "--workspace-url", "https://acme.slack.com", "--token", "xoxb-12345678901234"); err != nil {
+	if _, _, err := env.run(t, "", "auth", "add", "--workspace-url", "https://acme.slack.com", "--token", "xoxb-12345678901234"); err != nil {
 		t.Fatalf("auth add: %v", err)
 	}
 
-	out, _, err := runCLI(t, "", "auth", "whoami")
+	out, _, err := env.run(t, "", "auth", "whoami")
 	if err != nil {
 		t.Fatalf("whoami: %v", err)
 	}
@@ -64,8 +76,8 @@ func TestAuthAddStandardAndWhoami(t *testing.T) {
 }
 
 func TestAuthAddRequiresCredentials(t *testing.T) {
-	useHermeticStore(t)
-	_, stderr, err := runCLI(t, "", "auth", "add", "--workspace-url", "https://acme.slack.com")
+	env := newTestEnv(t)
+	_, stderr, err := env.run(t, "", "auth", "add", "--workspace-url", "https://acme.slack.com")
 	if err == nil {
 		t.Fatal("expected error when no token/xoxc given")
 	}
@@ -79,10 +91,11 @@ func TestAuthAddRequiresCredentials(t *testing.T) {
 }
 
 func TestAuthParseCurl(t *testing.T) {
-	store := useHermeticStore(t)
+	env := newTestEnv(t)
+	store := env.store
 	curl := `curl 'https://acme.slack.com/api/conversations.history' -H 'Cookie: d=xoxd-cookieval; x=1' --data 'token=xoxc-tok-123'`
 
-	out, _, err := runCLI(t, curl, "auth", "parse-curl")
+	out, _, err := env.run(t, curl, "auth", "parse-curl")
 	if err != nil {
 		t.Fatalf("parse-curl: %v", err)
 	}
@@ -104,8 +117,8 @@ func TestAuthParseCurl(t *testing.T) {
 }
 
 func TestAuthParseCurlEmptyStdin(t *testing.T) {
-	useHermeticStore(t)
-	_, stderr, err := runCLI(t, "   \n", "auth", "parse-curl")
+	env := newTestEnv(t)
+	_, stderr, err := env.run(t, "   \n", "auth", "parse-curl")
 	if err == nil {
 		t.Fatal("expected error on empty stdin")
 	}
@@ -115,15 +128,16 @@ func TestAuthParseCurlEmptyStdin(t *testing.T) {
 }
 
 func TestAuthRemoveAndSetDefault(t *testing.T) {
-	store := useHermeticStore(t)
-	if _, _, err := runCLI(t, "", "auth", "add", "--workspace-url", "https://acme.slack.com", "--token", "xoxb-aaaaaaaaaaaa"); err != nil {
+	env := newTestEnv(t)
+	store := env.store
+	if _, _, err := env.run(t, "", "auth", "add", "--workspace-url", "https://acme.slack.com", "--token", "xoxb-aaaaaaaaaaaa"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := runCLI(t, "", "auth", "add", "--workspace-url", "https://globex.slack.com", "--token", "xoxb-gggggggggggg"); err != nil {
+	if _, _, err := env.run(t, "", "auth", "add", "--workspace-url", "https://globex.slack.com", "--token", "xoxb-gggggggggggg"); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := runCLI(t, "", "auth", "set-default", "https://globex.slack.com"); err != nil {
+	if _, _, err := env.run(t, "", "auth", "set-default", "https://globex.slack.com"); err != nil {
 		t.Fatalf("set-default: %v", err)
 	}
 	def, _ := store.ResolveDefault()
@@ -131,7 +145,7 @@ func TestAuthRemoveAndSetDefault(t *testing.T) {
 		t.Errorf("default not updated: %q", def.URL)
 	}
 
-	if _, _, err := runCLI(t, "", "auth", "remove", "https://acme.slack.com"); err != nil {
+	if _, _, err := env.run(t, "", "auth", "remove", "https://acme.slack.com"); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 	creds, _ := store.Load()

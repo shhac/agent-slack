@@ -10,16 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shhac/agent-slack/internal/auth"
 	"github.com/shhac/agent-slack/internal/credential"
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
-	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/slack"
 )
-
-// desktopExtract is the auto-refresh seam: production re-extracts rotating
-// xoxc/xoxd credentials from Slack Desktop; tests swap in a fake.
-var desktopExtract = auth.ExtractFromSlackDesktop
 
 const noCredentialsHint = "run 'agent-slack auth import-desktop' (or auth add / auth parse-curl)"
 
@@ -49,7 +43,7 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 		return envCtx, nil
 	}
 
-	store, err := newStore()
+	store, err := globals.newStore()
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +73,7 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 
 	opts := clientOptions(globals)
 	if ws.Auth.Type == credential.AuthBrowser {
-		opts = append(opts, slack.WithAuthRefresh(desktopRefresh(store, ws.URL)))
+		opts = append(opts, slack.WithAuthRefresh(desktopRefresh(globals, store, ws.URL)))
 	}
 
 	return &clientContext{
@@ -122,12 +116,12 @@ func clientFromEnv(globals *GlobalFlags, selector string) *clientContext {
 }
 
 func clientOptions(globals *GlobalFlags) []slack.Option {
-	opts := []slack.Option{slack.WithUserAgent("agent-slack/" + cliVersion)}
+	opts := []slack.Option{slack.WithUserAgent("agent-slack/" + globals.version)}
 	if globals.Timeout > 0 {
 		opts = append(opts, slack.WithDoer(&http.Client{Timeout: time.Duration(globals.Timeout) * time.Millisecond}))
 	}
 	if globals.Debug {
-		opts = append(opts, slack.WithDebug(output.Stderr()))
+		opts = append(opts, slack.WithDebug(globals.stderr))
 	}
 	if globals.BaseURL != "" {
 		opts = append(opts, slack.WithBaseURL(globals.BaseURL))
@@ -138,9 +132,9 @@ func clientOptions(globals *GlobalFlags) []slack.Option {
 // desktopRefresh re-extracts credentials from Slack Desktop when a call hits
 // an auth error — xoxc tokens rotate, and this turns the #1 failure mode into
 // self-healing. Only workspaces already configured are refreshed.
-func desktopRefresh(store *credential.Store, workspaceURL string) slack.RefreshFunc {
+func desktopRefresh(globals *GlobalFlags, store *credential.Store, workspaceURL string) slack.RefreshFunc {
 	return func(ctx context.Context) (slack.Auth, bool) {
-		extracted, err := desktopExtract()
+		extracted, err := globals.desktopExtract()
 		if err != nil {
 			return slack.Auth{}, false
 		}
@@ -153,7 +147,7 @@ func desktopRefresh(store *credential.Store, workspaceURL string) slack.RefreshF
 				Name: team.Name,
 				Auth: credential.Auth{Type: credential.AuthBrowser, XOXC: team.Token, XOXD: extracted.CookieD},
 			})
-			_, _ = fmt.Fprintln(output.Stderr(), "agent-slack: credentials refreshed from Slack Desktop")
+			_, _ = fmt.Fprintln(globals.stderr, "agent-slack: credentials refreshed from Slack Desktop")
 			return slack.Auth{
 				Type:         slack.AuthBrowser,
 				XOXC:         team.Token,

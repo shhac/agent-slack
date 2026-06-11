@@ -12,10 +12,6 @@ import (
 	"github.com/shhac/agent-slack/internal/output"
 )
 
-// newStore builds the credential store. It is a package var so tests can swap
-// in a hermetic store (temp file + in-memory keychain).
-var newStore = func() (*credential.Store, error) { return credential.New() }
-
 func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
 	authCmd := &cobra.Command{
 		Use:   "auth",
@@ -100,7 +96,7 @@ func registerAuthWhoami(parent *cobra.Command, globals *GlobalFlags) {
 		Use:   "whoami",
 		Short: "Show configured workspaces and token sources (secrets redacted)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := newStore()
+			store, err := globals.newStore()
 			if err != nil {
 				return err
 			}
@@ -137,7 +133,7 @@ func registerAuthWhoami(parent *cobra.Command, globals *GlobalFlags) {
 // validated after extraction but before anything persists, so a bad --format
 // never half-imports credentials.
 func runAuthImport(globals *GlobalFlags, extract func() (*auth.Extracted, error)) error {
-	store, err := newStore()
+	store, err := globals.newStore()
 	if err != nil {
 		return err
 	}
@@ -153,7 +149,7 @@ func runAuthImport(globals *GlobalFlags, extract func() (*auth.Extracted, error)
 	if err != nil {
 		return err
 	}
-	output.Print(summary, format, true)
+	output.Print(globals.stdout, summary, format, true)
 	return nil
 }
 
@@ -213,7 +209,7 @@ func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 		Use:   "add",
 		Short: "Add credentials directly (standard xoxb/xoxp token, or browser xoxc/xoxd)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := newStore()
+			store, err := globals.newStore()
 			if err != nil {
 				return err
 			}
@@ -247,7 +243,7 @@ func registerAuthSetDefault(parent *cobra.Command, globals *GlobalFlags) {
 		Short: "Set the default workspace",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := newStore()
+			store, err := globals.newStore()
 			if err != nil {
 				return err
 			}
@@ -266,7 +262,7 @@ func registerAuthRemove(parent *cobra.Command, globals *GlobalFlags) {
 		Short: "Remove a workspace and its stored secrets",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := newStore()
+			store, err := globals.newStore()
 			if err != nil {
 				return err
 			}

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	"github.com/shhac/agent-slack/internal/output"
 )
 
 func TestVersion(t *testing.T) {
@@ -24,10 +22,8 @@ func TestVersion(t *testing.T) {
 
 func TestUsageCommand(t *testing.T) {
 	var out bytes.Buffer
-	restore := output.SetWriters(&out, nil)
-	defer restore()
-
 	root := newRootCmd("dev")
+	root.SetOut(&out)
 	root.SetArgs([]string{"usage"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
@@ -39,10 +35,8 @@ func TestUsageCommand(t *testing.T) {
 
 func TestUnknownCommandErrorContract(t *testing.T) {
 	var errBuf bytes.Buffer
-	restore := output.SetWriters(nil, &errBuf)
-	defer restore()
-
 	root := newRootCmd("dev")
+	root.SetErr(&errBuf)
 	root.SetArgs([]string{"definitely-not-a-command"})
 	if err := execute(root); err == nil {
 		t.Fatal("expected error for unknown command")

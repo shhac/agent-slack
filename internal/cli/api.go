@@ -73,7 +73,7 @@ output. This is for endpoints agent-slack does not cover.`,
 			if err != nil {
 				return err
 			}
-			output.Print(resp, format, false) // raw response: no pruning
+			output.Print(globals.stdout, resp, format, false) // raw response: no pruning
 			return nil
 		},
 	}

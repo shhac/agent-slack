@@ -4,8 +4,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-
-	"github.com/shhac/agent-slack/internal/output"
 )
 
 const usageText = `agent-slack: Slack CLI for AI agents. JSON in, JSON out, no interactivity.
@@ -176,7 +174,7 @@ func registerUsage(parent *cobra.Command) {
 		Use:   "usage",
 		Short: "LLM-optimized usage overview",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, err := fmt.Fprint(output.Stdout(), usageText)
+			_, err := fmt.Fprint(cmd.OutOrStdout(), usageText)
 			return err
 		},
 	}
@@ -195,7 +193,7 @@ func attachDomainUsage(root *cobra.Command) {
 			Use:   "usage",
 			Short: "Detailed " + sub.Name() + " documentation for LLMs",
 			RunE: func(cmd *cobra.Command, args []string) error {
-				_, err := fmt.Fprintln(output.Stdout(), text)
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), text)
 				return err
 			},
 		})

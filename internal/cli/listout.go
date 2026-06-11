@@ -16,7 +16,7 @@ func printSingle(globals *GlobalFlags, payload any) error {
 	if err != nil {
 		return err
 	}
-	output.Print(payload, format, true)
+	output.Print(globals.stdout, payload, format, true)
 	return nil
 }
 
@@ -29,7 +29,7 @@ func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
 		return err
 	}
 	if format == output.FormatNDJSON {
-		w := output.NewNDJSONWriter(output.Stdout())
+		w := output.NewNDJSONWriter(globals.stdout)
 		for _, item := range items {
 			if err := w.WriteItem(item); err != nil {
 				return err
@@ -47,7 +47,7 @@ func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
 	for key, value := range meta {
 		payload[key] = value
 	}
-	output.Print(payload, format, true)
+	output.Print(globals.stdout, payload, format, true)
 	return nil
 }
 

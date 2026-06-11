@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
-	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/render"
 	"github.com/shhac/agent-slack/internal/slack"
 )
@@ -78,7 +77,7 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 			// --reply-broadcast; channel targets need --thread-ts with it.
 			switch target.Kind {
 			case render.TargetURL:
-				warnTruncatedURL(target.Ref)
+				warnTruncatedURL(globals, target.Ref)
 			case render.TargetUser:
 				if replyBroadcast {
 					return agenterrors.New("--reply-broadcast is not supported for DM targets", agenterrors.FixableByAgent)
@@ -185,7 +184,7 @@ func runSend(ctx context.Context, globals *GlobalFlags, cc *clientContext, req s
 	}
 
 	if len(req.blocks) > 0 {
-		_, _ = fmt.Fprintln(output.Stderr(), "Warning: rich text formatting is not supported with file attachments; sending as plain text.")
+		_, _ = fmt.Fprintln(globals.stderr, "Warning: rich text formatting is not supported with file attachments; sending as plain text.")
 	}
 	initialComment := req.text
 	for _, path := range req.attachPaths {
