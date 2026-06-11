@@ -153,3 +153,20 @@ func TestAuthRemoveAndSetDefault(t *testing.T) {
 		t.Errorf("expected 1 workspace after remove, got %d", len(creds.Workspaces))
 	}
 }
+
+func TestAuthTest(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("auth.test", map[string]any{"ok": true, "user": "paul", "team": "Acme", "user_id": "U12345678"})
+
+	out, _, err := f.run(t, "auth", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, out)
+	if payload["user"] != "paul" || payload["auth_type"] != "standard" {
+		t.Errorf("payload = %v", payload)
+	}
+	if got := f.server.CallsFor("auth.test")[0].Header.Get("Authorization"); got != "Bearer xoxb-test-token" {
+		t.Errorf("authorization = %q", got)
+	}
+}

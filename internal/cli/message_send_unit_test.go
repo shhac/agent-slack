@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -117,5 +119,35 @@ func TestResolveListMode(t *testing.T) {
 		if err == nil && got != tc.want {
 			t.Errorf("%s: mode = %v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestLoadBlocksFromPath(t *testing.T) {
+	// stdin
+	blocks, err := loadBlocksFromPath(strings.NewReader(`[{"type":"section"}]`), "-")
+	if err != nil || len(blocks) != 1 {
+		t.Errorf("stdin: blocks = %v, err = %v", blocks, err)
+	}
+	// file
+	path := filepath.Join(t.TempDir(), "blocks.json")
+	if err := os.WriteFile(path, []byte(`[{"type":"divider"},{"type":"section"}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	blocks, err = loadBlocksFromPath(nil, path)
+	if err != nil || len(blocks) != 2 {
+		t.Errorf("file: blocks = %v, err = %v", blocks, err)
+	}
+	// error cases
+	for name, input := range map[string]string{
+		"not an array":      `{"type":"section"}`,
+		"non-object member": `[{"type":"section"}, 42]`,
+		"invalid json":      `{`,
+	} {
+		if _, err := loadBlocksFromPath(strings.NewReader(input), "-"); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+	if _, err := loadBlocksFromPath(nil, "/no/such/blocks.json"); err == nil {
+		t.Error("missing file: expected error")
 	}
 }

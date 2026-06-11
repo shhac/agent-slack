@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -93,4 +95,15 @@ func (f *cliFixture) resolvableChannel(channelID string) {
 		return strings.HasPrefix(p.Get("query"), "in:#")
 	}, mockslack.Response{Body: mockslack.SearchMessages(mockslack.ChannelMatch(channelID))})
 	f.server.HandleBody("conversations.list", mockslack.ConversationsList(mockslack.Channel(channelID, "general")))
+}
+
+// fileHost serves canvas/file bytes for download tests.
+func fileHost(t *testing.T, contentType, body string) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(ts.Close)
+	return ts
 }
