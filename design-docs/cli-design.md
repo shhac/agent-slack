@@ -131,6 +131,23 @@ metadata-only unless asked.**
   retry the command once, note the refresh on stderr. Skipped when
   credentials came from env vars (mirrors TS). xoxc rotation is the #1
   failure mode; this makes it self-healing instead of human-fixable.
+- **`auth add --form`** (decision): agents must never see or relay raw
+  tokens. `--form` opens a native OS dialog (zenity) for whichever secret is
+  missing; an `xoxc-` answer triggers a follow-up prompt for the `xoxd`
+  cookie. The no-secret error hints agents toward `--form`.
+- **Windows support** (decision): `import-desktop`/`import-firefox` work on
+  Windows. Chromium cookie decryption uses the DPAPI scheme: AES-256-GCM key
+  wrapped by `CryptUnprotectData` in the profile's `Local State`, `v10`
+  values are `nonce(12)‖ciphertext‖tag(16)`. Only the DPAPI syscall is
+  build-tagged (`dpapi_windows.go`); the GCM/Local State parsing is pure and
+  unit-tested on every platform. DPAPI round-trip + end-to-end tests live in
+  `dpapi_windows_test.go` and only run on Windows machines. App-bound
+  ("APPB", Chrome 127+) keys are rejected with a parse-curl hint. Secrets
+  fall back to the credentials file (no Windows Credential Manager yet).
+- **Keep `modernc.org/sqlite`** (decision, ~4.2MB of the binary): it backs
+  real functionality (cookie/localStorage DB reads incl. WAL sidecars) with
+  zero runtime dependencies; shelling out to system `sqlite3` or a minimal
+  reader was rejected (WAL handling risk on Firefox `cookies.sqlite`).
 
 ## `api call` escape hatch
 
@@ -172,7 +189,11 @@ Conventions lifted from lin:
 - **`update`/`upgrade` self-update** — the fork already removed it;
   distribution is brew/`go install`.
 - **First-run browser auto-extraction** (see Credentials).
-- Plain-text output paths, interactive anything, zenity.
+- Plain-text output paths, interactive terminal anything. (Native OS dialogs
+  are the one sanctioned interaction: `auth add --form` prompts the human for
+  a secret via zenity so tokens never transit the agent's conversation —
+  superseding the earlier blanket "no zenity" call. Family precedent:
+  agent-posthog.)
 
 ## Divergence ledger vs TS (quick reference)
 

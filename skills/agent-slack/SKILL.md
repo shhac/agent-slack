@@ -20,7 +20,10 @@ then `{"@pagination":…}` / `{"@referenced_users":…}` meta lines); single
 resources are pretty JSON. Errors are JSON on stderr with
 `fixable_by: agent|human|retry` and a `hint`.
 
-## Setup (once, by a human)
+Safety: read and search freely. Do not send, edit, delete, react, schedule,
+invite, or create channels unless the user explicitly asked for that action.
+
+## Setup (once)
 
 ```bash
 agent-slack auth import-desktop   # extract tokens from Slack Desktop
@@ -28,8 +31,19 @@ agent-slack auth test             # verify
 agent-slack auth set-default https://acme.slack.com   # if several workspaces
 ```
 
+If desktop/browser import isn't available, run
+`agent-slack auth add --workspace-url https://acme.slack.com --form` — a
+native OS dialog asks the human for the token, so it never appears in chat.
+Never ask the user to paste a token into the conversation, and never read
+credentials out of the store yourself; every command authenticates
+internally.
+
 Env override: `SLACK_TOKEN` (+ `SLACK_COOKIE_D` + `SLACK_WORKSPACE_URL` for
 xoxc browser tokens). Expired browser tokens self-heal from Slack Desktop.
+
+With multiple workspaces configured, commands use the default workspace;
+pass `--workspace <unique-substring>` to target another. Message permalinks
+carry their own workspace and override both.
 
 ## Reading
 
@@ -65,8 +79,14 @@ File hits download automatically and report local `path`s you can Read.
 agent-slack message send "#general" "ship it :rocket:"
 agent-slack message send U05BRPTKL6A "ping"                  # DM auto-opens
 agent-slack message send "<permalink>" "replying in thread"
+agent-slack message send "#general" "see attached" --attach ./report.md
 agent-slack message send "#general" "later" --schedule-in "tomorrow 9am"
+agent-slack message scheduled list
+agent-slack message scheduled cancel Q012ABC --channel C012345678 --yes
 agent-slack message react add "<permalink>" :eyes:
+agent-slack message edit "<permalink>" "fixed wording" --yes
+agent-slack message delete "<permalink>" --yes
+agent-slack channel mark "<permalink>"                       # mark read up to here
 ```
 
 Outbound text is auto-formatted: `@U…` becomes a real mention, `& < >` are
