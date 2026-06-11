@@ -222,16 +222,18 @@ func workspaceHost(s string) string {
 }
 
 // appCacheDir is where downloads and the user cache live
-// (XDG_CACHE_HOME-aware).
+// (XDG_CACHE_HOME-aware). Named like the config dir — app.paulie.agent-slack
+// — to stay clear of the TS tool's paths.
 func appCacheDir() string {
+	const dirName = "app.paulie.agent-slack"
 	if xdg := os.Getenv("XDG_CACHE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "agent-slack")
+		return filepath.Join(xdg, dirName)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(os.TempDir(), "agent-slack")
+		return filepath.Join(os.TempDir(), dirName)
 	}
-	return filepath.Join(home, ".cache", "agent-slack")
+	return filepath.Join(home, ".cache", dirName)
 }
 
 func downloadsDir() string {

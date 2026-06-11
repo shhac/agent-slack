@@ -105,11 +105,17 @@ unit tests:
 ## Configuration and credentials
 
 - There is no separate config file: `credentials.json` at
-  `~/.config/agent-slack/` (`$XDG_CONFIG_HOME`-aware, family convention per
-  lin — deliberately not `os.UserConfigDir`, which would scatter macOS state
-  into `~/Library/Application Support`) holds the non-secret workspace
-  metadata (URL, team id, default workspace) alongside `__KEYCHAIN__`
-  placeholders. `AGENT_SLACK_CREDENTIALS` overrides the path.
+  `~/.config/app.paulie.agent-slack/` (`$XDG_CONFIG_HOME`-aware — deliberately
+  not `os.UserConfigDir`, which would scatter macOS state into
+  `~/Library/Application Support`) holds the non-secret workspace metadata
+  (URL, team id, default workspace) alongside `__KEYCHAIN__` placeholders,
+  with a `version` field (currently 1). The directory deviates from the
+  family's plain-tool-name convention because the TS stablyai-agent-slack
+  already owns `~/.config/agent-slack/credentials.json` (same filename,
+  different Keychain service); that legacy file is read once to seed a
+  missing store — metadata only, never written. The cache dir matches:
+  `~/.cache/app.paulie.agent-slack`. `AGENT_SLACK_CREDENTIALS` overrides the
+  path.
 - `internal/credential`: tokens/cookies stored in the macOS Keychain under
   service `app.paulie.agent-slack` (matching `lin`'s `app.paulie.lin`), with the
   per-workspace key as the account field. A local index records which workspace

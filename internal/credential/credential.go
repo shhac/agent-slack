@@ -77,6 +77,9 @@ func New() (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if os.Getenv("AGENT_SLACK_CREDENTIALS") == "" {
+		migrateLegacyFile(path)
+	}
 	return &Store{path: path, kc: defaultKeychain(), now: time.Now}, nil
 }
 
@@ -86,23 +89,63 @@ func NewWithStore(path string, kc Keychain) *Store {
 	return &Store{path: path, kc: kc, now: time.Now}
 }
 
+const (
+	// configDirName deviates from the family's plain-tool-name convention
+	// because the TS stablyai-agent-slack already owns
+	// ~/.config/agent-slack/credentials.json (same filename, different
+	// Keychain service) — sharing the file would mean two writers.
+	configDirName = "app.paulie.agent-slack"
+	// legacyConfigDirName is the TS tool's directory; read once for
+	// migration, never written.
+	legacyConfigDirName = "agent-slack"
+)
+
 // defaultPath follows the agent-* family convention (per lin):
-// $XDG_CONFIG_HOME/agent-slack, else ~/.config/agent-slack — on every
-// platform, deliberately not os.UserConfigDir (which would scatter macOS
-// state into ~/Library/Application Support).
+// $XDG_CONFIG_HOME, else ~/.config — on every platform, deliberately not
+// os.UserConfigDir (which would scatter macOS state into
+// ~/Library/Application Support).
 func defaultPath() (string, error) {
 	if env := os.Getenv("AGENT_SLACK_CREDENTIALS"); env != "" {
 		return env, nil
 	}
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, ".config")
+	base, err := configBase()
+	if err != nil {
+		return "", err
 	}
-	return filepath.Join(dir, "agent-slack", "credentials.json"), nil
+	return filepath.Join(base, configDirName, "credentials.json"), nil
+}
+
+func configBase() (string, error) {
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return dir, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config"), nil
+}
+
+// migrateLegacyFile seeds a missing store from the file the TS agent-slack
+// maintains. Metadata only, best effort: secrets stay __KEYCHAIN__
+// placeholders (the TS Keychain service is different) and refill into our
+// service via auth import or the desktop auto-refresh.
+func migrateLegacyFile(path string) {
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+	base, err := configBase()
+	if err != nil {
+		return
+	}
+	raw, err := os.ReadFile(filepath.Join(base, legacyConfigDirName, "credentials.json"))
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return
+	}
+	_ = os.WriteFile(path, raw, 0o600)
 }
 
 // Path returns the credentials file path (for reporting, not secrets).
