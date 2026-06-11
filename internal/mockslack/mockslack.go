@@ -27,13 +27,23 @@ type Response struct {
 	Body   any
 }
 
+// conditional is a param-matched response queue, checked before the plain
+// queue so fixtures can model per-entity answers ("conversations.info for
+// channel=C2 returns #random") instead of relying on call order.
+type conditional struct {
+	match func(url.Values) bool
+	queue []Response
+}
+
 // Server implements http.Handler. Responses queue per method: each call pops
 // the next queued response, and the final one is sticky (repeats forever) so
-// single-fixture setups behave like a steady-state API.
+// single-fixture setups behave like a steady-state API. Param-conditional
+// handlers (HandleWhen) take precedence over the plain queue.
 type Server struct {
-	mu     sync.Mutex
-	queues map[string][]Response
-	calls  []Call
+	mu           sync.Mutex
+	queues       map[string][]Response
+	conditionals map[string][]*conditional
+	calls        []Call
 
 	// ExpectToken, when set, rejects calls whose Bearer or form token differs
 	// with Slack's invalid_auth error — exercises auth and refresh paths.
@@ -41,7 +51,10 @@ type Server struct {
 }
 
 func New() *Server {
-	return &Server{queues: map[string][]Response{}}
+	return &Server{
+		queues:       map[string][]Response{},
+		conditionals: map[string][]*conditional{},
+	}
 }
 
 // Handle queues responses for a method. Multiple calls append.
@@ -49,6 +62,15 @@ func (s *Server) Handle(method string, responses ...Response) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.queues[method] = append(s.queues[method], responses...)
+}
+
+// HandleWhen queues responses served only when match(params) is true,
+// checked (in registration order) before the plain queue. The last response
+// in the queue is sticky, like Handle.
+func (s *Server) HandleWhen(method string, match func(params url.Values) bool, responses ...Response) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.conditionals[method] = append(s.conditionals[method], &conditional{match: match, queue: responses})
 }
 
 // HandleBody queues a single 200 response with the given JSON body.
@@ -74,11 +96,12 @@ func (s *Server) CallsFor(method string) []Call {
 	return out
 }
 
-// Reset clears queues and recorded calls.
+// Reset clears queues, conditional handlers, and recorded calls.
 func (s *Server) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.queues = map[string][]Response{}
+	s.conditionals = map[string][]*conditional{}
 	s.calls = nil
 }
 
@@ -109,7 +132,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	resp, ok := s.popResponse(method)
+	resp, ok := s.popResponse(method, r.Form)
 	s.mu.Unlock()
 
 	if !ok {
@@ -131,9 +154,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, body)
 }
 
-// popResponse pops the next queued response, keeping the last one sticky.
+// popResponse pops the next queued response — from the first matching
+// conditional handler, else the plain queue — keeping the last one sticky.
 // Caller holds s.mu.
-func (s *Server) popResponse(method string) (Response, bool) {
+func (s *Server) popResponse(method string, params url.Values) (Response, bool) {
+	for _, cond := range s.conditionals[method] {
+		if len(cond.queue) == 0 || !cond.match(params) {
+			continue
+		}
+		resp := cond.queue[0]
+		if len(cond.queue) > 1 {
+			cond.queue = cond.queue[1:]
+		}
+		return resp, true
+	}
 	queue := s.queues[method]
 	if len(queue) == 0 {
 		return Response{}, false

@@ -70,3 +70,26 @@ func TestExpectTokenDoesNotConsumeFixture(t *testing.T) {
 		t.Errorf("recorded %d calls, want 2", calls)
 	}
 }
+
+func TestHandleWhenRoutesByParams(t *testing.T) {
+	s := New()
+	s.HandleWhen("conversations.info", func(p url.Values) bool { return p.Get("channel") == "C2" },
+		Response{Body: ChannelInfo("C2", "random")})
+	s.HandleBody("conversations.info", ChannelInfo("C1", "general"))
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	got := post(t, ts, "conversations.info", url.Values{"channel": {"C2"}})
+	if got["channel"].(map[string]any)["name"] != "random" {
+		t.Errorf("C2 = %v", got)
+	}
+	got = post(t, ts, "conversations.info", url.Values{"channel": {"C1"}})
+	if got["channel"].(map[string]any)["name"] != "general" {
+		t.Errorf("C1 = %v", got)
+	}
+	// Conditional queues are sticky-last too.
+	got = post(t, ts, "conversations.info", url.Values{"channel": {"C2"}})
+	if got["channel"].(map[string]any)["name"] != "random" {
+		t.Errorf("C2 sticky = %v", got)
+	}
+}

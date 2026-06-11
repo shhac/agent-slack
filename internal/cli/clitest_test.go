@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -75,24 +76,21 @@ func errPayload(t *testing.T, stderr string) map[string]any {
 
 // historyWith builds a conversations.history body with the given messages.
 func historyWith(messages ...map[string]any) map[string]any {
-	items := make([]any, len(messages))
-	for i, m := range messages {
-		items[i] = m
-	}
-	return map[string]any{"ok": true, "messages": items}
+	return mockslack.History(messages...)
 }
 
 func simpleMessage(ts, user, text string) map[string]any {
-	return map[string]any{"ts": ts, "user": user, "text": text, "type": "message"}
+	return mockslack.Message(ts, user, text)
 }
 
-// resolvableChannel makes "#general" resolve to channelID via the
-// search.messages one-call trick.
+// resolvableChannel makes "#general" resolve to channelID. It fixtures
+// workspace STATE rather than the resolver's strategy: both the in:#name
+// search trick and the conversations.list fallback are answered, so tests
+// survive a change to how ResolveChannelID works — and real search.messages
+// fixtures in the same test don't collide with the resolution call.
 func (f *cliFixture) resolvableChannel(channelID string) {
-	f.server.HandleBody("search.messages", map[string]any{
-		"ok": true,
-		"messages": map[string]any{
-			"matches": []any{map[string]any{"channel": map[string]any{"id": channelID}}},
-		},
-	})
+	f.server.HandleWhen("search.messages", func(p url.Values) bool {
+		return strings.HasPrefix(p.Get("query"), "in:#")
+	}, mockslack.Response{Body: mockslack.SearchMessages(mockslack.ChannelMatch(channelID))})
+	f.server.HandleBody("conversations.list", mockslack.ConversationsList(mockslack.Channel(channelID, "general")))
 }

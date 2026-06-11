@@ -9,7 +9,7 @@ import (
 )
 
 func userInfoBody(id, name string) map[string]any {
-	return map[string]any{"ok": true, "user": map[string]any{"id": id, "name": name}}
+	return mockslack.UserInfo(id, name)
 }
 
 func TestResolveUsersByIDFetchesAndCaches(t *testing.T) {
