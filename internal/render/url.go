@@ -82,6 +82,31 @@ func ParseMessageURL(input string) (*MessageRef, error) {
 	}, nil
 }
 
+// ParseChannelURL recognizes a Slack conversation URL that points at a channel
+// rather than a specific message: https://{workspace}/archives/{channelID}
+// with no trailing p<ts> message segment. It returns the workspace URL and the
+// channel ID. Message permalinks (which carry a third path segment) are not
+// matched here — callers try ParseMessageURL first.
+func ParseChannelURL(input string) (workspaceURL, channelID string, ok bool) {
+	u, err := url.Parse(input)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", "", false
+	}
+	if !strings.HasSuffix(strings.ToLower(u.Hostname()), ".slack.com") {
+		return "", "", false
+	}
+	var parts []string
+	for _, p := range strings.Split(u.Path, "/") {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	if len(parts) != 2 || parts[0] != "archives" || !IsChannelID(parts[1]) {
+		return "", "", false
+	}
+	return u.Scheme + "://" + strings.ToLower(u.Host), parts[1], true
+}
+
 // MessageURLParts is the input to BuildMessageURL; ThreadTS is optional.
 type MessageURLParts struct {
 	WorkspaceURL string

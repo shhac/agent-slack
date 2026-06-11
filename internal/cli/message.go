@@ -81,7 +81,9 @@ func resolveTargetClient(ctx context.Context, globals *GlobalFlags, target rende
 		channelID, err := slack.OpenDMChannel(ctx, cc.Client, target.UserID)
 		return cc, channelID, err
 	default:
-		cc, err := getClient(globals)
+		// A channel URL pins its workspace like a permalink; bare names/IDs
+		// pass "" and fall back to --workspace/default.
+		cc, err := getClientForWorkspace(globals, target.WorkspaceURL)
 		if err != nil {
 			return nil, "", err
 		}

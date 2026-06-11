@@ -76,6 +76,14 @@ func TestWorkspaceScopingContract(t *testing.T) {
 		t.Errorf("permalink scoping used %q", lastToken())
 	}
 
+	// 3b. A channel URL (no message segment) pins its workspace the same way.
+	if _, _, err := run("message", "list", "https://globex.slack.com/archives/C1A2B3C4D"); err != nil {
+		t.Fatal(err)
+	}
+	if lastToken() != "Bearer xoxb-globex" {
+		t.Errorf("channel-URL scoping used %q", lastToken())
+	}
+
 	// 4. A permalink to an UNCONFIGURED workspace errors with the configured
 	// list — it must not fall back to the default workspace's credentials.
 	callsBefore := len(server.Calls())

@@ -24,6 +24,10 @@ type Target struct {
 	Ref     *MessageRef // Kind == TargetURL
 	Channel string      // Kind == TargetChannel: "#name" or a C…/D…/G… ID
 	UserID  string      // Kind == TargetUser
+	// WorkspaceURL is set when a TargetChannel was given as a channel URL
+	// (https://team.slack.com/archives/C…); it pins the workspace the same way
+	// a permalink does. Empty for bare names/IDs, which use the default.
+	WorkspaceURL string
 }
 
 var (
@@ -54,6 +58,9 @@ func ParseTarget(input string) (Target, error) {
 
 	if ref, err := ParseMessageURL(trimmed); err == nil {
 		return Target{Kind: TargetURL, Ref: ref}, nil
+	}
+	if wsURL, channelID, ok := ParseChannelURL(trimmed); ok {
+		return Target{Kind: TargetChannel, Channel: channelID, WorkspaceURL: wsURL}, nil
 	}
 
 	if IsUserID(trimmed) {
