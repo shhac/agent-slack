@@ -60,6 +60,26 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 		return nil, mapWorkspaceResolveError(store, selector, err)
 	}
 
+	// A secret can be a dangling "__KEYCHAIN__" placeholder (e.g. seeded by
+	// the legacy-file migration and never refilled). Never send the literal
+	// placeholder to Slack: browser auth gets the same Slack Desktop self-heal
+	// an expired token would; anything else needs a human.
+	if missing := credential.MissingSecrets(*ws); len(missing) > 0 {
+		healed := false
+		if ws.Auth.Type == credential.AuthBrowser {
+			if auth, ok := desktopRefresh(globals, store, ws.URL)(context.Background()); ok {
+				ws.Auth.XOXC, ws.Auth.XOXD = auth.XOXC, auth.XOXD
+				healed = true
+			}
+		}
+		if !healed {
+			return nil, agenterrors.Newf(agenterrors.FixableByHuman,
+				"stored credentials for %s are missing %s (no Keychain entry behind the placeholder)",
+				ws.URL, strings.Join(missing, ", ")).
+				WithHint(fmt.Sprintf("re-run 'agent-slack auth import-desktop', or 'agent-slack auth add --workspace-url %s --form'", ws.URL))
+		}
+	}
+
 	slackAuth := slack.Auth{WorkspaceURL: ws.URL}
 	switch ws.Auth.Type {
 	case credential.AuthBrowser:

@@ -9,7 +9,7 @@ import (
 const usageText = `agent-slack: Slack CLI for AI agents. JSON in, JSON out, no interactivity.
 
 COMMANDS
-  auth       whoami | test | add | set-default | remove | import-desktop |
+  auth       list | test | add | set-default | remove | import-desktop |
              import-chrome | import-brave | import-firefox | parse-curl
   message    get | list | send | edit* | delete* | react add/remove |
              scheduled list/cancel*
@@ -167,7 +167,8 @@ SETUP   auth import-desktop — extract xoxc/xoxd from Slack Desktop (best).
         auth add --workspace-url <url> (--token xoxb…|--xoxc … --xoxd …)
         auth add --workspace-url <url> --form — native OS dialog prompts the
           human for the secret; use this so tokens never appear in chat.
-VERIFY  auth whoami — configured workspaces (secrets never printed).
+VERIFY  auth list (ls) — workspaces + where each secret is stored; flags
+          secrets whose Keychain entry is gone. No secret material printed.
         auth test — calls Slack's auth.test with the resolved credentials.
 MANAGE  auth set-default <url> | auth remove <url>
 NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,

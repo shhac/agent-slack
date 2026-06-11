@@ -45,7 +45,7 @@ make build
 
 | Domain     | Commands |
 |------------|----------|
-| `auth`     | `whoami`, `test`, `add`, `set-default`, `remove`, `import-desktop`, `import-chrome`, `import-brave`, `import-firefox`, `parse-curl` |
+| `auth`     | `list` (`ls`), `test`, `add`, `set-default`, `remove`, `import-desktop`, `import-chrome`, `import-brave`, `import-firefox`, `parse-curl` |
 | `message`  | `get`, `list`, `send`, `edit`*, `delete`*, `react add/remove`, `scheduled list/cancel`* |
 | `channel`  | `list`, `new`*, `invite`*, `mark` |
 | `user`     | `list`, `get`, `dm-open` |

@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,30 +58,132 @@ func (e *testEnv) run(t *testing.T, stdin string, args ...string) (stdout, stder
 	return out.String(), errBuf.String(), err
 }
 
-func TestAuthAddStandardAndWhoami(t *testing.T) {
+func TestAuthAddStandardAndList(t *testing.T) {
 	env := newTestEnv(t)
 
 	if _, _, err := env.run(t, "", "auth", "add", "--workspace-url", "https://acme.slack.com", "--token", "xoxb-12345678901234"); err != nil {
 		t.Fatalf("auth add: %v", err)
 	}
 
-	out, _, err := env.run(t, "", "auth", "whoami")
+	out, _, err := env.run(t, "", "auth", "list")
 	if err != nil {
-		t.Fatalf("whoami: %v", err)
+		t.Fatalf("list: %v", err)
 	}
 	var who map[string]any
 	if err := json.Unmarshal([]byte(out), &who); err != nil {
-		t.Fatalf("whoami output not JSON: %v\n%s", err, out)
+		t.Fatalf("list output not JSON: %v\n%s", err, out)
 	}
 	if who["default_workspace_url"] != "https://acme.slack.com" {
 		t.Errorf("default workspace = %v", who["default_workspace_url"])
 	}
-	if strings.Contains(out, "xoxb-12345678901234") {
-		t.Errorf("whoami leaked the raw token:\n%s", out)
+	if strings.Contains(out, "xoxb") {
+		t.Errorf("list leaked token material:\n%s", out)
 	}
 	workspaces := who["workspaces"].([]any)
 	if len(workspaces) != 1 {
 		t.Fatalf("expected 1 workspace, got %d", len(workspaces))
+	}
+	secrets := workspaces[0].(map[string]any)["secrets"].(map[string]any)
+	if secrets["token"] != "keychain" {
+		t.Errorf("secrets = %v", secrets)
+	}
+
+	// ls and whoami are aliases for the same command.
+	for _, alias := range []string{"ls", "whoami"} {
+		aliasOut, _, err := env.run(t, "", "auth", alias)
+		if err != nil || aliasOut != out {
+			t.Errorf("auth %s: err %v, output diverged", alias, err)
+		}
+	}
+}
+
+// writeDanglingPlaceholders puts the store into the legacy-migration failure
+// shape: the file holds __KEYCHAIN__ placeholders with no Keychain entries
+// behind them.
+func writeDanglingPlaceholders(t *testing.T, env *testEnv, workspaceURL string) {
+	t.Helper()
+	creds := fmt.Sprintf(`{
+  "version": 1,
+  "default_workspace_url": %q,
+  "workspaces": [{
+    "workspace_url": %q,
+    "workspace_name": "Broken",
+    "auth": {"auth_type": "browser", "xoxc_token": "__KEYCHAIN__", "xoxd_cookie": "__KEYCHAIN__"}
+  }]
+}`, workspaceURL, workspaceURL)
+	if err := os.WriteFile(env.store.Path(), []byte(creds), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAuthListFlagsMissingKeychainSecrets(t *testing.T) {
+	env := newTestEnv(t)
+	writeDanglingPlaceholders(t, env, "https://broken.slack.com")
+
+	out, _, err := env.run(t, "", "auth", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := parseJSON(t, out)["workspaces"].([]any)[0].(map[string]any)
+	secrets := ws["secrets"].(map[string]any)
+	if secrets["xoxc"] != "missing" || secrets["xoxd"] != "missing" {
+		t.Errorf("secrets = %v", secrets)
+	}
+	if hint, _ := ws["hint"].(string); !strings.Contains(hint, "--form") || !strings.Contains(hint, "import-desktop") {
+		t.Errorf("hint = %v", ws["hint"])
+	}
+	if strings.Contains(out, "__KEYCHAIN__") || strings.Contains(out, "[redacted]") {
+		t.Errorf("placeholder leaked into display:\n%s", out)
+	}
+}
+
+func TestPlaceholderCredentialsNeverSentToSlack(t *testing.T) {
+	f := newCLIFixture(t)
+	writeDanglingPlaceholders(t, f.env, "https://broken.slack.com")
+
+	_, stderr, err := f.run(t, "auth", "test")
+	if err == nil {
+		t.Fatal("expected error for dangling placeholder credentials")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "human" || !strings.Contains(payload["error"].(string), "xoxc") {
+		t.Errorf("payload = %v", payload)
+	}
+	if calls := len(f.server.Calls()); calls != 0 {
+		t.Errorf("%d API calls happened with placeholder credentials", calls)
+	}
+}
+
+func TestPlaceholderBrowserCredsSelfHealFromDesktop(t *testing.T) {
+	f := newCLIFixture(t)
+	// The workspace URL is the mock host so the healed browser transport
+	// lands on the test server.
+	writeDanglingPlaceholders(t, f.env, f.url)
+	f.env.desktopExtract = func() (*auth.Extracted, error) {
+		return &auth.Extracted{
+			CookieD: "xoxd-fresh",
+			Teams:   []auth.Team{{URL: f.url, Name: "Healed", Token: "xoxc-fresh"}},
+		}, nil
+	}
+	f.server.HandleBody("auth.test", map[string]any{"ok": true, "user": "paul"})
+
+	out, stderr, err := f.env.run(t, "", "auth", "test")
+	if err != nil {
+		t.Fatalf("err %v, stderr %s", err, stderr)
+	}
+	if !strings.Contains(stderr, "refreshed from Slack Desktop") {
+		t.Errorf("stderr = %q, expected a refresh notice", stderr)
+	}
+	if parseJSON(t, out)["user"] != "paul" {
+		t.Errorf("out = %s", out)
+	}
+	if got := f.server.CallsFor("auth.test")[0].Params.Get("token"); got != "xoxc-fresh" {
+		t.Errorf("token sent = %q, want the healed token (never the placeholder)", got)
+	}
+	// The heal persisted, so the next run needs no extraction.
+	ws, err := f.env.store.Resolve("")
+	if err != nil || ws.Auth.XOXC != "xoxc-fresh" || ws.Auth.XOXD != "xoxd-fresh" {
+		t.Errorf("persisted auth = %+v, err %v", ws.Auth, err)
 	}
 }
 

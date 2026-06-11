@@ -14,7 +14,7 @@ boundaries. It mirrors the conventions of the sibling `agent-*` CLIs
   `--full`), error formatting, command registration.
 - `usage.go`: the LLM-optimized `usage` overview command, plus per-domain
   `<domain> usage` pages as command families land (see `cli-design.md`).
-- `auth.go`: credential import, `whoami`, `test`. Delegates secret storage to
+- `auth.go`: credential import, `list`, `test`. Delegates secret storage to
   `internal/credential`.
 - `message.go`, `channel.go`, `user.go`, `search.go`, `workflow.go`,
   `canvas.go`, `unreads.go`, `later.go`, `file.go`, `api.go`: resource
@@ -75,7 +75,7 @@ SQLite via `modernc.org/sqlite` + Safe Storage password from the Keychain),
 
 The `auth` CLI commands (`internal/cli/auth.go`) are import-only:
 `import-desktop`, `import-chrome`, `import-brave`, `import-firefox`,
-`parse-curl`, plus `whoami`, `add`, `set-default`, `remove`. The store is
+`parse-curl`, plus `list`, `add`, `set-default`, `remove`. The store is
 behind a `newStore` seam so CLI tests run against a temp file + in-memory
 Keychain. (Windows Slack Desktop DPAPI cookie decryption is not yet ported.)
 

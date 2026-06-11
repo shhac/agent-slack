@@ -21,7 +21,7 @@ func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(authCmd)
 	handleUnknownSubcommand(authCmd)
 
-	registerAuthWhoami(authCmd, globals)
+	registerAuthList(authCmd, globals)
 	registerAuthTest(authCmd, globals)
 	registerAuthImport(authCmd, globals, "import-desktop",
 		"Import xoxc tokens + the d cookie from Slack Desktop (no need to quit Slack)",
@@ -92,10 +92,11 @@ func saveTeams(store *credential.Store, teams []auth.Team, cookieD string, sourc
 	return summary, nil
 }
 
-func registerAuthWhoami(parent *cobra.Command, globals *GlobalFlags) {
+func registerAuthList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
-		Use:   "whoami",
-		Short: "Show configured workspaces and token sources (secrets redacted)",
+		Use:     "list",
+		Aliases: []string{"ls", "whoami"},
+		Short:   "List configured workspaces and where each secret is stored (no secret material)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := globals.newStore()
 			if err != nil {
@@ -105,18 +106,20 @@ func registerAuthWhoami(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			statuses, err := store.SecretStatuses()
+			if err != nil {
+				return err
+			}
 			workspaces := make([]map[string]any, 0, len(creds.Workspaces))
 			for _, w := range creds.Workspaces {
 				entry := map[string]any{
 					"workspace_url":  w.URL,
 					"workspace_name": w.Name,
 					"auth_type":      string(w.Auth.Type),
+					"secrets":        statuses[w.URL],
 				}
-				if w.Auth.Type == credential.AuthStandard {
-					entry["token"] = credential.Redact(w.Auth.Token)
-				} else {
-					entry["token"] = credential.Redact(w.Auth.XOXC)
-					entry["cookie_d"] = credential.Redact(w.Auth.XOXD)
+				if missing := credential.MissingSecrets(w); len(missing) > 0 {
+					entry["hint"] = "secret missing from the Keychain; re-run 'agent-slack auth import-desktop' or 'agent-slack auth add --workspace-url " + w.URL + " --form'"
 				}
 				workspaces = append(workspaces, entry)
 			}

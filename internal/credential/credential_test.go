@@ -223,14 +223,62 @@ func TestSavedFileShape(t *testing.T) {
 	}
 }
 
-func TestRedact(t *testing.T) {
-	if got := Redact("xoxc-1234567890abcdef"); got != "xoxc-1…cdef" {
-		t.Errorf("Redact long = %q", got)
+func TestSecretStatusesAndMissingSecrets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	kc := NewMemoryKeychain()
+	s := NewWithStore(path, kc)
+
+	if err := s.UpsertMany([]Workspace{
+		{URL: "https://acme.slack.com", Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-a", XOXD: "xoxd-a"}},
+		{URL: "https://globex.slack.com", Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-g", XOXD: "xoxd-a"}},
+	}); err != nil {
+		t.Fatal(err)
 	}
-	if got := Redact("short"); got != "[redacted]" {
-		t.Errorf("Redact short = %q, want [redacted]", got)
+	// Orphan globex's placeholder — the legacy-migration failure shape.
+	kc.Delete(xoxcAccount("https://globex.slack.com"))
+
+	statuses, err := s.SecretStatuses()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := Redact(""); got != "" {
-		t.Errorf("Redact empty = %q", got)
+	acme, globex := statuses["https://acme.slack.com"], statuses["https://globex.slack.com"]
+	if acme["xoxc"] != SecretInKeychain || acme["xoxd"] != SecretInKeychain {
+		t.Errorf("acme = %v", acme)
+	}
+	if globex["xoxc"] != SecretMissing || globex["xoxd"] != SecretInKeychain {
+		t.Errorf("globex = %v", globex)
+	}
+
+	creds, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range creds.Workspaces {
+		missing := MissingSecrets(w)
+		if w.URL == "https://globex.slack.com" {
+			if len(missing) != 1 || missing[0] != "xoxc" {
+				t.Errorf("globex missing = %v", missing)
+			}
+		} else if len(missing) != 0 {
+			t.Errorf("%s missing = %v", w.URL, missing)
+		}
+	}
+}
+
+func TestSecretStatusesFileFallback(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	s := NewWithStore(path, noopKeychain{})
+	if _, err := s.Upsert(Workspace{
+		URL:  "https://acme.slack.com",
+		Auth: Auth{Type: AuthStandard, Token: "xoxb-plain"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	statuses, err := s.SecretStatuses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := statuses["https://acme.slack.com"]["token"]; got != SecretInFile {
+		t.Errorf("token status = %q, want file", got)
 	}
 }

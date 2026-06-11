@@ -27,7 +27,7 @@ global persistent flags (TS re-declared `--workspace` per command).
 
 | Command | Key flags | Gate | Notes |
 |---|---|---|---|
-| `auth whoami` | | | implemented |
+| `auth list` (alias `ls`, `whoami`; was TS `whoami`) | | | implemented |
 | `auth test` | | | calls `auth.test`; lands with read commands |
 | `auth add / set-default / remove / import-* / parse-curl` | | | implemented |
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve-users`, `--refresh-users`, `--no-download` | | thread summary included; files auto-downloaded |
