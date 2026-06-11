@@ -175,27 +175,15 @@ func FetchChannelHistory(ctx context.Context, c *Client, opts HistoryOptions) ([
 		pageLimit = 200
 	}
 
+	params := map[string]any{"channel": opts.ChannelID, "limit": pageLimit}
+	if opts.Oldest != "" {
+		params["oldest"] = opts.Oldest
+	}
+	if opts.IncludeReactions || hasReactionFilters {
+		params["include_all_metadata"] = true
+	}
 	var out []render.MessageSummary
-	cursorLatest := opts.Latest
-	for {
-		params := map[string]any{"channel": opts.ChannelID, "limit": pageLimit}
-		if cursorLatest != "" {
-			params["latest"] = cursorLatest
-		}
-		if opts.Oldest != "" {
-			params["oldest"] = opts.Oldest
-		}
-		if opts.IncludeReactions || hasReactionFilters {
-			params["include_all_metadata"] = true
-		}
-		resp, err := c.API(ctx, "conversations.history", params)
-		if err != nil {
-			return nil, err
-		}
-		messages := recItems(getArr(resp, "messages"))
-		if len(messages) == 0 {
-			break
-		}
+	err := eachHistoryPage(ctx, c, params, opts.Latest, func(messages []map[string]any, resp map[string]any) (bool, error) {
 		for _, m := range messages {
 			if hasReactionFilters && !passesReactionNameFilters(m, opts.WithReactions, opts.WithoutReactions) {
 				continue
@@ -207,18 +195,13 @@ func FetchChannelHistory(ctx context.Context, c *Client, opts HistoryOptions) ([
 				break
 			}
 		}
-
 		if len(out) >= limit || !hasReactionFilters {
-			break
+			return false, nil
 		}
-		if !getBool(resp, "has_more") {
-			break
-		}
-		nextLatest := getStr(messages[len(messages)-1], "ts")
-		if nextLatest == "" || nextLatest == cursorLatest {
-			break
-		}
-		cursorLatest = nextLatest
+		return getBool(resp, "has_more"), nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	sortChronological(out)

@@ -99,6 +99,14 @@ type CompactAuthor struct {
 	BotID  string `json:"bot_id,omitempty"`
 }
 
+// AuthorRef builds the author reference, or nil when neither id is known.
+func AuthorRef(userID, botID string) *CompactAuthor {
+	if userID == "" && botID == "" {
+		return nil
+	}
+	return &CompactAuthor{UserID: userID, BotID: botID}
+}
+
 type CompactFile struct {
 	Name     string `json:"name,omitempty"`
 	Mimetype string `json:"mimetype,omitempty"`
@@ -176,10 +184,7 @@ func ToCompactMessage(msg MessageSummary, opts CompactOptions) CompactMessage {
 		threadTS = msg.TS
 	}
 
-	var author *CompactAuthor
-	if msg.User != "" || msg.BotID != "" {
-		author = &CompactAuthor{UserID: msg.User, BotID: msg.BotID}
-	}
+	author := AuthorRef(msg.User, msg.BotID)
 
 	var reactions []CompactReaction
 	if opts.IncludeReactions {

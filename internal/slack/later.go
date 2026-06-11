@@ -167,16 +167,30 @@ func fetchLaterMessage(ctx context.Context, c *Client, channelID, ts string, max
 	if msg == nil {
 		return nil
 	}
-	content := render.TruncateBody(render.RenderMessageContent(msg), maxBodyChars)
-	out := &LaterMessage{
-		Content:    content,
-		ThreadTS:   getStr(msg, "thread_ts"),
-		ReplyCount: int(getNum(msg, "reply_count")),
+	inline := toInlineMessage(msg, maxBodyChars)
+	return &LaterMessage{
+		Author:     inline.Author,
+		Content:    inline.Content,
+		ThreadTS:   inline.ThreadTS,
+		ReplyCount: inline.ReplyCount,
 	}
-	if user, bot := getStr(msg, "user"), getStr(msg, "bot_id"); user != "" || bot != "" {
-		out.Author = &render.CompactAuthor{UserID: user, BotID: bot}
+}
+
+// inlineMessage is the compact inline projection Later and Unreads share.
+type inlineMessage struct {
+	Author     *render.CompactAuthor
+	Content    string
+	ThreadTS   string
+	ReplyCount int
+}
+
+func toInlineMessage(m map[string]any, maxBodyChars int) inlineMessage {
+	return inlineMessage{
+		Author:     render.AuthorRef(getStr(m, "user"), getStr(m, "bot_id")),
+		Content:    render.TruncateBody(render.RenderMessageContent(m), maxBodyChars),
+		ThreadTS:   getStr(m, "thread_ts"),
+		ReplyCount: int(getNum(m, "reply_count")),
 	}
-	return out
 }
 
 // ParseLaterState normalizes the --state flag's aliases.

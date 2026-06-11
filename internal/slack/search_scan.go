@@ -80,30 +80,14 @@ func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions
 	var matched []render.MessageSummary
 	var out []SearchMessageItem
 
-channels:
+	full := false
 	for _, channelID := range channelIDs {
-		cursorLatest := ""
-		for {
-			params := map[string]any{"channel": channelID, "limit": 200}
-			if cursorLatest != "" {
-				params["latest"] = cursorLatest
-			}
-			resp, herr := c.API(ctx, "conversations.history", params)
-			if herr != nil {
-				return nil, nil, herr
-			}
-			messages := recItems(getArr(resp, "messages"))
-			if len(messages) == 0 {
-				break
-			}
-
-			pastOldest := false
+		err := eachHistoryPage(ctx, c, map[string]any{"channel": channelID, "limit": 200}, "", func(messages []map[string]any, _ map[string]any) (bool, error) {
 			for _, m := range messages {
 				summary := SummaryFromRaw(channelID, m)
-				keep, stop := filter.match(summary)
-				if stop {
-					pastOldest = true
-					break
+				keep, pastOldest := filter.match(summary)
+				if pastOldest {
+					return false, nil
 				}
 				if !keep {
 					continue
@@ -115,18 +99,17 @@ channels:
 				matched = append(matched, summary)
 				out = append(out, hit)
 				if len(out) >= limit {
-					break channels
+					full = true
+					return false, nil
 				}
 			}
-			if pastOldest {
-				break
-			}
-
-			next := getStr(messages[len(messages)-1], "ts")
-			if next == "" || next == cursorLatest {
-				break
-			}
-			cursorLatest = next
+			return true, nil
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		if full {
+			break
 		}
 	}
 

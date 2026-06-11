@@ -146,36 +146,17 @@ func hydrateUnreadChannel(ctx context.Context, c *Client, raw map[string]any, ch
 	// counterpart's display name). Best effort.
 	if info, err := c.API(ctx, "conversations.info", map[string]any{"channel": channelID}); err == nil {
 		if ch := getRec(info, "channel"); ch != nil {
-			out.ChannelName = getStr(ch, "name")
-			if out.ChannelName == "" {
-				out.ChannelName = getStr(ch, "name_normalized")
-			}
-			switch {
-			case getBool(ch, "is_im"):
-				out.ChannelType = "dm"
-				if out.ChannelName == "" {
-					if userID := getStr(ch, "user"); userID != "" {
-						out.ChannelName = dmCounterpartName(ctx, c, userID)
-					}
+			out.ChannelName, out.ChannelType = channelIdentity(ch)
+			if out.ChannelType == "dm" && out.ChannelName == "" {
+				if userID := getStr(ch, "user"); userID != "" {
+					out.ChannelName = dmCounterpartName(ctx, c, userID)
 				}
-			case getBool(ch, "is_mpim"):
-				out.ChannelType = "mpim"
-			default:
-				out.ChannelType = "channel"
 			}
 		}
 	}
 
-	hasCount := false
-	if n, ok := raw["unread_count_display"].(float64); ok {
-		out.UnreadCount = int(n)
-		hasCount = true
-	} else if n, ok := raw["unread_count"].(float64); ok {
-		out.UnreadCount = int(n)
-		hasCount = true
-	} else {
-		out.UnreadCount = 1
-	}
+	count, hasCount := rawUnreadCount(raw)
+	out.UnreadCount = count
 
 	lastRead := getStr(raw, "last_read")
 	if !opts.includeMessages || lastRead == "" {
@@ -209,17 +190,14 @@ func hydrateUnreadChannel(ctx context.Context, c *Client, raw map[string]any, ch
 	}
 
 	for _, m := range msgs {
-		content := render.TruncateBody(render.RenderMessageContent(m), opts.maxBodyChars)
-		um := UnreadMessage{
+		inline := toInlineMessage(m, opts.maxBodyChars)
+		out.Messages = append(out.Messages, UnreadMessage{
 			TS:         getStr(m, "ts"),
-			Content:    content,
-			ThreadTS:   getStr(m, "thread_ts"),
-			ReplyCount: int(getNum(m, "reply_count")),
-		}
-		if user, bot := getStr(m, "user"), getStr(m, "bot_id"); user != "" || bot != "" {
-			um.Author = &render.CompactAuthor{UserID: user, BotID: bot}
-		}
-		out.Messages = append(out.Messages, um)
+			Author:     inline.Author,
+			Content:    inline.Content,
+			ThreadTS:   inline.ThreadTS,
+			ReplyCount: inline.ReplyCount,
+		})
 	}
 	sort.SliceStable(out.Messages, func(i, j int) bool {
 		a, _ := strconv.ParseFloat(out.Messages[i].TS, 64)
@@ -227,6 +205,37 @@ func hydrateUnreadChannel(ctx context.Context, c *Client, raw map[string]any, ch
 		return a < b
 	})
 	return out
+}
+
+// channelIdentity derives a conversation's display name and corrected type
+// from a raw conversations.info channel record. Pure: the DM-counterpart
+// lookup (which needs another API call) stays with the caller.
+func channelIdentity(ch map[string]any) (name, chType string) {
+	name = getStr(ch, "name")
+	if name == "" {
+		name = getStr(ch, "name_normalized")
+	}
+	switch {
+	case getBool(ch, "is_im"):
+		return name, "dm"
+	case getBool(ch, "is_mpim"):
+		return name, "mpim"
+	default:
+		return name, "channel"
+	}
+}
+
+// rawUnreadCount reads the unread count from a client.counts entry: Slack
+// sends unread_count_display, or unread_count, or neither (hasCount=false →
+// the caller infers from fetched messages, defaulting to 1).
+func rawUnreadCount(raw map[string]any) (count int, hasCount bool) {
+	if n, ok := raw["unread_count_display"].(float64); ok {
+		return int(n), true
+	}
+	if n, ok := raw["unread_count"].(float64); ok {
+		return int(n), true
+	}
+	return 1, false
 }
 
 func dmCounterpartName(ctx context.Context, c *Client, userID string) string {
