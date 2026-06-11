@@ -25,8 +25,8 @@ output contract, and credential handling are shared.
   (`agent` | `human` | `retry`) and a `hint`.
 - **Keychain-first credentials**: browser (`xoxc`/`xoxd`) and bot (`xoxb`/`xoxp`)
   tokens stored in the macOS Keychain; secrets never printed.
-- **Mutation safety**: state-changing commands require `--yes`; `message draft`
-  opens a human-in-the-loop editor.
+- **Mutation safety**: state-changing commands require `--yes` as the
+  human-in-the-loop gate.
 - **Multi-workspace**: disambiguate with `--workspace <url-or-substring>`.
 
 ## Quick Start
@@ -42,7 +42,7 @@ make build
 | Domain     | Commands |
 |------------|----------|
 | `auth`     | `whoami`, `test`, `import-desktop`, `import-chrome`, `parse-curl` |
-| `message`  | `get`, `list`, `send`, `edit`, `delete`, `draft`, `react`, `scheduled` |
+| `message`  | `get`, `list`, `send`, `edit`, `delete`, `react`, `scheduled` |
 | `channel`  | `list`, `new`, `invite` |
 | `user`     | `list`, `get` |
 | `search`   | `all`, `messages`, `files` |

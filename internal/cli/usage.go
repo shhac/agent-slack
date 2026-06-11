@@ -15,7 +15,7 @@ agent-slack (see design-docs/initial-design.md for the full plan).
 
 Planned domains:
   auth       Credential import and verification (browser xoxc/xoxd or bot tokens)
-  message    get | list | send | edit | delete | draft | react | scheduled
+  message    get | list | send | edit | delete | react | scheduled
   channel    list | new | invite
   user       list | get
   search     all | messages | files
@@ -30,8 +30,8 @@ Output contract:
   Tokens and secrets are never printed.
 
 Safety:
-  Mutations (send, edit, delete, invite, run) require --yes.
-  Prefer 'message draft' to put a human in the loop before sending.
+  Mutations (send, edit, delete, invite, run) require --yes; that gate is the
+  human-in-the-loop control.
 `
 
 func registerUsage(parent *cobra.Command) {

@@ -55,7 +55,35 @@ All collapse to one Markdown string. Forwarded content: extract
   family convention (`~/.config/agent-slack/`); decide whether to read the old
   path for migration.
 - macOS Keychain stores tokens; file stores `"__KEYCHAIN__"` placeholder.
+  Keychain service is `app.paulie.agent-slack` (family convention, per `lin`).
 - Zod-validated schema in TS (version, workspaces[], auth per workspace).
+- **Import-only** to start: no interactive setup; tokens arrive via the
+  `import-*` / `parse-curl` commands and env vars.
+
+## auth import-desktop (LevelDB)
+
+The TS path (`src/auth/desktop.ts`, `src/lib/leveldb-reader.ts`):
+
+- Reads Slack Desktop's `Local Storage/leveldb` (Chromium Local Storage) to find
+  `localConfig_v2` / `localConfig_v3` (or `reduxPersist:localConfig`), which
+  hold the `teams` map with per-workspace `xoxc` tokens.
+- The `xoxd` cookie comes from Slack Desktop's separate cookie store, not
+  LevelDB.
+- Snapshots the LevelDB dir to a temp location before reading, because a running
+  Slack Desktop holds the DB lock.
+
+Go port: use a pure-Go reader (`github.com/syndtr/goleveldb/leveldb`), no cgo.
+The `chrome`/`brave`/`firefox` import paths instead read the same
+`localConfig_v2/v3` from the browser's live `localStorage` via AppleScript /
+profile parsing — unchanged in spirit.
+
+## No draft editor
+
+The TS `message draft` command spins up a localhost server + browser WYSIWYG
+editor for a human to finish a message. This is dropped in the Go port: the tool
+is LLM-first and an agent never drives a browser UI. Do not port the draft
+server, its embedded HTML/JS, or the `message draft` command. Human-in-the-loop
+is the `--yes` gate on mutations.
 
 ## User resolution / caching
 

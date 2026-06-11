@@ -36,8 +36,10 @@ Mirrors the TS CLI exactly so existing agent prompts/skills transfer:
 
 - **auth**: `whoami`, `test`, `import-desktop`, `import-chrome`, `import-brave`,
   `import-firefox`, `parse-curl`
-- **message**: `get`, `list`, `send`, `edit`, `delete`, `draft`,
+- **message**: `get`, `list`, `send`, `edit`, `delete`,
   `react add|remove`, `scheduled list|cancel`
+  (the TS `message draft` browser editor is intentionally dropped — see
+  Decisions)
 - **channel**: `list`, `new`, `invite`
 - **user**: `list`, `get`
 - **search**: `all`, `messages`, `files`
@@ -69,9 +71,8 @@ parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
 
 - `message send|edit|delete`, `channel invite`, `workflow run` require `--yes`;
   without it they return a `fixable_by: human` error describing what would
-  happen.
-- `message draft` opens an ephemeral localhost WYSIWYG editor — nothing sends
-  until the human clicks send.
+  happen. This `--yes` gate is the human-in-the-loop control (there is no draft
+  editor).
 - Browser path retries 429 with exponential backoff (cap ~30s).
 
 ## Port order
@@ -87,9 +88,25 @@ parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
 6. **Auth import** paths (LevelDB / browser extraction) — most platform-specific,
    do last.
 
-## Open questions
+## Decisions
 
-- Draft editor: reuse the TS HTML/JS verbatim as an embedded asset, or rebuild?
-- LevelDB read in Go without cgo (pure-Go reader vs. shelling out)?
-- Keychain access: `zenity` is used elsewhere for input dialogs; decide whether
-  to add it here or keep auth import flag-only initially.
+- **No draft editor.** The TS `message draft` command opens a browser WYSIWYG
+  editor for a human to finish and send. This tool is LLM-first and an agent
+  will never drive a browser UI, so `message draft` is dropped entirely. The
+  human-in-the-loop safeguard is the `--yes` requirement on mutations, not a
+  draft step.
+- **Pure-Go LevelDB reader, no cgo.** `auth import-desktop` reads Slack
+  Desktop's Chromium *Local Storage* LevelDB to recover the `localConfig_v2`/`v3`
+  JSON containing workspace `xoxc` tokens (the `xoxd` cookie comes from a
+  separate cookies store). We read it with a pure-Go LevelDB reader
+  (`github.com/syndtr/goleveldb/leveldb`) rather than shelling out or using a
+  cgo binding — keeps the single-static-binary property. Snapshot the DB to a
+  temp dir before reading so a running Slack Desktop holding the lock doesn't
+  block us, matching the TS behavior.
+- **Auth is import-only to start.** No interactive setup dialogs (`zenity` is
+  not a dependency). Credentials arrive via the `import-*` / `parse-curl`
+  commands and env vars; secrets are written straight to the Keychain.
+- **Keychain naming follows the family.** Service name `app.paulie.agent-slack`
+  (matching `lin`'s `app.paulie.lin`); the account field is the per-workspace
+  key. macOS only via the `security` CLI; other platforms fall back to a
+  restricted-permission file.
