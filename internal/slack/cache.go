@@ -15,8 +15,10 @@ import (
 
 // The CLI cold-starts on every invocation, so resolutions that would otherwise
 // be re-paid each run (channel name → ID, user handle → ID, profiles, workflow
-// metadata) are persisted on disk, one JSON file per workspace per category:
-// <cacheDir>/<wshash>-<category>.json. Message bodies are never cached.
+// metadata) are persisted on disk, one JSON file per workspace per category
+// under a per-workspace directory: <cacheDir>/<wshash>/<category>.json. The
+// subdirectory groups a workspace's caches and makes per-workspace purge a
+// single rmdir. Message bodies are never cached.
 
 // CacheMode controls the read/write behavior of the resolution cache.
 type CacheMode int
@@ -123,7 +125,7 @@ func openCache[T any](c *Cache, category, workspaceURL string, ttl time.Duration
 	if key == "" {
 		return s
 	}
-	s.path = filepath.Join(c.Dir, key+"-"+category+".json")
+	s.path = filepath.Join(c.Dir, key, category+".json")
 
 	raw, err := os.ReadFile(s.path)
 	if err != nil {

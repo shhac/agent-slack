@@ -115,11 +115,11 @@ func TestResolveChannelNameDM(t *testing.T) {
 	server := mockslack.New()
 	server.HandleBody("conversations.info", map[string]any{
 		"ok":      true,
-		"channel": map[string]any{"id": "D1", "is_im": true, "user": "U1"},
+		"channel": map[string]any{"id": "D1", "is_im": true, "user": "U12345678"},
 	})
 	server.HandleBody("users.info", map[string]any{
 		"ok":   true,
-		"user": map[string]any{"id": "U1", "profile": map[string]any{"display_name": "paul"}},
+		"user": map[string]any{"id": "U12345678", "profile": map[string]any{"display_name": "paul"}},
 	})
 	c := newStandardClient(t, server)
 	if got := ResolveChannelName(context.Background(), c, "D1"); got != "paul" {

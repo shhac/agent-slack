@@ -153,9 +153,6 @@ func clientOptions(globals *GlobalFlags) []slack.Option {
 // buildCache assembles the per-invocation resolution cache from the global
 // flags and environment. This single helper feeds both client constructors.
 func buildCache(globals *GlobalFlags) *slack.Cache {
-	dir := appCacheDir()
-	cleanupLegacyUserCache(dir)
-
 	mode := slack.CacheNormal
 	switch {
 	case globals.NoCache || os.Getenv("AGENT_SLACK_NO_CACHE") != "":
@@ -163,19 +160,7 @@ func buildCache(globals *GlobalFlags) *slack.Cache {
 	case globals.RefreshCache:
 		mode = slack.CacheRefresh
 	}
-	return slack.NewCache(dir, mode, resolveCacheTTL(globals), nil)
-}
-
-// cleanupLegacyUserCache removes pre-rename user cache files
-// (users-cache-<hash>.json) left by older binaries. Best-effort.
-func cleanupLegacyUserCache(dir string) {
-	if dir == "" {
-		return
-	}
-	matches, _ := filepath.Glob(filepath.Join(dir, "users-cache-*.json"))
-	for _, m := range matches {
-		_ = os.Remove(m)
-	}
+	return slack.NewCache(appCacheDir(), mode, resolveCacheTTL(globals), nil)
 }
 
 // resolveCacheTTL builds the per-category TTL: built-in defaults, overridden by

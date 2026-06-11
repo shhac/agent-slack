@@ -39,7 +39,12 @@ func ResolveChannelID(ctx context.Context, c *Client, input string) (string, err
 			WithHint("pass #name, a channel name, or a channel ID (C…)")
 	}
 
+	if id, ok := c.cachedChannelID(name); ok {
+		return id, nil
+	}
+
 	if id := channelIDViaSearch(ctx, c, name); id != "" {
+		c.cacheChannelID(name, id)
 		return id, nil
 	}
 
@@ -50,6 +55,9 @@ func ResolveChannelID(ctx context.Context, c *Client, input string) (string, err
 		"types":            "public_channel,private_channel",
 	}, func(resp map[string]any) (bool, error) {
 		for _, ch := range recItems(getArr(resp, "channels")) {
+			// Opportunistically cache every channel object we page past, so
+			// later name/ID lookups skip this scan entirely.
+			c.cacheChannel(ToCompactChannel(ch))
 			if getStr(ch, "name") == name && getStr(ch, "id") != "" {
 				found = getStr(ch, "id")
 				return false, nil
@@ -64,6 +72,7 @@ func ResolveChannelID(ctx context.Context, c *Client, input string) (string, err
 		return "", agenterrors.Newf(agenterrors.FixableByAgent, "could not resolve channel name: #%s", name).
 			WithHint("check the name or pass a channel ID (C…) — 'agent-slack channel list' shows conversations")
 	}
+	c.cacheChannelID(name, found)
 	return found, nil
 }
 
@@ -89,36 +98,39 @@ func channelIDViaSearch(ctx context.Context, c *Client, name string) string {
 // failure returns the raw ID rather than an error, because callers only use
 // this to decorate output.
 func ResolveChannelName(ctx context.Context, c *Client, channelID string) string {
-	resp, err := c.API(ctx, "conversations.info", map[string]any{"channel": channelID})
-	if err != nil {
-		return channelID
-	}
-	channel := getRec(resp, "channel")
-	if channel == nil {
-		return channelID
-	}
-
-	if getBool(channel, "is_im") {
-		userID := getStr(channel, "user")
-		if userID == "" {
-			return channelID
-		}
-		userResp, err := c.API(ctx, "users.info", map[string]any{"user": userID})
+	ch, ok := c.cachedChannel(channelID)
+	if !ok {
+		resp, err := c.API(ctx, "conversations.info", map[string]any{"channel": channelID})
 		if err != nil {
 			return channelID
 		}
-		profile := getRec(getRec(userResp, "user"), "profile")
-		if displayName := getStr(profile, "display_name"); displayName != "" {
-			return displayName
+		channel := getRec(resp, "channel")
+		if channel == nil {
+			return channelID
 		}
-		if realName := getStr(profile, "real_name"); realName != "" {
-			return realName
+		ch = ToCompactChannel(channel)
+		c.cacheChannel(ch)
+	}
+
+	if ch.IsIM {
+		if ch.User == "" {
+			return channelID
+		}
+		// The counterpart's display name routes through the (cached) user store.
+		users := ResolveUsersByID(ctx, c, []string{ch.User}, false)
+		if u, found := users[ch.User]; found {
+			if u.DisplayName != "" {
+				return u.DisplayName
+			}
+			if u.RealName != "" {
+				return u.RealName
+			}
 		}
 		return channelID
 	}
 
-	if name := getStr(channel, "name"); name != "" {
-		return name
+	if ch.Name != "" {
+		return ch.Name
 	}
 	return channelID
 }
