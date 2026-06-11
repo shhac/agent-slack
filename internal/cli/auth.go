@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"io"
 	"strings"
 
@@ -27,9 +26,15 @@ func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
 
 	registerAuthWhoami(authCmd, globals)
 	registerAuthTest(authCmd, globals)
-	registerAuthImportDesktop(authCmd, globals)
-	registerAuthImportBrowser(authCmd, globals, "import-chrome", "Google Chrome", auth.ExtractFromChrome)
-	registerAuthImportBrowser(authCmd, globals, "import-brave", "Brave", auth.ExtractFromBrave)
+	registerAuthImport(authCmd, globals, "import-desktop",
+		"Import xoxc tokens + the d cookie from Slack Desktop (no need to quit Slack)",
+		auth.ExtractFromSlackDesktop)
+	registerAuthImport(authCmd, globals, "import-chrome",
+		"Import xoxc/xoxd from a logged-in Slack tab in Google Chrome (macOS)",
+		auth.ExtractFromChrome)
+	registerAuthImport(authCmd, globals, "import-brave",
+		"Import xoxc/xoxd from a logged-in Slack tab in Brave (macOS)",
+		auth.ExtractFromBrave)
 	registerAuthImportFirefox(authCmd, globals)
 	registerAuthParseCurl(authCmd, globals)
 	registerAuthAdd(authCmd, globals)
@@ -107,11 +112,6 @@ func registerAuthWhoami(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			format, err := resolveFormat(globals, output.FormatJSON)
-			if err != nil {
-				return err
-			}
-
 			workspaces := make([]map[string]any, 0, len(creds.Workspaces))
 			for _, w := range creds.Workspaces {
 				entry := map[string]any{
@@ -127,68 +127,46 @@ func registerAuthWhoami(parent *cobra.Command, globals *GlobalFlags) {
 				}
 				workspaces = append(workspaces, entry)
 			}
-			output.Print(map[string]any{
+			return printSingle(globals, map[string]any{
 				"default_workspace_url": creds.DefaultWorkspaceURL,
 				"workspaces":            workspaces,
 				"credentials_path":      store.Path(),
-			}, format, true)
-			return nil
+			})
 		},
 	}
 	parent.AddCommand(cmd)
 }
 
-func registerAuthImportDesktop(parent *cobra.Command, globals *GlobalFlags) {
-	cmd := &cobra.Command{
-		Use:   "import-desktop",
-		Short: "Import xoxc tokens + the d cookie from Slack Desktop (no need to quit Slack)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := newStore()
-			if err != nil {
-				return err
-			}
-			extracted, err := auth.ExtractFromSlackDesktop()
-			if err != nil {
-				return err
-			}
-			format, err := resolveFormat(globals, output.FormatJSON)
-			if err != nil {
-				return err
-			}
-			summary, err := saveTeams(store, extracted.Teams, extracted.CookieD, extracted.Source)
-			if err != nil {
-				return err
-			}
-			output.Print(summary, format, true)
-			return nil
-		},
+// runAuthImport is the shared import pipeline. The output format is
+// validated after extraction but before anything persists, so a bad --format
+// never half-imports credentials.
+func runAuthImport(globals *GlobalFlags, extract func() (*auth.Extracted, error)) error {
+	store, err := newStore()
+	if err != nil {
+		return err
 	}
-	parent.AddCommand(cmd)
+	extracted, err := extract()
+	if err != nil {
+		return err
+	}
+	format, err := resolveFormat(globals, output.FormatJSON)
+	if err != nil {
+		return err
+	}
+	summary, err := saveTeams(store, extracted.Teams, extracted.CookieD, extracted.Source)
+	if err != nil {
+		return err
+	}
+	output.Print(summary, format, true)
+	return nil
 }
 
-func registerAuthImportBrowser(parent *cobra.Command, globals *GlobalFlags, use, browser string, extract func() (*auth.Extracted, error)) {
+func registerAuthImport(parent *cobra.Command, globals *GlobalFlags, use, short string, extract func() (*auth.Extracted, error)) {
 	cmd := &cobra.Command{
 		Use:   use,
-		Short: fmt.Sprintf("Import xoxc/xoxd from a logged-in Slack tab in %s (macOS)", browser),
+		Short: short,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := newStore()
-			if err != nil {
-				return err
-			}
-			extracted, err := extract()
-			if err != nil {
-				return err
-			}
-			format, err := resolveFormat(globals, output.FormatJSON)
-			if err != nil {
-				return err
-			}
-			summary, err := saveTeams(store, extracted.Teams, extracted.CookieD, extracted.Source)
-			if err != nil {
-				return err
-			}
-			output.Print(summary, format, true)
-			return nil
+			return runAuthImport(globals, extract)
 		},
 	}
 	parent.AddCommand(cmd)
@@ -200,24 +178,9 @@ func registerAuthImportFirefox(parent *cobra.Command, globals *GlobalFlags) {
 		Use:   "import-firefox",
 		Short: "Import xoxc/xoxd from a Firefox profile (macOS/Linux)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := newStore()
-			if err != nil {
-				return err
-			}
-			extracted, err := auth.ExtractFromFirefox(profile)
-			if err != nil {
-				return err
-			}
-			format, err := resolveFormat(globals, output.FormatJSON)
-			if err != nil {
-				return err
-			}
-			summary, err := saveTeams(store, extracted.Teams, extracted.CookieD, extracted.Source)
-			if err != nil {
-				return err
-			}
-			output.Print(summary, format, true)
-			return nil
+			return runAuthImport(globals, func() (*auth.Extracted, error) {
+				return auth.ExtractFromFirefox(profile)
+			})
 		},
 	}
 	cmd.Flags().StringVar(&profile, "profile", "", "Firefox profile name, directory, or path substring to select")
@@ -229,31 +192,20 @@ func registerAuthParseCurl(parent *cobra.Command, globals *GlobalFlags) {
 		Use:   "parse-curl",
 		Short: "Read a Slack API request pasted as cURL on stdin and import its xoxc/xoxd",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			store, err := newStore()
-			if err != nil {
-				return err
-			}
-			raw, err := io.ReadAll(cmd.InOrStdin())
-			if err != nil {
-				return err
-			}
-			if strings.TrimSpace(string(raw)) == "" {
-				return agenterrors.New("expected a cURL command on stdin", agenterrors.FixableByAgent)
-			}
-			team, cookieD, err := auth.ParseCurl(string(raw))
-			if err != nil {
-				return err
-			}
-			format, err := resolveFormat(globals, output.FormatJSON)
-			if err != nil {
-				return err
-			}
-			summary, err := saveTeams(store, []auth.Team{team}, cookieD, nil)
-			if err != nil {
-				return err
-			}
-			output.Print(summary, format, true)
-			return nil
+			return runAuthImport(globals, func() (*auth.Extracted, error) {
+				raw, err := io.ReadAll(cmd.InOrStdin())
+				if err != nil {
+					return nil, err
+				}
+				if strings.TrimSpace(string(raw)) == "" {
+					return nil, agenterrors.New("expected a cURL command on stdin", agenterrors.FixableByAgent)
+				}
+				team, cookieD, err := auth.ParseCurl(string(raw))
+				if err != nil {
+					return nil, err
+				}
+				return &auth.Extracted{CookieD: cookieD, Teams: []auth.Team{team}}, nil
+			})
 		},
 	}
 	parent.AddCommand(cmd)
@@ -282,12 +234,7 @@ func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			format, err := resolveFormat(globals, output.FormatJSON)
-			if err != nil {
-				return err
-			}
-			output.Print(map[string]any{"saved": saved.URL, "auth_type": string(saved.Auth.Type)}, format, true)
-			return nil
+			return printSingle(globals, map[string]any{"saved": saved.URL, "auth_type": string(saved.Auth.Type)})
 		},
 	}
 	cmd.Flags().StringVar(&workspaceURL, "workspace-url", "", "Workspace URL, e.g. https://myteam.slack.com")
@@ -311,12 +258,7 @@ func registerAuthSetDefault(parent *cobra.Command, globals *GlobalFlags) {
 			if err := store.SetDefault(args[0]); err != nil {
 				return err
 			}
-			format, err := resolveFormat(globals, output.FormatJSON)
-			if err != nil {
-				return err
-			}
-			output.Print(map[string]any{"default_workspace_url": args[0]}, format, true)
-			return nil
+			return printSingle(globals, map[string]any{"default_workspace_url": args[0]})
 		},
 	}
 	parent.AddCommand(cmd)
@@ -335,12 +277,7 @@ func registerAuthRemove(parent *cobra.Command, globals *GlobalFlags) {
 			if err := store.Remove(args[0]); err != nil {
 				return err
 			}
-			format, err := resolveFormat(globals, output.FormatJSON)
-			if err != nil {
-				return err
-			}
-			output.Print(map[string]any{"removed": args[0]}, format, true)
-			return nil
+			return printSingle(globals, map[string]any{"removed": args[0]})
 		},
 	}
 	parent.AddCommand(cmd)
