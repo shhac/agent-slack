@@ -119,6 +119,37 @@ metadata-only unless asked.**
 - Failed downloads surface an `error` field on the file entry, never abort
   the command (port-notes rule).
 
+## Resolution cache
+
+**Decision: persist repeated resolutions per workspace; never message bodies.**
+The CLI cold-starts each invocation, so resolutions are re-paid every run.
+
+- **Storage: JSON files**, one per workspace per category, under a
+  per-workspace subdir `<cacheDir>/<wshash>/<category>.json`. Chosen over
+  SQLite: these are tiny key→value maps, JSON has no cross-process lock
+  contention (agents fan out), needs no schema/migration, and stays
+  human-debuggable. (`modernc.org/sqlite` stays in the binary for cookie DBs
+  only.) The subdir groups a workspace's caches and makes per-workspace purge
+  one rmdir.
+- **Categories + default TTL**: `users` ID→profile (24h); `handles`
+  @handle/email→ID, `channel-names` name→ID, `channels` ID→meta,
+  `workflow-triggers` Ft→preview, `workflow-schemas` Wf→schema (1h each).
+  Stable data lasts a day; volatile name/membership mappings an hour.
+- **Generic batch cache** (`internal/slack/cache.go`): load-once/save-once
+  snapshots with a per-T validator (the user batch resolver would otherwise
+  regress into per-key file I/O + a write race). Best-effort throughout: a
+  cache must never fail a command.
+- **Wired via the Client** (`WithCache`, built once in `clientOptions`), so the
+  many resolvers read `c.cache` + `c.currentAuth().WorkspaceURL` with no
+  signature churn. Known blind spot: a standard-token env client without
+  `SLACK_WORKSPACE_URL` has no host → caching no-ops (same as before).
+- **Controls**: `--no-cache` (no read/write; `AGENT_SLACK_NO_CACHE`),
+  `--refresh-cache` (skip reads, still write), `--cache-ttl` /
+  `AGENT_SLACK_CACHE_TTL[_<CATEGORY>]` (0 disables reads). `--refresh-users`
+  stays per-command (it also implies `--resolve-users`) and ORs with refresh.
+- **Never cache**: message bodies, rejections (a transient `trigger_not_found`
+  must not stick), or the side-effecting `workflow run` bookmark resolution.
+
 ## Credentials: resolution and refresh
 
 - Resolution order per invocation (unchanged): `--workspace` flag → env

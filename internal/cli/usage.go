@@ -45,6 +45,13 @@ CHAINING
   'file download'. --resolve-users expands U… ids (cached 24h;
   --refresh-users busts the cache). --include-reactions opts into reactions.
 
+CACHE
+  Awkward resolutions (channel name→ID, @handle→ID, profiles, workflow
+  metadata) are cached per workspace under ~/.cache/app.paulie.agent-slack/.
+  Never message bodies. --no-cache bypasses entirely; --refresh-cache
+  re-fetches but still writes; --cache-ttl <dur> (or per-category
+  AGENT_SLACK_CACHE_TTL[_<CATEGORY>]) tunes freshness.
+
 ERRORS
   JSON on stderr: {"error","fixable_by","hint"}. fixable_by=agent → fix the
   input and retry; human → credentials/permissions need a person;

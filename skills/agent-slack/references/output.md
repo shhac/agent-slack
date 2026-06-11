@@ -70,3 +70,32 @@ a 24h TTL (`--refresh-users` bypasses it).
 $XDG_CACHE_HOME/app.paulie.agent-slack/downloads/   # if XDG_CACHE_HOME set
 ~/.cache/app.paulie.agent-slack/downloads/          # otherwise
 ```
+
+## Resolution cache
+
+Lookups that would otherwise be re-paid on every cold start are cached per
+workspace under `<cacheDir>/<wshash>/<category>.json` (never message bodies):
+
+| category | what | default TTL |
+|---|---|---|
+| `users` | user ID → profile | 24h |
+| `handles` | @handle / email → user ID | 1h |
+| `channel-names` | channel name → ID | 1h |
+| `channels` | channel ID → metadata | 1h |
+| `workflow-triggers` | `Ft…` → preview (workflow id, shortcut) | 1h |
+| `workflow-schemas` | `Wf…` → form fields/steps | 1h |
+
+The biggest win is channel-name → ID, which otherwise pages the whole
+workspace. The cache is best-effort (never fails a command) and self-healing.
+
+**Controls** (global flags / env):
+
+- `--no-cache` (or `AGENT_SLACK_NO_CACHE=1`) — no read, no write.
+- `--refresh-cache` — ignore cached reads but still write fresh entries.
+- `--cache-ttl <dur>` (or `AGENT_SLACK_CACHE_TTL`) — override every category's
+  TTL; `0` disables reads. Per-category override:
+  `AGENT_SLACK_CACHE_TTL_<CATEGORY>` (e.g. `AGENT_SLACK_CACHE_TTL_CHANNELS=5m`).
+- `--refresh-users` still forces a profile re-fetch on the read commands.
+
+Rejections are never cached (a transient `trigger_not_found` won't stick), and
+the side-effecting `workflow run` path is never cached.
