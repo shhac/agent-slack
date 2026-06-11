@@ -110,8 +110,8 @@ This supersedes the broader "all writes gated" wording in
 metadata-only unless asked.**
 
 - `message get`: auto-download to the cache dir (XDG
-  `~/.cache/agent-slack/downloads`), `--no-download` to skip. You usually
-  fetched one message to read its attachment.
+  `~/.cache/app.paulie.agent-slack/downloads`), `--no-download` to skip. You
+  usually fetched one message to read its attachment.
 - `message list` / `search` / `unreads`: emit file metadata only
   (`id, name, mimetype, mode, permalink`); `--download` opts in.
 - `file download <file-id>`: point pull for a file seen in any listing

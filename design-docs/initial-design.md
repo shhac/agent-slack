@@ -27,15 +27,16 @@ placeholders.
 
 Import paths to port (macOS-first; gate others clearly):
 `auth import-desktop` (LevelDB), `auth import-chrome` / `import-brave`
-(AppleScript), `auth import-firefox`, `auth parse-curl`. `auth whoami` and
-`auth test` verify configuration.
+(AppleScript), `auth import-firefox`, `auth parse-curl`. `auth list` (aliased
+`whoami`) and `auth test` verify configuration.
 
 ## Command surface
 
 Mirrors the TS CLI exactly so existing agent prompts/skills transfer:
 
-- **auth**: `whoami`, `test`, `add`, `set-default`, `remove`, `import-desktop`,
-  `import-chrome`, `import-brave`, `import-firefox`, `parse-curl`
+- **auth**: `list` (`ls`, `whoami`), `test`, `add` (`--form`), `set-default`,
+  `remove`, `import-desktop`, `import-chrome`, `import-brave`,
+  `import-firefox`, `parse-curl`
 - **message**: `get`, `list`, `send`, `edit`, `delete`,
   `react add|remove`, `scheduled list|cancel`
   (the TS `message draft` browser editor is intentionally dropped — see
@@ -88,7 +89,7 @@ parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
 2. **Render package**: mrkdwn↔Markdown, blocks→Markdown, permalink parsing — pure
    functions, port the TS unit tests alongside.
 3. **Slack client + mockslack**: DI transport, 429 retry, error mapping.
-4. **Read commands**: `auth whoami/test`, `message get/list`, `channel list`,
+4. **Read commands**: `auth list/test`, `message get/list`, `channel list`,
    `user get/list`, `search`, `unreads`, `canvas get`.
 5. **Write commands** (behind `--yes`): `message send/edit/delete/react`,
    `channel new/invite`, `workflow run`, `later` mutations, `scheduled`.

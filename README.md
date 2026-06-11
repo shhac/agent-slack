@@ -35,7 +35,7 @@ output contract, and credential handling are shared.
 
 ```bash
 make build
-./agent-slack auth import-desktop     # extract tokens from Slack Desktop (macOS)
+./agent-slack auth import-desktop     # extract tokens from Slack Desktop (macOS/Linux/Windows)
 ./agent-slack auth test               # verify credentials
 ./agent-slack usage                   # LLM-oriented overview
 ./agent-slack message usage           # per-domain detail pages

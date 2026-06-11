@@ -77,7 +77,9 @@ The `auth` CLI commands (`internal/cli/auth.go`) are import-only:
 `import-desktop`, `import-chrome`, `import-brave`, `import-firefox`,
 `parse-curl`, plus `list`, `add`, `set-default`, `remove`. The store is
 behind a `newStore` seam so CLI tests run against a temp file + in-memory
-Keychain. (Windows Slack Desktop DPAPI cookie decryption is not yet ported.)
+Keychain. Windows Slack Desktop / Firefox import works via DPAPI cookie
+decryption (`dpapi_windows.go`). `auth add --form` prompts for secrets via a
+native OS dialog so tokens never transit the agent's conversation.
 
 ## Rendering (implemented)
 
