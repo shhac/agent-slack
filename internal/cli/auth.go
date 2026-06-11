@@ -23,8 +23,10 @@ func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
 		Short: "Manage Slack credentials (import-only; tokens are stored in the macOS Keychain)",
 	}
 	parent.AddCommand(authCmd)
+	handleUnknownSubcommand(authCmd)
 
 	registerAuthWhoami(authCmd, globals)
+	registerAuthTest(authCmd, globals)
 	registerAuthImportDesktop(authCmd, globals)
 	registerAuthImportBrowser(authCmd, globals, "import-chrome", "Google Chrome", auth.ExtractFromChrome)
 	registerAuthImportBrowser(authCmd, globals, "import-brave", "Brave", auth.ExtractFromBrave)
@@ -37,6 +39,36 @@ func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
 
 func resolveFormat(globals *GlobalFlags, def output.Format) (output.Format, error) {
 	return output.ResolveFormat(globals.Format, def)
+}
+
+func registerAuthTest(parent *cobra.Command, globals *GlobalFlags) {
+	cmd := &cobra.Command{
+		Use:   "test",
+		Short: "Verify credentials against Slack's auth.test",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc, err := getClient(globals)
+			if err != nil {
+				return err
+			}
+			resp, err := cc.Client.API(cmd.Context(), "auth.test", nil)
+			if err != nil {
+				return err
+			}
+			payload := map[string]any{
+				"ok":            true,
+				"workspace_url": cc.WorkspaceURL,
+				"auth_type":     string(cc.AuthType),
+			}
+			for _, key := range []string{"url", "team", "user", "team_id", "user_id", "bot_id", "enterprise_id"} {
+				if v, ok := resp[key].(string); ok && v != "" {
+					payload[key] = v
+				}
+			}
+			return printSingle(globals, payload)
+		},
+	}
+	parent.AddCommand(cmd)
 }
 
 // saveTeams upserts browser-auth workspaces for the given teams + shared cookie

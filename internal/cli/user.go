@@ -1,0 +1,80 @@
+package cli
+
+import (
+	"github.com/spf13/cobra"
+
+	"github.com/shhac/agent-slack/internal/slack"
+)
+
+func registerUser(parent *cobra.Command, globals *GlobalFlags) {
+	userCmd := &cobra.Command{
+		Use:   "user",
+		Short: "Workspace user directory",
+	}
+	parent.AddCommand(userCmd)
+	handleUnknownSubcommand(userCmd)
+
+	var limit int
+	var cursor string
+	var includeBots bool
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List users (compact projection; each includes dm_id when a DM exists)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc, err := getClient(globals)
+			if err != nil {
+				return err
+			}
+			page, err := slack.ListUsers(cmd.Context(), cc.Client, slack.ListUsersOptions{
+				Limit:       limit,
+				Cursor:      cursor,
+				IncludeBots: includeBots,
+			})
+			if err != nil {
+				return err
+			}
+			return printList(globals, toAnySlice(page.Users), listMeta(metaPagination(page.NextCursor)))
+		},
+	}
+	listCmd.Flags().IntVar(&limit, "limit", 200, "Max users")
+	listCmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
+	listCmd.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot users")
+	userCmd.AddCommand(listCmd)
+
+	getCmd := &cobra.Command{
+		Use:   "get <user>",
+		Short: "Get one user by id (U…), @handle, or email",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc, err := getClient(globals)
+			if err != nil {
+				return err
+			}
+			user, err := slack.GetUser(cmd.Context(), cc.Client, args[0])
+			if err != nil {
+				return err
+			}
+			return printSingle(globals, user)
+		},
+	}
+	userCmd.AddCommand(getCmd)
+
+	dmOpenCmd := &cobra.Command{
+		Use:   "dm-open <users...>",
+		Short: "Open (or get) a DM / group DM channel for one or more users",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc, err := getClient(globals)
+			if err != nil {
+				return err
+			}
+			result, err := slack.GetDMChannelForUsers(cmd.Context(), cc.Client, args)
+			if err != nil {
+				return err
+			}
+			return printSingle(globals, result)
+		},
+	}
+	userCmd.AddCommand(dmOpenCmd)
+}
