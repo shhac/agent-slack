@@ -51,9 +51,12 @@ All collapse to one Markdown string. Forwarded content: extract
 
 ## Credentials
 
-- File: `~/.agent-slack/creds.json` in the TS version. The Go port uses the
-  family convention (`~/.config/agent-slack/`); decide whether to read the old
-  path for migration.
+- TS file: `~/.config/agent-slack/credentials.json` (`src/auth/paths.ts`),
+  Keychain service `agent-slack`. (TS separately uses `~/.agent-slack/` for
+  tmp/downloads — an earlier revision of this note conflated the two.) The Go
+  port stores at `~/.config/app.paulie.agent-slack/` with Keychain service
+  `app.paulie.agent-slack` to avoid sharing a file with the TS tool; the TS
+  file seeds a missing Go store once, read-only.
 - macOS Keychain stores tokens; file stores `"__KEYCHAIN__"` placeholder.
   Keychain service is `app.paulie.agent-slack` (family convention, per `lin`).
 - Zod-validated schema in TS (version, workspaces[], auth per workspace).
