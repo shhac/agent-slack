@@ -1,0 +1,95 @@
+# agent-slack: initial design
+
+Port of the TypeScript `agent-slack` (stablyai/agent-slack, plus Paul's fork
+changes) to Go, adopting the `agent-*` CLI family conventions.
+
+## Goals
+
+1. Single static binary, fast cold start (agents invoke per-call).
+2. Output and error contract identical to the rest of the `agent-*` family.
+3. Behavior parity with the TS original for the read paths first, then writes.
+4. Keychain-first secret handling; nothing sensitive in output.
+
+## Auth model
+
+Two token kinds, one interface:
+
+- **Browser** (`auth_type: browser`): `xoxc-*` token + `xoxd-*` cookie, extracted
+  from Slack Desktop or a browser. Calls go direct to
+  `POST {workspace}/api/{method}` with the cookie header.
+- **Standard** (`auth_type: standard`): `xoxb-*` / `xoxp-*` Bearer token via the
+  official API host.
+
+Resolution order per invocation: `--workspace` flag → env (`SLACK_TOKEN`,
+`SLACK_COOKIE_D`, `SLACK_WORKSPACE_URL`) → stored default workspace. Secrets
+resolve from Keychain; the config file holds only metadata + `__KEYCHAIN__`
+placeholders.
+
+Import paths to port (macOS-first; gate others clearly):
+`auth import-desktop` (LevelDB), `auth import-chrome` / `import-brave`
+(AppleScript), `auth import-firefox`, `auth parse-curl`. `auth whoami` and
+`auth test` verify configuration.
+
+## Command surface
+
+Mirrors the TS CLI exactly so existing agent prompts/skills transfer:
+
+- **auth**: `whoami`, `test`, `import-desktop`, `import-chrome`, `import-brave`,
+  `import-firefox`, `parse-curl`
+- **message**: `get`, `list`, `send`, `edit`, `delete`, `draft`,
+  `react add|remove`, `scheduled list|cancel`
+- **channel**: `list`, `new`, `invite`
+- **user**: `list`, `get`
+- **search**: `all`, `messages`, `files`
+- **workflow**: `list`, `preview`, `get`, `run`
+- **canvas**: `get`
+- **unreads**: top-level
+- **later**: `list`, `save`, `complete`, `archive`, `reopen`, `remove`, `remind`
+
+### Targets
+
+A `<target>` is a Slack permalink, `#channel` / `channel` / `C0123…`,
+`@user` / `user` / `U0123…`, or a message `ts` (`1770165109.628379`). Permalink
+parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
+
+## Output contract
+
+- Lists → NDJSON, trailing `{"@pagination": {...}}` line when more pages exist.
+- Single resources → pretty JSON.
+- `--max-body-chars` (default 8000; 4000 for search; `-1` = unlimited) truncates
+  bodies with a `\n…` marker.
+- `--full` restores normally-omitted bulky payloads; `--include-reactions` and
+  `--resolve-users` opt into extra data.
+- Errors → JSON on stderr: `{error, fixable_by, hint?}`.
+  - `agent`: bad args/flags/targets.
+  - `human`: auth, permissions, missing secrets.
+  - `retry`: 429, 5xx, network.
+
+## Safety
+
+- `message send|edit|delete`, `channel invite`, `workflow run` require `--yes`;
+  without it they return a `fixable_by: human` error describing what would
+  happen.
+- `message draft` opens an ephemeral localhost WYSIWYG editor — nothing sends
+  until the human clicks send.
+- Browser path retries 429 with exponential backoff (cap ~30s).
+
+## Port order
+
+1. **Scaffold + contract** (this commit): root, output, errors, usage, CI, docs.
+2. **Render package**: mrkdwn↔Markdown, blocks→Markdown, permalink parsing — pure
+   functions, port the TS unit tests alongside.
+3. **Slack client + mockslack**: DI transport, 429 retry, error mapping.
+4. **Read commands**: `auth whoami/test`, `message get/list`, `channel list`,
+   `user get/list`, `search`, `unreads`, `canvas get`.
+5. **Write commands** (behind `--yes`): `message send/edit/delete/react`,
+   `channel new/invite`, `workflow run`, `later` mutations, `scheduled`.
+6. **Auth import** paths (LevelDB / browser extraction) — most platform-specific,
+   do last.
+
+## Open questions
+
+- Draft editor: reuse the TS HTML/JS verbatim as an embedded asset, or rebuild?
+- LevelDB read in Go without cgo (pure-Go reader vs. shelling out)?
+- Keychain access: `zenity` is used elsewhere for input dialogs; decide whether
+  to add it here or keep auth import flag-only initially.

@@ -1,0 +1,8 @@
+/agent-slack
+/mockslack
+/dist/
+/.cache/
+coverage.out
+.DS_Store
+.env*
+.ai-cache/
