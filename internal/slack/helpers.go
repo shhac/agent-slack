@@ -41,3 +41,12 @@ func recItems(values []any) []map[string]any {
 func clampInt(v, lo, hi int) int {
 	return min(max(v, lo), hi)
 }
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}

@@ -2,10 +2,8 @@ package slack
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -217,34 +215,6 @@ func channelTokenForSearch(ctx context.Context, c *Client, channel string) strin
 	return ""
 }
 
-// searchUserIDForFilter resolves @name/name to an ID for fallback scans,
-// matching handle or display name. Returns "" when unknown (no error: the
-// filter just won't match anything, like the TS).
-func searchUserIDForFilter(ctx context.Context, c *Client, input string) string {
-	trimmed := strings.TrimSpace(input)
-	if trimmed == "" {
-		return ""
-	}
-	if render.IsUserID(trimmed) {
-		return trimmed
-	}
-	name := strings.TrimPrefix(trimmed, "@")
-	found := ""
-	_ = EachPage(ctx, c, "users.list", map[string]any{"limit": 200}, func(resp map[string]any) (bool, error) {
-		for _, m := range recItems(getArr(resp, "members")) {
-			display := getStr(getRec(m, "profile"), "display_name")
-			if getStr(m, "name") == name || display == name {
-				if id := getStr(m, "id"); id != "" {
-					found = id
-					return false, nil
-				}
-			}
-		}
-		return true, nil
-	})
-	return found
-}
-
 // searchPaged pages search.messages / search.files (page-number pagination).
 func searchPaged(ctx context.Context, c *Client, method, containerKey, query string, limit int) ([]map[string]any, error) {
 	pageSize := clampInt(limit, 1, 100)
@@ -267,12 +237,8 @@ func searchPaged(ctx context.Context, c *Client, method, containerKey, query str
 		matches := recItems(getArr(container, "matches"))
 		out = append(out, matches...)
 
-		paging := getRec(container, "paging")
-		if paging == nil {
-			paging = getRec(container, "pagination")
-		}
-		if totalPages := int(getNum(paging, "pages")); totalPages > 0 {
-			pages = totalPages
+		if tp := totalPages(container); tp > 0 {
+			pages = tp
 		}
 
 		if len(out) >= limit || len(matches) == 0 || page >= pages {
@@ -284,6 +250,20 @@ func searchPaged(ctx context.Context, c *Client, method, containerKey, query str
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+// totalPages reads the page count from a paged container, which Slack
+// reports as paging or pagination (with pages or page_count) depending on
+// the method.
+func totalPages(container map[string]any) int {
+	paging := getRec(container, "paging")
+	if paging == nil {
+		paging = getRec(container, "pagination")
+	}
+	if pages := int(getNum(paging, "pages")); pages > 0 {
+		return pages
+	}
+	return int(getNum(paging, "page_count"))
 }
 
 func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slackQuery string, limit, maxContentChars int, contentType ContentType) ([]SearchMessageItem, map[string]CompactUser, error) {
@@ -338,120 +318,18 @@ func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, sl
 		if ferr != nil {
 			continue // matches can point at since-deleted or inaccessible messages
 		}
-		if opts.Download {
-			for id, res := range DownloadMessageFiles(ctx, c, []render.MessageSummary{full}, MessageDownloads{DestDir: opts.DownloadsDir, Warn: opts.Warn}) {
-				downloaded[id] = res
-			}
-		}
-		compact := render.ToCompactMessage(full, render.CompactOptions{MaxBodyChars: maxContentChars, DownloadedPaths: downloaded})
-		if !PassesContentTypeFilter(compact, contentType) {
+		hit, ok := searchHit(ctx, c, opts, full, downloaded, maxContentChars, contentType, ref.permalink)
+		if !ok {
 			continue
 		}
 		resolved = append(resolved, full)
-		compact.ThreadTS = ""
-		out = append(out, SearchMessageItem{CompactMessage: compact, Permalink: ref.permalink})
+		out = append(out, hit)
 		if len(out) >= limit {
 			break
 		}
 	}
 
 	users := resolveSearchUsers(ctx, c, opts, resolved)
-	return out, users, nil
-}
-
-func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions, limit, maxContentChars int, contentType ContentType) ([]SearchMessageItem, map[string]CompactUser, error) {
-	channelIDs, err := resolveChannelIDs(ctx, c, opts.Channels)
-	if err != nil {
-		return nil, nil, err
-	}
-	queryLower := strings.ToLower(strings.TrimSpace(opts.Query))
-	userID := ""
-	if opts.User != "" {
-		userID = searchUserIDForFilter(ctx, c, opts.User)
-	}
-	var afterSec, beforeSec int64 = -1, -1
-	if opts.After != "" {
-		if afterSec, err = dateToUnixSeconds(opts.After, false); err != nil {
-			return nil, nil, err
-		}
-	}
-	if opts.Before != "" {
-		if beforeSec, err = dateToUnixSeconds(opts.Before, true); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	downloaded := map[string]render.DownloadResult{}
-	var matched []render.MessageSummary
-	var out []SearchMessageItem
-
-channels:
-	for _, channelID := range channelIDs {
-		cursorLatest := ""
-		for {
-			params := map[string]any{"channel": channelID, "limit": 200}
-			if cursorLatest != "" {
-				params["latest"] = cursorLatest
-			}
-			resp, herr := c.API(ctx, "conversations.history", params)
-			if herr != nil {
-				return nil, nil, herr
-			}
-			messages := recItems(getArr(resp, "messages"))
-			if len(messages) == 0 {
-				break
-			}
-
-			pastOldest := false
-			for _, m := range messages {
-				summary := SummaryFromRaw(channelID, m)
-				if tsNum, perr := strconv.ParseFloat(summary.TS, 64); perr == nil {
-					if beforeSec >= 0 && int64(tsNum) > beforeSec {
-						continue
-					}
-					if afterSec >= 0 && int64(tsNum) < afterSec {
-						pastOldest = true
-						break
-					}
-				}
-				if userID != "" && summary.User != userID {
-					continue
-				}
-				content := render.RenderMessageContent(map[string]any{
-					"text": summary.Text, "blocks": summary.Blocks, "attachments": summary.Attachments,
-				})
-				if queryLower != "" && !strings.Contains(strings.ToLower(content), queryLower) {
-					continue
-				}
-				if opts.Download {
-					for id, res := range DownloadMessageFiles(ctx, c, []render.MessageSummary{summary}, MessageDownloads{DestDir: opts.DownloadsDir, Warn: opts.Warn}) {
-						downloaded[id] = res
-					}
-				}
-				compact := render.ToCompactMessage(summary, render.CompactOptions{MaxBodyChars: maxContentChars, DownloadedPaths: downloaded})
-				if !PassesContentTypeFilter(compact, contentType) {
-					continue
-				}
-				matched = append(matched, summary)
-				compact.ThreadTS = ""
-				out = append(out, SearchMessageItem{CompactMessage: compact})
-				if len(out) >= limit {
-					break channels
-				}
-			}
-			if pastOldest {
-				break
-			}
-
-			next := getStr(messages[len(messages)-1], "ts")
-			if next == "" || next == cursorLatest {
-				break
-			}
-			cursorLatest = next
-		}
-	}
-
-	users := resolveSearchUsers(ctx, c, opts, matched)
 	return out, users, nil
 }
 
@@ -474,168 +352,6 @@ func searchFilesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slack
 	return out, nil
 }
 
-func searchFilesInChannels(ctx context.Context, c *Client, opts SearchOptions, limit int, contentType ContentType) ([]SearchFileItem, error) {
-	channelIDs, err := resolveChannelIDs(ctx, c, opts.Channels)
-	if err != nil {
-		return nil, err
-	}
-	userID := ""
-	if opts.User != "" {
-		userID = searchUserIDForFilter(ctx, c, opts.User)
-	}
-	queryLower := strings.ToLower(strings.TrimSpace(opts.Query))
-
-	var out []SearchFileItem
-	for _, channelID := range channelIDs {
-		page := 1
-		for {
-			params := map[string]any{"channel": channelID, "count": 100, "page": page}
-			if userID != "" {
-				params["user"] = userID
-			}
-			if opts.After != "" {
-				tsFrom, derr := dateToUnixSeconds(opts.After, false)
-				if derr != nil {
-					return nil, derr
-				}
-				params["ts_from"] = tsFrom
-			}
-			if opts.Before != "" {
-				tsTo, derr := dateToUnixSeconds(opts.Before, true)
-				if derr != nil {
-					return nil, derr
-				}
-				params["ts_to"] = tsTo
-			}
-			resp, ferr := c.API(ctx, "files.list", params)
-			if ferr != nil {
-				return nil, ferr
-			}
-			files := recItems(getArr(resp, "files"))
-			if len(files) == 0 {
-				break
-			}
-			for _, f := range files {
-				title := strings.TrimSpace(firstNonEmpty(getStr(f, "title"), getStr(f, "name")))
-				if queryLower != "" && !strings.Contains(strings.ToLower(title), queryLower) {
-					continue
-				}
-				item, ok := downloadSearchFile(ctx, c, f, opts, contentType)
-				if !ok {
-					continue
-				}
-				out = append(out, item)
-				if len(out) >= limit {
-					return out, nil
-				}
-			}
-			paging := getRec(resp, "paging")
-			if paging == nil {
-				paging = getRec(resp, "pagination")
-			}
-			pages := int(getNum(paging, "pages"))
-			if pages == 0 {
-				pages = int(getNum(paging, "page_count"))
-			}
-			if pages > 0 && page >= pages {
-				break
-			}
-			page++
-		}
-	}
-	return out, nil
-}
-
-func downloadSearchFile(ctx context.Context, c *Client, f map[string]any, opts SearchOptions, contentType ContentType) (SearchFileItem, bool) {
-	mode := getStr(f, "mode")
-	mimetype := getStr(f, "mimetype")
-	if !passesFileContentTypeFilter(mode, mimetype, contentType) {
-		return SearchFileItem{}, false
-	}
-	fileURL := firstNonEmpty(getStr(f, "url_private_download"), getStr(f, "url_private"))
-	id := getStr(f, "id")
-	if fileURL == "" || id == "" {
-		return SearchFileItem{}, false
-	}
-	name := id
-	if ext := InferFileExt(render.FileSummary{
-		Mimetype: mimetype, Filetype: getStr(f, "filetype"),
-		Name: getStr(f, "name"), Title: getStr(f, "title"),
-	}); ext != "" {
-		name += "." + ext
-	}
-	path, err := c.DownloadFile(ctx, DownloadOptions{URL: fileURL, DestDir: opts.DownloadsDir, PreferredName: name})
-	if err != nil {
-		_, _ = fmt.Fprintf(opts.Warn, "Warning: skipping file %s: %s\n", id, err.Error())
-		return SearchFileItem{}, false
-	}
-	return SearchFileItem{
-		Title:    strings.TrimSpace(firstNonEmpty(getStr(f, "title"), getStr(f, "name"))),
-		Mimetype: mimetype,
-		Mode:     mode,
-		Path:     path,
-	}, true
-}
-
-// PassesContentTypeFilter classifies a compact message by its files.
-func PassesContentTypeFilter(m render.CompactMessage, contentType ContentType) bool {
-	if contentType == "any" {
-		return true
-	}
-	hasFiles := len(m.Files) > 0
-	if contentType == "text" {
-		return !hasFiles
-	}
-	if !hasFiles {
-		return false
-	}
-	switch contentType {
-	case "file":
-		return true
-	case "snippet":
-		for _, f := range m.Files {
-			if f.Mode == "snippet" {
-				return true
-			}
-		}
-		return false
-	case "image":
-		for _, f := range m.Files {
-			if strings.HasPrefix(f.Mimetype, "image/") {
-				return true
-			}
-		}
-		return false
-	}
-	return true
-}
-
-func passesFileContentTypeFilter(mode, mimetype string, contentType ContentType) bool {
-	switch contentType {
-	case "any", "file":
-		return true
-	case "snippet":
-		return mode == "snippet"
-	case "image":
-		return strings.HasPrefix(strings.ToLower(mimetype), "image/")
-	case "text":
-		return mimetype == "text/plain"
-	}
-	return true
-}
-
-func resolveChannelIDs(ctx context.Context, c *Client, channels []string) ([]string, error) {
-	out := make([]string, 0, len(channels))
-	for _, ch := range channels {
-		id, err := ResolveChannelID(ctx, c, ch)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, id)
-	}
-	return out, nil
-}
-
 func resolveSearchUsers(ctx context.Context, c *Client, opts SearchOptions, messages []render.MessageSummary) map[string]CompactUser {
 	if !opts.ResolveUsers && !opts.RefreshUsers {
 		return nil
@@ -646,13 +362,4 @@ func resolveSearchUsers(ctx context.Context, c *Client, opts SearchOptions, mess
 		ForceRefresh: opts.RefreshUsers,
 	})
 	return ToReferencedUsers(ids, users)
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
