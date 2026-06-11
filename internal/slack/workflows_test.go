@@ -23,9 +23,9 @@ func previewRejection(t *testing.T, code string) *agenterrors.APIError {
 	server.HandleBody("workflows.triggers.preview", map[string]any{
 		"ok":                true,
 		"triggers":          []any{},
-		"rejected_triggers": []any{map[string]any{"id": "Ft0898SEA5N0", "error": code}},
+		"rejected_triggers": []any{map[string]any{"id": "Ft0123ABCDEF", "error": code}},
 	})
-	_, err := PreviewWorkflowTrigger(context.Background(), newWorkflowClient(t, server), "Ft0898SEA5N0")
+	_, err := PreviewWorkflowTrigger(context.Background(), newWorkflowClient(t, server), "Ft0123ABCDEF")
 	var apiErr *agenterrors.APIError
 	if !agenterrors.As(err, &apiErr) {
 		t.Fatalf("not an APIError: %v", err)
@@ -61,7 +61,7 @@ func TestPreviewWorkflowTriggerNoDataHasHint(t *testing.T) {
 	server.HandleBody("workflows.triggers.preview", map[string]any{"ok": true, "triggers": []any{}})
 	c := newWorkflowClient(t, server)
 
-	_, err := PreviewWorkflowTrigger(context.Background(), c, "Ft0898SEA5N0")
+	_, err := PreviewWorkflowTrigger(context.Background(), c, "Ft0123ABCDEF")
 	var apiErr *agenterrors.APIError
 	if !agenterrors.As(err, &apiErr) || apiErr.Hint == "" {
 		t.Errorf("expected an APIError with a hint, got %v", err)

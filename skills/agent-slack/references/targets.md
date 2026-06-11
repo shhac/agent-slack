@@ -44,7 +44,7 @@ channel URL still require `--ts`.
 agent-slack message get   "general" --ts "1770165109.628379"
 agent-slack message list  "C0123ABCD" --limit 25
 agent-slack message react add "general" ":eyes:" --ts "1770165109.628379"
-agent-slack channel mark  "D035EASSUH3" --ts "1770165109.628379"
+agent-slack channel mark  "D0A1B2C3D4E" --ts "1770165109.628379"
 ```
 
 When the target is a channel (name/ID, or channel URL with no message),

@@ -48,14 +48,14 @@ func TestParseTargetURL(t *testing.T) {
 func TestParseTargetChannelURL(t *testing.T) {
 	// A channel URL (no /p<ts> message segment) is a channel target that pins
 	// its workspace — not a bare name with the URL stuffed into it.
-	got, err := ParseTarget("https://lets-dothis.slack.com/archives/D035EASSUH3")
+	got, err := ParseTarget("https://acme.slack.com/archives/D0A1B2C3D4E")
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := Target{
 		Kind:         TargetChannel,
-		Channel:      "D035EASSUH3",
-		WorkspaceURL: "https://lets-dothis.slack.com",
+		Channel:      "D0A1B2C3D4E",
+		WorkspaceURL: "https://acme.slack.com",
 	}
 	if got != want {
 		t.Errorf("got %+v, want %+v", got, want)
@@ -71,7 +71,7 @@ func TestParseChannelURL(t *testing.T) {
 		wantOK      bool
 	}{
 		{"channel URL", "https://acme.slack.com/archives/C060RS20UMV", "https://acme.slack.com", "C060RS20UMV", true},
-		{"DM URL host-cased", "https://Acme.Slack.com/archives/D035EASSUH3", "https://acme.slack.com", "D035EASSUH3", true},
+		{"DM URL host-cased", "https://Acme.Slack.com/archives/D0A1B2C3D4E", "https://acme.slack.com", "D0A1B2C3D4E", true},
 		{"message permalink is not a channel URL", "https://acme.slack.com/archives/C060RS20UMV/p1770165109628379", "", "", false},
 		{"non-slack host", "https://evil.example.com/archives/C060RS20UMV", "", "", false},
 		{"wrong path root", "https://acme.slack.com/messages/C060RS20UMV", "", "", false},
