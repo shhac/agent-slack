@@ -71,29 +71,25 @@ func FetchLaterItems(ctx context.Context, c *Client, opts LaterOptions) (LaterRe
 	var allRaw []map[string]any
 	var counts map[string]any
 	nextCursor := ""
-	cursor := opts.Cursor
-	for {
-		params := map[string]any{"limit": 50}
-		if cursor != "" {
-			params["cursor"] = cursor
-		}
-		resp, err := c.API(ctx, "saved.list", params)
-		if err != nil {
-			return LaterResult{}, err
-		}
-		if cursor == opts.Cursor && counts == nil {
+	params := map[string]any{"limit": 50}
+	if opts.Cursor != "" {
+		params["cursor"] = opts.Cursor
+	}
+	firstPage := true
+	err := EachPage(ctx, c, "saved.list", params, func(resp map[string]any) (bool, error) {
+		if firstPage {
 			counts = getRec(resp, "counts")
+			firstPage = false
 		}
 		allRaw = append(allRaw, recItems(getArr(resp, "saved_items"))...)
 		nextCursor = NextCursor(resp)
-
 		if opts.CountsOnly {
-			break
+			return false, nil
 		}
-		if len(filterLaterItems(allRaw, state)) >= limit || nextCursor == "" {
-			break
-		}
-		cursor = nextCursor
+		return len(filterLaterItems(allRaw, state)) < limit, nil
+	})
+	if err != nil {
+		return LaterResult{}, err
 	}
 
 	result := LaterResult{
