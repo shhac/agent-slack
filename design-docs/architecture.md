@@ -4,7 +4,7 @@ This note records the intended package layout so the port stays inside clean
 boundaries. It mirrors the conventions of the sibling `agent-*` CLIs
 (`agent-postmark`, `agent-stripe`, `lin`).
 
-## Command layer
+## Command layer (implemented)
 
 `cmd/agent-slack` only calls `cli.Execute`. All CLI behavior lives in
 `internal/cli`. Commands are registered by user-facing domain, one
@@ -12,25 +12,43 @@ boundaries. It mirrors the conventions of the sibling `agent-*` CLIs
 
 - `root.go`: global flags (`--workspace`, `--format`, `--timeout`, `--debug`,
   `--full`), error formatting, command registration.
-- `usage.go`: the LLM-optimized `usage` overview command.
+- `usage.go`: the LLM-optimized `usage` overview command, plus per-domain
+  `<domain> usage` pages as command families land (see `cli-design.md`).
 - `auth.go`: credential import, `whoami`, `test`. Delegates secret storage to
   `internal/credential`.
 - `message.go`, `channel.go`, `user.go`, `search.go`, `workflow.go`,
-  `canvas.go`, `unreads.go`, `later.go`: resource commands. Shared list/mutation
-  factories and compact projections live alongside.
+  `canvas.go`, `unreads.go`, `later.go`, `file.go`, `api.go`: resource
+  commands. Shared list/mutation factories and compact projections live
+  alongside.
 
-Mutations return a structured `fixable_by: human` error unless `--yes` is set.
+Destructive mutations (`message edit|delete`, `scheduled cancel`,
+`channel new|invite`) return a structured `fixable_by: human` error unless
+`--yes` is set; other writes are ungated. The full command tree, flag
+defaults, projections, and the decisions behind them are in `cli-design.md`.
 
-## Slack client
+## Slack client (implemented)
 
 `internal/slack` is the HTTP client layer with dependency injection:
 
-- `Doer` interface for tests and the `mockslack` server.
-- `Sleep` hook so 429 retry/backoff is testable without real delays.
-- Two transports behind one interface: the browser path (`xoxc` token + `xoxd`
-  cookie, direct `POST {workspace}/api/{method}`) and the standard token path
-  (`xoxb`/`xoxp` Bearer). 429s retry with exponential backoff capped at ~30s.
-- Structured error mapping to `internal/errors.APIError` with `fixable_by`.
+- `Doer` interface and a sleep hook so 429 retry/backoff tests run without
+  real network or delays.
+- Two transports behind one `Client`: the browser path (`xoxc` token in the
+  form body + `xoxd` cookie, direct `POST {workspace}/api/{method}`) and the
+  standard token path (`xoxb`/`xoxp` Bearer against `https://slack.com`,
+  overridable base URL). `APIMultipart` covers internal methods (`saved.*`)
+  that ignore urlencoded params.
+- 429s retry up to 3× honouring `Retry-After`, clamped to [1s, 30s].
+- Structured error mapping to `internal/errors.APIError` with `fixable_by`;
+  `ErrorCode`/`IsAuthError` expose the Slack code without string matching,
+  and `response_metadata.messages` details become hints.
+- `WithAuthRefresh` is the auto-refresh seam: on an auth error the hook is
+  consulted once per client for replacement credentials and the call retried.
+  The CLI wires it to Slack Desktop re-extraction.
+- Resolvers: `ResolveChannelID` (the `search.messages in:#name` one-call
+  trick, pagination fallback), `ResolveChannelName`, `ResolveUserID`
+  (ID/email/@handle), plus `EachPage` cursor pagination.
+- `ResolveUsersByID`: per-workspace 24h disk cache of compact user profiles
+  (the CLI cold-starts per agent call, so the cache must persist on disk).
 
 The client does not know about profiles, config files, redaction, or output
 formatting — those stay in `internal/cli` and `internal/output`.
@@ -61,15 +79,28 @@ The `auth` CLI commands (`internal/cli/auth.go`) are import-only:
 behind a `newStore` seam so CLI tests run against a temp file + in-memory
 Keychain. (Windows Slack Desktop DPAPI cookie decryption is not yet ported.)
 
-## Rendering (planned)
+## Rendering (implemented)
 
-`internal/render` will hold the pure, well-tested conversion logic ported from
-the TypeScript original (it is the highest-value, most-portable code):
+`internal/render` holds the pure conversion logic ported from the TypeScript
+original — no network, no I/O, table-tested for behavior parity with the TS
+unit tests:
 
-- Slack mrkdwn → Markdown.
-- `rich_text` / Block Kit blocks → a single Markdown string.
-- Markdown / bullet lists → outbound `rich_text` blocks (for `send`/`edit`).
-- Slack permalink parsing (`/archives/<channel>/p<ts>` + `thread_ts`).
+- Slack permalink parsing (`/archives/<channel>/p<ts>` + `thread_ts`, with the
+  truncated-URL heuristic) and CLI `<target>` parsing (`url.go`, `target.go`).
+- Slack mrkdwn → Markdown, with :emoji: → unicode via a data table generated
+  from the same emojilib dataset node-emoji uses (`mrkdwn.go`, `emoji.go`,
+  `emoji_data.go`).
+- Message → one Markdown string in priority order rich_text → Block Kit →
+  legacy text+attachments, including forwarded-message handling
+  (`message.go`, `richtext_mrkdwn.go`).
+- Outbound: text → `rich_text` blocks (list/code/quote detection, inline
+  parsing) and mrkdwn escaping/mention promotion (`richtext.go`,
+  `outbound.go`). The TS inline regex used lookarounds RE2 lacks; the Go
+  scanner was differentially fuzzed against the TS implementation.
+- Raw message JSON → `MessageSummary` / `CompactMessage` shaping
+  (`compact.go`). API-dependent pieces (user resolution, file downloads,
+  snippet enrichment via `files.info`) stay in the client layer, which fills
+  `DownloadedPaths` and `FileSnippet`.
 
 ## Configuration and credentials
 
@@ -100,9 +131,14 @@ lock doesn't block us.
 fields, NDJSON list writer with `@pagination` meta lines, and the JSON error
 contract.
 
-## Mock server and tests
+## Mock server and tests (implemented)
 
-`cmd/mockslack` (planned) serves `internal/mockslack` — fixture-driven, not a
-general Slack clone. Coverage combines: client unit tests (headers, 429 retry,
-error mapping), render unit tests (the bulk of behavior parity with the TS
-source), and CLI contract tests against `mockslack`.
+`internal/mockslack` is a fixture-driven fake of the Web API (not a Slack
+clone): per-method response queues with the last response sticky, recorded
+calls for assertions, and an `ExpectToken` knob that answers `invalid_auth`
+(without consuming a fixture) to exercise auth and refresh paths.
+`cmd/mockslack` serves it standalone from a fixtures JSON file for manual
+testing and CLI contract tests. Coverage combines: client unit tests
+(headers, 429 retry, error mapping, refresh), render unit tests (the bulk of
+behavior parity with the TS source), and CLI contract tests against
+`mockslack`.

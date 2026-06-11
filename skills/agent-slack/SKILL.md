@@ -1,0 +1,99 @@
+---
+name: agent-slack
+description: |
+  Slack CLI for AI agents: read permalinks/threads/history/unreads/later/
+  canvases/workflows, search messages and files, download attachments, look
+  up users, list/create channels, open DMs, send/edit/delete messages,
+  react, schedule sends, and call raw Slack APIs.
+when_to_use: |
+  Use when the user asks to read or act on Slack: fetch a message URL, list
+  a thread or channel history, check unreads or saved-for-later items,
+  search Slack, send/edit/delete a message, react, invite to a channel, run
+  a workflow, or fetch a canvas.
+allowed-tools: Bash(agent-slack *) Read
+---
+
+# agent-slack
+
+JSON in, JSON out, no interactivity. Lists are NDJSON (one object per line,
+then `{"@pagination":…}` / `{"@referenced_users":…}` meta lines); single
+resources are pretty JSON. Errors are JSON on stderr with
+`fixable_by: agent|human|retry` and a `hint`.
+
+## Setup (once, by a human)
+
+```bash
+agent-slack auth import-desktop   # extract tokens from Slack Desktop
+agent-slack auth test             # verify
+agent-slack auth set-default https://acme.slack.com   # if several workspaces
+```
+
+Env override: `SLACK_TOKEN` (+ `SLACK_COOKIE_D` + `SLACK_WORKSPACE_URL` for
+xoxc browser tokens). Expired browser tokens self-heal from Slack Desktop.
+
+## Reading
+
+```bash
+agent-slack message get "https://acme.slack.com/archives/C…/p1770165109628379"
+agent-slack message get "#general" --ts "1770165109.628379"
+agent-slack message list "#general" --limit 25
+agent-slack message list "#general" --thread-ts "1770165109.628379"   # whole thread
+agent-slack unreads --counts-only
+agent-slack later list
+agent-slack canvas get F08012345AB
+```
+
+Always quote permalinks — unquoted `&` truncates them in the shell.
+`message get` includes a `permalink`, a `thread` summary `{ts,length}`, and
+downloads attachments (local paths in `files[].path`; `--no-download` to
+skip). Lists keep attachments metadata-only; add `--download` or
+`agent-slack file download F…` for point pulls. Add `--resolve-users` to
+expand `U…` ids to profiles, `--include-reactions` for reactions.
+
+## Searching
+
+```bash
+agent-slack search messages "deploy failed" --channel "#ops" --after 2026-06-01
+agent-slack search files "architecture diagram" --content-type image
+```
+
+File hits download automatically and report local `path`s you can Read.
+
+## Writing
+
+```bash
+agent-slack message send "#general" "ship it :rocket:"
+agent-slack message send U05BRPTKL6A "ping"                  # DM auto-opens
+agent-slack message send "<permalink>" "replying in thread"
+agent-slack message send "#general" "later" --schedule-in "tomorrow 9am"
+agent-slack message react add "<permalink>" :eyes:
+```
+
+Outbound text is auto-formatted: `@U…` becomes a real mention, `& < >` are
+escaped, bullet/numbered lists become rich text. Destructive commands need
+`--yes` (`message edit|delete`, `message scheduled cancel`,
+`channel new|invite`); without it they return a description of what would
+happen — show it to the user before retrying with `--yes`.
+
+## Channels, users, workflows
+
+```bash
+agent-slack channel list                      # compact; --full for raw
+agent-slack user get @paul
+agent-slack user dm-open @paul @sam           # group DM channel id
+agent-slack workflow list "#ops"
+agent-slack workflow get Ft0001               # form fields + steps
+agent-slack workflow run Ft0001 --channel "#ops" --field "Summary=EU deploy failed"
+```
+
+## Escape hatch
+
+```bash
+agent-slack api call team.info
+agent-slack api call conversations.history --params '{"channel":"C…","limit":5}'
+```
+
+## More detail
+
+`agent-slack usage` is the overview; `agent-slack <domain> usage` (message,
+channel, search, workflow, later, …) has per-domain docs.

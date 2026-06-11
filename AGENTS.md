@@ -25,6 +25,7 @@ Slack CLI for AI agents. Go + cobra.
 ```bash
 GOCACHE=$(pwd)/.cache/go-build go test ./... -count=1
 GOCACHE=$(pwd)/.cache/go-build go vet ./...
+golangci-lint run ./...
 ```
 
 ## References
