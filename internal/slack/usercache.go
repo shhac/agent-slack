@@ -65,6 +65,31 @@ func ToReferencedUsers(userIDs []string, usersByID map[string]CompactUser) map[s
 	return out
 }
 
+// handleCacheKey normalizes a @handle or email into its cache key (leading "@"
+// stripped, lowercased).
+func handleCacheKey(input string) string {
+	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(input), "@"))
+}
+
+func (c *Client) cachedUserIDByHandle(key string) (string, bool) {
+	if key == "" {
+		return "", false
+	}
+	snap := openCache[string](c.cache, "handles", c.currentAuth().WorkspaceURL,
+		cacheTTLOf(c.cache).Handles, nil)
+	return snap.get(key)
+}
+
+func (c *Client) cacheUserIDByHandle(key, id string) {
+	if key == "" || id == "" {
+		return
+	}
+	snap := openCache[string](c.cache, "handles", c.currentAuth().WorkspaceURL,
+		cacheTTLOf(c.cache).Handles, nil)
+	snap.set(key, id)
+	snap.save()
+}
+
 func dedupeUserIDs(ids []string) []string {
 	seen := map[string]bool{}
 	var out []string

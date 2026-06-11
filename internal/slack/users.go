@@ -55,9 +55,15 @@ func ResolveUserID(ctx context.Context, c *Client, input string) (string, error)
 		return trimmed, nil
 	}
 
+	cacheKey := handleCacheKey(trimmed)
+	if id, ok := c.cachedUserIDByHandle(cacheKey); ok {
+		return id, nil
+	}
+
 	looksLikeEmail := emailRe.MatchString(trimmed) && !strings.HasPrefix(trimmed, "@")
 	if looksLikeEmail {
 		if id := userIDViaEmailLookup(ctx, c, trimmed); id != "" {
+			c.cacheUserIDByHandle(cacheKey, id)
 			return id, nil
 		}
 	}
@@ -93,6 +99,7 @@ func ResolveUserID(ctx context.Context, c *Client, input string) (string, error)
 	if found == "" {
 		return "", errUserNotResolved(input)
 	}
+	c.cacheUserIDByHandle(cacheKey, found)
 	return found, nil
 }
 
