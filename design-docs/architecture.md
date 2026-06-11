@@ -104,8 +104,12 @@ unit tests:
 
 ## Configuration and credentials
 
-- `internal/config`: non-secret workspace metadata (URL, team id, default
-  workspace), stored at `~/.config/agent-slack/config.json` (XDG-aware).
+- There is no separate config file: `credentials.json` at
+  `~/.config/agent-slack/` (`$XDG_CONFIG_HOME`-aware, family convention per
+  lin — deliberately not `os.UserConfigDir`, which would scatter macOS state
+  into `~/Library/Application Support`) holds the non-secret workspace
+  metadata (URL, team id, default workspace) alongside `__KEYCHAIN__`
+  placeholders. `AGENT_SLACK_CREDENTIALS` overrides the path.
 - `internal/credential`: tokens/cookies stored in the macOS Keychain under
   service `app.paulie.agent-slack` (matching `lin`'s `app.paulie.lin`), with the
   per-workspace key as the account field. A local index records which workspace

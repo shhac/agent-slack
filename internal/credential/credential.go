@@ -86,15 +86,19 @@ func NewWithStore(path string, kc Keychain) *Store {
 	return &Store{path: path, kc: kc, now: time.Now}
 }
 
+// defaultPath follows the agent-* family convention (per lin):
+// $XDG_CONFIG_HOME/agent-slack, else ~/.config/agent-slack — on every
+// platform, deliberately not os.UserConfigDir (which would scatter macOS
+// state into ~/Library/Application Support).
 func defaultPath() (string, error) {
 	if env := os.Getenv("AGENT_SLACK_CREDENTIALS"); env != "" {
 		return env, nil
 	}
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		home, herr := os.UserHomeDir()
-		if herr != nil {
-			return "", herr
+	dir := os.Getenv("XDG_CONFIG_HOME")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
 		}
 		dir = filepath.Join(home, ".config")
 	}
