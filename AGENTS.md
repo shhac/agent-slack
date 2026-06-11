@@ -10,10 +10,11 @@ Slack CLI for AI agents. Go + cobra.
 - Never print tokens or cookies. Secrets live in the macOS Keychain; the
   credentials file holds only non-secret metadata plus a `__KEYCHAIN__`
   placeholder.
-- Prefer read-only commands. Any command that changes Slack state (`message
-  send`/`edit`/`delete`, `channel invite`, `workflow run`) must require `--yes`
-  and return a human-fixable JSON error without it. The `--yes` gate is the
-  human-in-the-loop control.
+- Prefer read-only commands. Destructive mutations (`message edit`/`delete`,
+  `message scheduled cancel`, `channel new`/`invite`) must require `--yes` and
+  return a human-fixable JSON error without it. Plain sends, reactions, and
+  personal-state writes are ungated by decision — see
+  `design-docs/cli-design.md`.
 - Keep message bodies truncatable (`--max-body-chars`); omit bulky payloads from
   list output by default, restore with `--full`.
 - Keep Slack HTTP logic dependency-injected so tests run without real network

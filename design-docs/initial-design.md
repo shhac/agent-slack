@@ -34,19 +34,24 @@ Import paths to port (macOS-first; gate others clearly):
 
 Mirrors the TS CLI exactly so existing agent prompts/skills transfer:
 
-- **auth**: `whoami`, `test`, `import-desktop`, `import-chrome`, `import-brave`,
-  `import-firefox`, `parse-curl`
+- **auth**: `whoami`, `test`, `add`, `set-default`, `remove`, `import-desktop`,
+  `import-chrome`, `import-brave`, `import-firefox`, `parse-curl`
 - **message**: `get`, `list`, `send`, `edit`, `delete`,
   `react add|remove`, `scheduled list|cancel`
   (the TS `message draft` browser editor is intentionally dropped — see
   Decisions)
-- **channel**: `list`, `new`, `invite`
-- **user**: `list`, `get`
+- **channel**: `list`, `new`, `invite`, `mark`
+- **user**: `list`, `get`, `dm-open`
 - **search**: `all`, `messages`, `files`
 - **workflow**: `list`, `preview`, `get`, `run`
 - **canvas**: `get`
 - **unreads**: top-level
 - **later**: `list`, `save`, `complete`, `archive`, `reopen`, `remove`, `remind`
+- **file**: `download` (point pull of a file seen in any listing; new vs TS)
+- **api**: `call` (raw Slack method escape hatch; new vs TS)
+
+Flags, defaults, projections, and per-command details live in
+`cli-design.md`.
 
 ### Targets
 
@@ -69,10 +74,12 @@ parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
 
 ## Safety
 
-- `message send|edit|delete`, `channel invite`, `workflow run` require `--yes`;
-  without it they return a `fixable_by: human` error describing what would
-  happen. This `--yes` gate is the human-in-the-loop control (there is no draft
-  editor).
+- Destructive mutations require `--yes`: `message edit|delete`,
+  `message scheduled cancel`, `channel new|invite`. Without it they return a
+  `fixable_by: human` error describing exactly what would happen. Plain
+  `message send`, reactions, `workflow run`, and personal-state writes
+  (`later *`, `channel mark`, `user dm-open`) are ungated by decision — see
+  `cli-design.md` "Mutation gating".
 - Browser path retries 429 with exponential backoff (cap ~30s).
 
 ## Port order

@@ -83,7 +83,15 @@ The TS `message draft` command spins up a localhost server + browser WYSIWYG
 editor for a human to finish a message. This is dropped in the Go port: the tool
 is LLM-first and an agent never drives a browser UI. Do not port the draft
 server, its embedded HTML/JS, or the `message draft` command. Human-in-the-loop
-is the `--yes` gate on mutations.
+is the `--yes` gate on destructive mutations (see `cli-design.md`).
+
+## Deliberate divergences
+
+Where the Go CLI intentionally differs from TS (NDJSON lists, compact
+channel/user projections, download policy, no first-run browser
+auto-extraction, `--yes` scope, `file download` / `api call` additions), the
+record lives in `cli-design.md` — this file only tracks TS behaviors that must
+be preserved.
 
 ## User resolution / caching
 
