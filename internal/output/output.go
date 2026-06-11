@@ -83,14 +83,6 @@ func Print(data any, format Format, prune bool) {
 	}
 }
 
-func WriteRawJSON(raw json.RawMessage, format Format, prune bool) {
-	var decoded any
-	if err := json.Unmarshal(raw, &decoded); err != nil {
-		return
-	}
-	Print(decoded, format, prune)
-}
-
 func WriteError(w io.Writer, err error) {
 	var aerr *agenterrors.APIError
 	if !agenterrors.As(err, &aerr) {
