@@ -1,23 +1,17 @@
 package cli
 
 import (
+	"github.com/shhac/agent-slack/internal/mockslack"
 	"strings"
 	"testing"
 )
 
 func TestSearchMessages(t *testing.T) {
 	f := newCLIFixture(t)
-	f.server.HandleBody("search.messages", map[string]any{
-		"ok": true,
-		"messages": map[string]any{
-			"matches": []any{map[string]any{
-				"ts":        "1770165109.628379",
-				"channel":   map[string]any{"id": "C12345678"},
-				"permalink": "https://acme.slack.com/archives/C12345678/p1770165109628379",
-			}},
-			"paging": map[string]any{"pages": float64(1)},
-		},
-	})
+	f.server.HandleBody("search.messages", mockslack.SearchMessages(
+		mockslack.SearchMatch("C12345678", "1770165109.628379",
+			"https://acme.slack.com/archives/C12345678/p1770165109628379"),
+	))
 	f.server.HandleBody("conversations.history", historyWith(
 		simpleMessage("1770165109.628379", "U12345678", "found me"),
 	))

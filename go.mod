@@ -3,6 +3,8 @@ module github.com/shhac/agent-slack
 go 1.26.4
 
 require (
+	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
+	github.com/coder/websocket v1.8.14
 	github.com/spf13/cobra v1.10.2
 	github.com/syndtr/goleveldb v1.0.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -11,8 +13,6 @@ require (
 
 require (
 	github.com/JohannesKaufmann/dom v0.3.1 // indirect
-	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/google/uuid v1.6.0 // indirect
