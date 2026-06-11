@@ -36,7 +36,6 @@ type SearchOptions struct {
 	ResolveUsers    bool
 	RefreshUsers    bool
 	DownloadsDir    string
-	UserCacheDir    string
 	Warn            io.Writer
 }
 
@@ -368,9 +367,6 @@ func resolveSearchUsers(ctx context.Context, c *Client, opts SearchOptions, mess
 		return nil
 	}
 	ids := render.CollectReferencedUserIDs(messages, false)
-	users := ResolveUsersByID(ctx, c, opts.WorkspaceURL, ids, ResolveUsersOptions{
-		CacheDir:     opts.UserCacheDir,
-		ForceRefresh: opts.RefreshUsers,
-	})
+	users := ResolveUsersByID(ctx, c, ids, opts.RefreshUsers)
 	return ToReferencedUsers(ids, users)
 }

@@ -146,7 +146,84 @@ func clientOptions(globals *GlobalFlags) []slack.Option {
 	if globals.BaseURL != "" {
 		opts = append(opts, slack.WithBaseURL(globals.BaseURL))
 	}
+	opts = append(opts, slack.WithCache(buildCache(globals)))
 	return opts
+}
+
+// buildCache assembles the per-invocation resolution cache from the global
+// flags and environment. This single helper feeds both client constructors.
+func buildCache(globals *GlobalFlags) *slack.Cache {
+	dir := appCacheDir()
+	cleanupLegacyUserCache(dir)
+
+	mode := slack.CacheNormal
+	switch {
+	case globals.NoCache || os.Getenv("AGENT_SLACK_NO_CACHE") != "":
+		mode = slack.CacheOff
+	case globals.RefreshCache:
+		mode = slack.CacheRefresh
+	}
+	return slack.NewCache(dir, mode, resolveCacheTTL(globals), nil)
+}
+
+// cleanupLegacyUserCache removes pre-rename user cache files
+// (users-cache-<hash>.json) left by older binaries. Best-effort.
+func cleanupLegacyUserCache(dir string) {
+	if dir == "" {
+		return
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, "users-cache-*.json"))
+	for _, m := range matches {
+		_ = os.Remove(m)
+	}
+}
+
+// resolveCacheTTL builds the per-category TTL: built-in defaults, overridden by
+// a global --cache-ttl / AGENT_SLACK_CACHE_TTL, then by per-category
+// AGENT_SLACK_CACHE_TTL_<CATEGORY> env vars (most specific wins).
+func resolveCacheTTL(globals *GlobalFlags) slack.CacheTTL {
+	ttl := slack.DefaultCacheTTL()
+	if d, ok := parseTTL(firstNonEmpty(globals.CacheTTL, os.Getenv("AGENT_SLACK_CACHE_TTL"))); ok {
+		ttl = slack.CacheTTL{Users: d, Channels: d, ChannelNames: d, Handles: d, WorkflowPreview: d, WorkflowSchema: d}
+	}
+	for env, field := range map[string]*time.Duration{
+		"AGENT_SLACK_CACHE_TTL_USERS":            &ttl.Users,
+		"AGENT_SLACK_CACHE_TTL_CHANNELS":         &ttl.Channels,
+		"AGENT_SLACK_CACHE_TTL_CHANNEL_NAMES":    &ttl.ChannelNames,
+		"AGENT_SLACK_CACHE_TTL_HANDLES":          &ttl.Handles,
+		"AGENT_SLACK_CACHE_TTL_WORKFLOW_PREVIEW": &ttl.WorkflowPreview,
+		"AGENT_SLACK_CACHE_TTL_WORKFLOW_SCHEMA":  &ttl.WorkflowSchema,
+	} {
+		if d, ok := parseTTL(os.Getenv(env)); ok {
+			*field = d
+		}
+	}
+	return ttl
+}
+
+// parseTTL parses a Go duration; "0" is valid and disables reads for a category.
+func parseTTL(raw string) (time.Duration, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, false
+	}
+	if raw == "0" {
+		return 0, true
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
+		return 0, false
+	}
+	return d, true
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // desktopRefresh re-extracts credentials from Slack Desktop when a call hits

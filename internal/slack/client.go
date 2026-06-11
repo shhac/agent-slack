@@ -73,6 +73,7 @@ type Client struct {
 	userAgent string
 	debug     io.Writer
 	onRefresh RefreshFunc
+	cache     *Cache
 }
 
 type Option func(*Client)
@@ -82,6 +83,7 @@ func WithBaseURL(u string) Option           { return func(c *Client) { c.baseURL
 func WithUserAgent(ua string) Option        { return func(c *Client) { c.userAgent = ua } }
 func WithDebug(w io.Writer) Option          { return func(c *Client) { c.debug = w } }
 func WithAuthRefresh(fn RefreshFunc) Option { return func(c *Client) { c.onRefresh = fn } }
+func WithCache(cache *Cache) Option         { return func(c *Client) { c.cache = cache } }
 
 // WithSleep replaces the retry backoff sleep so tests run without delays.
 func WithSleep(fn func(ctx context.Context, d time.Duration) error) Option {

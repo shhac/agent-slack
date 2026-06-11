@@ -148,9 +148,6 @@ func resolveReferencedUsers(ctx context.Context, cc *clientContext, flags *readF
 		return nil
 	}
 	ids := render.CollectReferencedUserIDs(messages, flags.includeReactions)
-	users := slack.ResolveUsersByID(ctx, cc.Client, cc.WorkspaceURL, ids, slack.ResolveUsersOptions{
-		CacheDir:     appCacheDir(),
-		ForceRefresh: flags.refreshUsers,
-	})
+	users := slack.ResolveUsersByID(ctx, cc.Client, ids, flags.refreshUsers)
 	return slack.ToReferencedUsers(ids, users)
 }

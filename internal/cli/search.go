@@ -60,7 +60,6 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 				ResolveUsers:    resolveUsers,
 				RefreshUsers:    refreshUsers,
 				DownloadsDir:    downloadsDir(),
-				UserCacheDir:    appCacheDir(),
 				Warn:            globals.stderr,
 			})
 			if err != nil {
