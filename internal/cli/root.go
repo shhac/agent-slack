@@ -94,6 +94,9 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	root.PersistentFlags().BoolVar(&globals.RefreshCache, "refresh-cache", false, "Ignore cached reads but still write fresh entries")
 	root.PersistentFlags().StringVar(&globals.CacheTTL, "cache-ttl", "", "Override every cache TTL (e.g. 30m, 2h, 0 to disable reads)")
 
+	_ = root.RegisterFlagCompletionFunc("format", fixedCompletions("json", "yaml", "jsonl"))
+	registerWorkspaceCompletion(root, globals)
+
 	registerUsage(root)
 	registerAuth(root, globals)
 	registerMessage(root, globals)

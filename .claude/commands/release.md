@@ -122,6 +122,8 @@ with:
 - desc: `"Slack CLI for AI agents"`
 - homepage: `https://github.com/shhac/agent-slack`
 - version, URLs, and SHA256 values from `dist/checksums-sha256.txt`
+- in `install`, after `bin.install`, install shell completions:
+  `generate_completions_from_executable(bin/"agent-slack", "completion")`
 - test assertions for `agent-slack --version` and `agent-slack usage`
 
 Then commit and push the tap (this repo lives outside `~/projects/`, so plain

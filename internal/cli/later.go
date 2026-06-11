@@ -76,6 +76,7 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cmd.Flags().StringVar(&state, "state", "in_progress", "Filter: in_progress|archived|completed|all")
+	_ = cmd.RegisterFlagCompletionFunc("state", fixedCompletions("in_progress", "archived", "completed", "all"))
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max items")
 	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", 4000, "Max content chars per item (-1 = unlimited)")
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only counts per state, no content")

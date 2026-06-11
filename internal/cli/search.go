@@ -85,6 +85,7 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 	cmd.Flags().StringVar(&after, "after", "", "Only results after YYYY-MM-DD")
 	cmd.Flags().StringVar(&before, "before", "", "Only results before YYYY-MM-DD")
 	cmd.Flags().StringVar(&contentType, "content-type", "any", "Filter: any|text|image|snippet|file")
+	_ = cmd.RegisterFlagCompletionFunc("content-type", fixedCompletions("any", "text", "image", "snippet", "file"))
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max results")
 	cmd.Flags().IntVar(&maxContentChars, "max-content-chars", 4000, "Max message content chars (-1 = unlimited)")
 	cmd.Flags().BoolVar(&download, "download", kind != slack.SearchMessages, "Download matched files and report local paths")
