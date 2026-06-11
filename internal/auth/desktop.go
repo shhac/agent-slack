@@ -35,6 +35,8 @@ func slackDesktopCandidates() ([]slackDesktopPaths, error) {
 			filepath.Join(home, ".var", "app", "com.slack.Slack", "config", "Slack"),
 			filepath.Join(home, ".config", "Slack"),
 		}
+	case "windows":
+		baseDirs = []string{filepath.Join(windowsAppData(home), "Slack")}
 	default:
 		return nil, agenterrors.Newf(agenterrors.FixableByAgent,
 			"Slack Desktop import is not supported on %s", runtime.GOOS)

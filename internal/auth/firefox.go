@@ -28,9 +28,20 @@ func firefoxBaseDir() (string, error) {
 		return filepath.Join(home, "Library", "Application Support", "Firefox"), nil
 	case "linux":
 		return filepath.Join(home, ".mozilla", "firefox"), nil
+	case "windows":
+		return filepath.Join(windowsAppData(home), "Mozilla", "Firefox"), nil
 	default:
 		return "", agenterrors.Newf(agenterrors.FixableByAgent, "Firefox import is not supported on %s", runtime.GOOS)
 	}
+}
+
+// windowsAppData resolves %AppData% (Roaming), falling back to its
+// conventional location under the home dir.
+func windowsAppData(home string) string {
+	if appData := os.Getenv("APPDATA"); appData != "" {
+		return appData
+	}
+	return filepath.Join(home, "AppData", "Roaming")
 }
 
 // parseProfilesIni parses Firefox's profiles.ini into profile candidates,
@@ -115,21 +126,22 @@ func listFirefoxProfiles() ([]firefoxProfile, error) {
 	if err != nil {
 		return nil, err
 	}
-	return listFirefoxProfilesIn(baseDir, runtime.GOOS == "darwin"), nil
+	profilesSubdir := runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+	return listFirefoxProfilesIn(baseDir, profilesSubdir), nil
 }
 
 // listFirefoxProfilesIn discovers profiles under an explicit base dir —
 // parameterized so tests exercise the discovery rules (profiles.ini parsing,
 // unlisted-dir pickup, default-first ordering, existence filtering) against
 // a t.TempDir tree instead of the real home directory.
-func listFirefoxProfilesIn(baseDir string, darwinLayout bool) []firefoxProfile {
+func listFirefoxProfilesIn(baseDir string, profilesSubdir bool) []firefoxProfile {
 	var candidates []firefoxProfile
 	if raw, err := os.ReadFile(filepath.Join(baseDir, "profiles.ini")); err == nil {
 		candidates = append(candidates, parseProfilesIni(string(raw), baseDir)...)
 	}
 
 	scanDir := baseDir
-	if darwinLayout {
+	if profilesSubdir {
 		scanDir = filepath.Join(baseDir, "Profiles")
 	}
 	if entries, err := os.ReadDir(scanDir); err == nil {

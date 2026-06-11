@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 )
 
@@ -32,6 +33,12 @@ func extractChromiumCookieD(cookiesPath string, macQueries []safeStorageQuery) (
 	encrypted := rowBytes(row, "encrypted_value")
 	if len(encrypted) == 0 {
 		return "", errors.New("slack 'd' cookie had no encrypted_value")
+	}
+
+	if runtime.GOOS == "windows" {
+		// Windows wraps the key with DPAPI instead of a Safe Storage password;
+		// Local State is found relative to the ORIGINAL path, not the temp copy.
+		return decryptCookieDPAPI(cookiesPath, encrypted)
 	}
 
 	prefix := ""

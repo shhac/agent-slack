@@ -15,7 +15,7 @@ import (
 func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
 	authCmd := &cobra.Command{
 		Use:   "auth",
-		Short: "Manage Slack credentials (import-only; tokens are stored in the macOS Keychain)",
+		Short: "Manage Slack credentials (tokens are stored in the macOS Keychain where available)",
 	}
 	parent.AddCommand(authCmd)
 	handleUnknownSubcommand(authCmd)
@@ -168,7 +168,7 @@ func registerAuthImportFirefox(parent *cobra.Command, globals *GlobalFlags) {
 	var profile string
 	cmd := &cobra.Command{
 		Use:   "import-firefox",
-		Short: "Import xoxc/xoxd from a Firefox profile (macOS/Linux)",
+		Short: "Import xoxc/xoxd from a Firefox profile (macOS/Linux/Windows)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAuthImport(globals, func() (*auth.Extracted, error) {
 				return auth.ExtractFromFirefox(profile)

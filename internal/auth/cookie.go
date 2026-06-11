@@ -41,6 +41,11 @@ func decryptChromiumCookie(data []byte, password string, iterations int) (string
 		return "", err
 	}
 
+	return xoxdFromPlain(plain)
+}
+
+// xoxdFromPlain finds the xoxd-* token in decrypted cookie bytes, URL-decoded.
+func xoxdFromPlain(plain []byte) (string, error) {
 	match := xoxdValueRe.Find(plain)
 	if match == nil {
 		return "", errors.New("no xoxd-* token in decrypted cookie")
