@@ -67,3 +67,25 @@ func TestTotalPages(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchMatchRefs(t *testing.T) {
+	matches := []map[string]any{
+		{"ts": "1.000001", "channel": map[string]any{"id": "C1"}, "permalink": "https://x/p1"},
+		{"channel": map[string]any{"id": "C1"}},                      // no ts — skipped
+		{"ts": "2.000002", "channel": map[string]any{"name": "ops"}}, // name-only — resolved
+		{"ts": "3.000003", "channel": map[string]any{}},              // no channel — skipped
+		{"ts": "4.000004", "channel": map[string]any{"id": "C3"}},    // over limit
+	}
+	refs, err := searchMatchRefs(matches, 2, func(name string) (string, error) {
+		if name != "ops" {
+			t.Errorf("resolver got %q", name)
+		}
+		return "C2RESOLVED", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(refs) != 2 || refs[0].channelID != "C1" || refs[0].permalink != "https://x/p1" || refs[1].channelID != "C2RESOLVED" {
+		t.Errorf("refs = %+v", refs)
+	}
+}

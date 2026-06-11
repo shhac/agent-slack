@@ -45,6 +45,39 @@ func ValidateWorkflowFields(fields map[string]string, schema WorkflowSchema) []s
 	return errs
 }
 
+// buildFormState maps the opened view's block element action_ids (field
+// UUIDs) back to schema fields, then to the user-supplied values — the shape
+// views.submit expects. Pure, so form-layout learnings are table-testable on
+// recorded view_opened payloads.
+func buildFormState(view map[string]any, schema WorkflowSchema, fields map[string]string) map[string]any {
+	stateValues := map[string]any{}
+	for _, block := range recItems(getArr(view, "blocks")) {
+		blockID := getStr(block, "block_id")
+		actionID := getStr(getRec(block, "element"), "action_id")
+		if blockID == "" || actionID == "" {
+			continue
+		}
+		var schemaField *FormField
+		for i := range schema.Fields {
+			if schema.Fields[i].Name == actionID {
+				schemaField = &schema.Fields[i]
+				break
+			}
+		}
+		if schemaField == nil {
+			continue
+		}
+		value := lookupField(fields, schemaField.Title)
+		if value == nil {
+			continue
+		}
+		stateValues[blockID] = map[string]any{
+			actionID: map[string]any{"type": "plain_text_input", "value": *value},
+		}
+	}
+	return stateValues
+}
+
 func lookupField(fields map[string]string, title string) *string {
 	if v, ok := fields[title]; ok {
 		return &v
@@ -172,35 +205,7 @@ func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission
 		return WorkflowSubmitResult{}, agenterrors.New("view_opened event did not contain a view_id", agenterrors.FixableByRetry)
 	}
 
-	// Map view block element action_ids (field UUIDs) back to schema fields,
-	// then to the user-supplied values.
-	stateValues := map[string]any{}
-	for _, block := range recItems(getArr(view, "blocks")) {
-		blockID := getStr(block, "block_id")
-		actionID := getStr(getRec(block, "element"), "action_id")
-		if blockID == "" || actionID == "" {
-			continue
-		}
-		var schemaField *FormField
-		for i := range input.Schema.Fields {
-			if input.Schema.Fields[i].Name == actionID {
-				schemaField = &input.Schema.Fields[i]
-				break
-			}
-		}
-		if schemaField == nil {
-			continue
-		}
-		value := lookupField(input.Fields, schemaField.Title)
-		if value == nil {
-			continue
-		}
-		stateValues[blockID] = map[string]any{
-			actionID: map[string]any{"type": "plain_text_input", "value": *value},
-		}
-	}
-
-	stateJSON, _ := json.Marshal(map[string]any{"values": stateValues})
+	stateJSON, _ := json.Marshal(map[string]any{"values": buildFormState(view, input.Schema, input.Fields)})
 	if _, err := c.API(ctx, "views.submit", map[string]any{
 		"view_id":      viewID,
 		"client_token": fmt.Sprintf("cli-%d", time.Now().UnixMilli()),

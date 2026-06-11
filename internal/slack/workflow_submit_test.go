@@ -116,3 +116,22 @@ func TestSubmitWorkflowFormRequiresBrowserAuth(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestBuildFormState(t *testing.T) {
+	view := map[string]any{
+		"blocks": []any{
+			map[string]any{"block_id": "blk1", "element": map[string]any{"action_id": "field-uuid-1"}},
+			map[string]any{"block_id": "blk2", "element": map[string]any{"action_id": "field-uuid-2"}},
+			map[string]any{"block_id": "blk3", "element": map[string]any{"action_id": "unknown-uuid"}},
+			map[string]any{"element": map[string]any{"action_id": "field-uuid-1"}}, // no block_id
+		},
+	}
+	state := buildFormState(view, testSchema(), map[string]string{"summary": "deploy failed"})
+	if len(state) != 1 { // only blk1: blk2 has no user value, blk3 unknown field
+		t.Fatalf("state = %v", state)
+	}
+	entry := state["blk1"].(map[string]any)["field-uuid-1"].(map[string]any)
+	if entry["value"] != "deploy failed" || entry["type"] != "plain_text_input" {
+		t.Errorf("entry = %v", entry)
+	}
+}

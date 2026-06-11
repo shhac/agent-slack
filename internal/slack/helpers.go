@@ -42,6 +42,14 @@ func clampInt(v, lo, hi int) int {
 	return min(max(v, lo), hi)
 }
 
+// orDefault substitutes def when v is the zero value.
+func orDefault(v, def int) int {
+	if v == 0 {
+		return def
+	}
+	return v
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {

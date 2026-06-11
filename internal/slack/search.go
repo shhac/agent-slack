@@ -64,18 +64,12 @@ type SearchResult struct {
 // back to scanning channel history / files.list directly, because Slack's
 // search API misses recent messages and needs search:read scope.
 func Search(ctx context.Context, c *Client, opts SearchOptions) (SearchResult, error) {
-	limit := opts.Limit
-	if limit == 0 {
-		limit = 20
-	}
-	limit = clampInt(limit, 1, 200)
-	maxContentChars := opts.MaxContentChars
-	if maxContentChars == 0 {
-		maxContentChars = 4000
-	}
-	contentType := opts.ContentType
-	if contentType == "" {
-		contentType = "any"
+	// Normalize once, in place (opts is a value copy): every helper then
+	// reads the corrected fields instead of threading shadow parameters.
+	opts.Limit = clampInt(orDefault(opts.Limit, 20), 1, 200)
+	opts.MaxContentChars = orDefault(opts.MaxContentChars, 4000)
+	if opts.ContentType == "" {
+		opts.ContentType = "any"
 	}
 	if opts.Warn == nil {
 		opts.Warn = io.Discard
@@ -91,9 +85,9 @@ func Search(ctx context.Context, c *Client, opts SearchOptions) (SearchResult, e
 		var messages []SearchMessageItem
 		var users map[string]CompactUser
 		if len(opts.Channels) > 0 {
-			messages, users, err = searchMessagesInChannels(ctx, c, opts, limit, maxContentChars, contentType)
+			messages, users, err = searchMessagesInChannels(ctx, c, opts)
 		} else {
-			messages, users, err = searchMessagesViaAPI(ctx, c, opts, slackQuery, limit, maxContentChars, contentType)
+			messages, users, err = searchMessagesViaAPI(ctx, c, opts, slackQuery)
 		}
 		if err != nil {
 			return SearchResult{}, err
@@ -105,9 +99,9 @@ func Search(ctx context.Context, c *Client, opts SearchOptions) (SearchResult, e
 	if opts.Kind == SearchFiles || opts.Kind == SearchAll {
 		var files []SearchFileItem
 		if len(opts.Channels) > 0 {
-			files, err = searchFilesInChannels(ctx, c, opts, limit, contentType)
+			files, err = searchFilesInChannels(ctx, c, opts)
 		} else {
-			files, err = searchFilesViaAPI(ctx, c, opts, slackQuery, limit, contentType)
+			files, err = searchFilesViaAPI(ctx, c, opts, slackQuery)
 		}
 		if err != nil {
 			return SearchResult{}, err
@@ -266,20 +260,18 @@ func totalPages(container map[string]any) int {
 	return int(getNum(paging, "page_count"))
 }
 
-func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slackQuery string, limit, maxContentChars int, contentType ContentType) ([]SearchMessageItem, map[string]CompactUser, error) {
-	matches, err := searchPaged(ctx, c, "search.messages", "messages", slackQuery, limit)
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(matches) == 0 {
-		return []SearchMessageItem{}, nil, nil
-	}
+// matchRef is the channel/ts/permalink coordinate of one search hit.
+type matchRef struct {
+	channelID string
+	ts        string
+	permalink string
+}
 
-	type matchRef struct {
-		channelID string
-		ts        string
-		permalink string
-	}
+// searchMatchRefs extracts hit coordinates from raw search.messages matches.
+// It encodes the response-shape quirks — ts may be blank, channel may arrive
+// name-only (resolved via the injected resolver so this stays testable
+// without a client) — and caps at limit.
+func searchMatchRefs(matches []map[string]any, limit int, resolveChannel func(name string) (string, error)) ([]matchRef, error) {
 	var refs []matchRef
 	for _, m := range matches {
 		ts := strings.TrimSpace(getStr(m, "ts"))
@@ -290,9 +282,10 @@ func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, sl
 		channelID := getStr(channel, "id")
 		if channelID == "" {
 			if name := getStr(channel, "name"); name != "" {
-				channelID, err = ResolveChannelID(ctx, c, "#"+name)
+				var err error
+				channelID, err = resolveChannel(name)
 				if err != nil {
-					return nil, nil, err
+					return nil, err
 				}
 			}
 		}
@@ -303,6 +296,24 @@ func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, sl
 		if len(refs) >= limit {
 			break
 		}
+	}
+	return refs, nil
+}
+
+func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slackQuery string) ([]SearchMessageItem, map[string]CompactUser, error) {
+	matches, err := searchPaged(ctx, c, "search.messages", "messages", slackQuery, opts.Limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(matches) == 0 {
+		return []SearchMessageItem{}, nil, nil
+	}
+
+	refs, err := searchMatchRefs(matches, opts.Limit, func(name string) (string, error) {
+		return ResolveChannelID(ctx, c, "#"+name)
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 
 	downloaded := map[string]render.DownloadResult{}
@@ -318,13 +329,13 @@ func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, sl
 		if ferr != nil {
 			continue // matches can point at since-deleted or inaccessible messages
 		}
-		hit, ok := searchHit(ctx, c, opts, full, downloaded, maxContentChars, contentType, ref.permalink)
+		hit, ok := searchHit(ctx, c, opts, full, downloaded, ref.permalink)
 		if !ok {
 			continue
 		}
 		resolved = append(resolved, full)
 		out = append(out, hit)
-		if len(out) >= limit {
+		if len(out) >= opts.Limit {
 			break
 		}
 	}
@@ -333,19 +344,19 @@ func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, sl
 	return out, users, nil
 }
 
-func searchFilesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slackQuery string, limit int, contentType ContentType) ([]SearchFileItem, error) {
-	matches, err := searchPaged(ctx, c, "search.files", "files", slackQuery, limit)
+func searchFilesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slackQuery string) ([]SearchFileItem, error) {
+	matches, err := searchPaged(ctx, c, "search.files", "files", slackQuery, opts.Limit)
 	if err != nil {
 		return nil, err
 	}
 	var out []SearchFileItem
 	for _, f := range matches {
-		item, ok := downloadSearchFile(ctx, c, f, opts, contentType)
+		item, ok := downloadSearchFile(ctx, c, f, opts)
 		if !ok {
 			continue
 		}
 		out = append(out, item)
-		if len(out) >= limit {
+		if len(out) >= opts.Limit {
 			break
 		}
 	}

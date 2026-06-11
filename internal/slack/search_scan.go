@@ -66,7 +66,7 @@ func (f channelScanFilter) match(summary render.MessageSummary) (keep, pastOldes
 	return true, false
 }
 
-func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions, limit, maxContentChars int, contentType ContentType) ([]SearchMessageItem, map[string]CompactUser, error) {
+func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions) ([]SearchMessageItem, map[string]CompactUser, error) {
 	channelIDs, err := resolveChannelIDs(ctx, c, opts.Channels)
 	if err != nil {
 		return nil, nil, err
@@ -92,13 +92,13 @@ func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions
 				if !keep {
 					continue
 				}
-				hit, ok := searchHit(ctx, c, opts, summary, downloaded, maxContentChars, contentType, "")
+				hit, ok := searchHit(ctx, c, opts, summary, downloaded, "")
 				if !ok {
 					continue
 				}
 				matched = append(matched, summary)
 				out = append(out, hit)
-				if len(out) >= limit {
+				if len(out) >= opts.Limit {
 					full = true
 					return false, nil
 				}
@@ -145,7 +145,7 @@ func searchUserIDForFilter(ctx context.Context, c *Client, input string) string 
 	return found
 }
 
-func searchFilesInChannels(ctx context.Context, c *Client, opts SearchOptions, limit int, contentType ContentType) ([]SearchFileItem, error) {
+func searchFilesInChannels(ctx context.Context, c *Client, opts SearchOptions) ([]SearchFileItem, error) {
 	channelIDs, err := resolveChannelIDs(ctx, c, opts.Channels)
 	if err != nil {
 		return nil, err
@@ -191,12 +191,12 @@ func searchFilesInChannels(ctx context.Context, c *Client, opts SearchOptions, l
 				if queryLower != "" && !strings.Contains(strings.ToLower(title), queryLower) {
 					continue
 				}
-				item, ok := downloadSearchFile(ctx, c, f, opts, contentType)
+				item, ok := downloadSearchFile(ctx, c, f, opts)
 				if !ok {
 					continue
 				}
 				out = append(out, item)
-				if len(out) >= limit {
+				if len(out) >= opts.Limit {
 					return out, nil
 				}
 			}

@@ -12,24 +12,24 @@ import (
 // matched message. ok=false means the content-type filter rejected it.
 // thread_ts is dropped from hits: the permalink or channel_id+ts chain into
 // message get/list.
-func searchHit(ctx context.Context, c *Client, opts SearchOptions, summary render.MessageSummary, downloaded map[string]render.DownloadResult, maxContentChars int, contentType ContentType, permalink string) (SearchMessageItem, bool) {
+func searchHit(ctx context.Context, c *Client, opts SearchOptions, summary render.MessageSummary, downloaded map[string]render.DownloadResult, permalink string) (SearchMessageItem, bool) {
 	if opts.Download {
 		for id, res := range DownloadMessageFiles(ctx, c, []render.MessageSummary{summary}, MessageDownloads{DestDir: opts.DownloadsDir, Warn: opts.Warn}) {
 			downloaded[id] = res
 		}
 	}
-	compact := render.ToCompactMessage(summary, render.CompactOptions{MaxBodyChars: maxContentChars, DownloadedPaths: downloaded})
-	if !PassesContentTypeFilter(compact, contentType) {
+	compact := render.ToCompactMessage(summary, render.CompactOptions{MaxBodyChars: opts.MaxContentChars, DownloadedPaths: downloaded})
+	if !PassesContentTypeFilter(compact, opts.ContentType) {
 		return SearchMessageItem{}, false
 	}
 	compact.ThreadTS = ""
 	return SearchMessageItem{CompactMessage: compact, Permalink: permalink}, true
 }
 
-func downloadSearchFile(ctx context.Context, c *Client, f map[string]any, opts SearchOptions, contentType ContentType) (SearchFileItem, bool) {
+func downloadSearchFile(ctx context.Context, c *Client, f map[string]any, opts SearchOptions) (SearchFileItem, bool) {
 	mode := getStr(f, "mode")
 	mimetype := getStr(f, "mimetype")
-	if !passesFileContentTypeFilter(mode, mimetype, contentType) {
+	if !passesFileContentTypeFilter(mode, mimetype, opts.ContentType) {
 		return SearchFileItem{}, false
 	}
 	fileURL := firstNonEmpty(getStr(f, "url_private_download"), getStr(f, "url_private"))
