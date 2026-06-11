@@ -637,10 +637,10 @@ func resolveChannelIDs(ctx context.Context, c *Client, channels []string) ([]str
 }
 
 func resolveSearchUsers(ctx context.Context, c *Client, opts SearchOptions, messages []render.MessageSummary) map[string]CompactUser {
-	ids := render.CollectReferencedUserIDs(messages, false)
 	if !opts.ResolveUsers && !opts.RefreshUsers {
 		return nil
 	}
+	ids := render.CollectReferencedUserIDs(messages, false)
 	users := ResolveUsersByID(ctx, c, opts.WorkspaceURL, ids, ResolveUsersOptions{
 		CacheDir:     opts.UserCacheDir,
 		ForceRefresh: opts.RefreshUsers,

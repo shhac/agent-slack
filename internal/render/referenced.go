@@ -1,8 +1,9 @@
 package render
 
 import (
+	"maps"
 	"regexp"
-	"sort"
+	"slices"
 )
 
 var (
@@ -59,12 +60,7 @@ func collectUserIDsFromValue(value any, add func(string)) {
 			collectUserIDsFromValue(item, add)
 		}
 	case map[string]any:
-		keys := make([]string, 0, len(v))
-		for k := range v {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
+		for _, key := range slices.Sorted(maps.Keys(v)) {
 			child := v[key]
 			switch key {
 			case "user", "user_id":

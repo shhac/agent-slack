@@ -34,7 +34,7 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			return printList(globals, toAnySlice(page.Users), listMeta(metaPagination(page.NextCursor)))
+			return printList(globals, toAnySlice(page.Users), listMeta(page.NextCursor, nil))
 		},
 	}
 	listCmd.Flags().IntVar(&limit, "limit", 200, "Max users")

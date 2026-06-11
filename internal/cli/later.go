@@ -71,10 +71,7 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			meta := listMeta(
-				metaEntry("counts", result.Counts, false),
-				metaPagination(result.NextCursor),
-			)
+			meta := listMeta(result.NextCursor, map[string]any{"counts": result.Counts})
 			return printList(globals, toAnySlice(result.Items), meta)
 		},
 	}

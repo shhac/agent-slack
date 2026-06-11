@@ -13,10 +13,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -305,12 +306,7 @@ func encodeMultipart(fields map[string]string) ([]byte, string, error) {
 	var buf strings.Builder
 	w := multipart.NewWriter(&buf)
 	// Sorted for deterministic bodies (map iteration order is random).
-	keys := make([]string, 0, len(fields))
-	for k := range fields {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
+	for _, k := range slices.Sorted(maps.Keys(fields)) {
 		if err := w.WriteField(k, fields[k]); err != nil {
 			return nil, "", err
 		}

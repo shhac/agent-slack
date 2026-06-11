@@ -114,10 +114,10 @@ func messageDownloadOptions() slack.MessageDownloads {
 }
 
 func resolveReferencedUsers(ctx context.Context, cc *clientContext, flags *readFlags, messages []render.MessageSummary) map[string]slack.CompactUser {
-	ids := render.CollectReferencedUserIDs(messages, flags.includeReactions)
 	if !flags.shouldResolveUsers() {
 		return nil
 	}
+	ids := render.CollectReferencedUserIDs(messages, flags.includeReactions)
 	users := slack.ResolveUsersByID(ctx, cc.Client, cc.WorkspaceURL, ids, slack.ResolveUsersOptions{
 		CacheDir:     appCacheDir(),
 		ForceRefresh: flags.refreshUsers,
@@ -335,19 +335,14 @@ func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext,
 
 func normalizeReactionNames(raw []string) ([]string, error) {
 	var out []string
+	seen := map[string]bool{}
 	for _, value := range raw {
 		name, err := render.NormalizeReactionName(value)
 		if err != nil {
 			return nil, err
 		}
-		exists := false
-		for _, have := range out {
-			if have == name {
-				exists = true
-				break
-			}
-		}
-		if !exists {
+		if !seen[name] {
+			seen[name] = true
 			out = append(out, name)
 		}
 	}
@@ -738,7 +733,7 @@ func registerMessageScheduled(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			return printList(globals, toAnySlice(page.ScheduledMessages), listMeta(metaPagination(page.NextCursor)))
+			return printList(globals, toAnySlice(page.ScheduledMessages), listMeta(page.NextCursor, nil))
 		},
 	}
 	listCmd.Flags().StringVar(&channel, "channel", "", "Limit to a channel/DM (id, #name, or U… for a DM)")

@@ -36,7 +36,7 @@ func registerWorkflow(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			return printList(globals, toAnySlice(result.Workflows),
-				listMeta(metaEntry("channel_id", result.ChannelID, false)))
+				listMeta("", map[string]any{"channel_id": result.ChannelID}))
 		},
 	}
 	workflowCmd.AddCommand(listCmd)

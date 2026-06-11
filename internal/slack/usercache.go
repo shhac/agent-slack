@@ -5,11 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -131,8 +132,8 @@ func fetchUsersByID(ctx context.Context, c *Client, ids []string) map[string]Com
 			if err != nil {
 				return // best effort
 			}
-			user, ok := resp["user"].(map[string]any)
-			if !ok {
+			user := getRec(resp, "user")
+			if user == nil {
 				return
 			}
 			mu.Lock()
@@ -212,20 +213,11 @@ func writeUserCache(path string, file *userCacheFile) {
 
 func pruneExpiredUsers(file *userCacheFile, now time.Time) bool {
 	changed := false
-	for _, id := range sortedKeys(file.Entries) {
+	for _, id := range slices.Sorted(maps.Keys(file.Entries)) {
 		if now.UnixMilli()-file.Entries[id].FetchedAt >= userCacheTTL.Milliseconds() {
 			delete(file.Entries, id)
 			changed = true
 		}
 	}
 	return changed
-}
-
-func sortedKeys(m map[string]userCacheEntry) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

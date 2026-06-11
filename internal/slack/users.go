@@ -26,29 +26,21 @@ type CompactUser struct {
 
 // ToCompactUser shapes a raw users.list / users.info member object.
 func ToCompactUser(u map[string]any) CompactUser {
-	profile, _ := u["profile"].(map[string]any)
-	str := func(m map[string]any, key string) string {
-		s, _ := m[key].(string)
-		return s
-	}
-	boolVal := func(key string) bool {
-		b, _ := u[key].(bool)
-		return b
-	}
-	realName := str(u, "real_name")
+	profile := getRec(u, "profile")
+	realName := getStr(u, "real_name")
 	if realName == "" {
-		realName = str(profile, "real_name")
+		realName = getStr(profile, "real_name")
 	}
 	return CompactUser{
-		ID:          str(u, "id"),
-		Name:        str(u, "name"),
+		ID:          getStr(u, "id"),
+		Name:        getStr(u, "name"),
 		RealName:    realName,
-		DisplayName: str(profile, "display_name"),
-		Email:       str(profile, "email"),
-		Title:       str(profile, "title"),
-		TZ:          str(u, "tz"),
-		IsBot:       boolVal("is_bot"),
-		Deleted:     boolVal("deleted"),
+		DisplayName: getStr(profile, "display_name"),
+		Email:       getStr(profile, "email"),
+		Title:       getStr(profile, "title"),
+		TZ:          getStr(u, "tz"),
+		IsBot:       getBool(u, "is_bot"),
+		Deleted:     getBool(u, "deleted"),
 	}
 }
 
@@ -79,23 +71,16 @@ func ResolveUserID(ctx context.Context, c *Client, input string) (string, error)
 
 	found := ""
 	err := EachPage(ctx, c, "users.list", map[string]any{"limit": 200}, func(resp map[string]any) (bool, error) {
-		members, _ := resp["members"].([]any)
-		for _, mAny := range members {
-			m, ok := mAny.(map[string]any)
-			if !ok {
-				continue
-			}
-			name, _ := m["name"].(string)
-			matched := strings.ToLower(name) == handleLower
+		for _, m := range recItems(getArr(resp, "members")) {
+			matched := strings.ToLower(getStr(m, "name")) == handleLower
 			if !matched && looksLikeEmail {
-				profile, _ := m["profile"].(map[string]any)
-				email, _ := profile["email"].(string)
+				email := getStr(getRec(m, "profile"), "email")
 				matched = email != "" && strings.ToLower(email) == emailLower
 			}
 			if !matched {
 				continue
 			}
-			if id, _ := m["id"].(string); id != "" {
+			if id := getStr(m, "id"); id != "" {
 				found = id
 				return false, nil
 			}
@@ -116,9 +101,7 @@ func userIDViaEmailLookup(ctx context.Context, c *Client, email string) string {
 	if err != nil {
 		return "" // fall back to the users.list scan
 	}
-	user, _ := resp["user"].(map[string]any)
-	id, _ := user["id"].(string)
-	return id
+	return getStr(getRec(resp, "user"), "id")
 }
 
 func errUserNotResolved(input string) *agenterrors.APIError {

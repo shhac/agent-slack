@@ -27,8 +27,11 @@ func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			meta := listMeta(metaEntry("threads", result.Threads, result.Threads == nil))
-			return printList(globals, toAnySlice(result.Channels), meta)
+			var extra map[string]any
+			if result.Threads != nil {
+				extra = map[string]any{"threads": result.Threads}
+			}
+			return printList(globals, toAnySlice(result.Channels), listMeta("", extra))
 		},
 	}
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only unread counts, no message content")

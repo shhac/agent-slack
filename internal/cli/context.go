@@ -28,7 +28,6 @@ type clientContext struct {
 	Client       *slack.Client
 	WorkspaceURL string
 	AuthType     slack.AuthType
-	FromEnv      bool
 }
 
 // getClient resolves credentials for the --workspace selector (or default).
@@ -119,7 +118,6 @@ func clientFromEnv(globals *GlobalFlags, selector string) *clientContext {
 		Client:       slack.New(slackAuth, clientOptions(globals)...),
 		WorkspaceURL: envWorkspace,
 		AuthType:     slackAuth.Type,
-		FromEnv:      true,
 	}
 }
 

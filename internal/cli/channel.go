@@ -61,7 +61,7 @@ func registerChannelList(parent *cobra.Command, globals *GlobalFlags) {
 				}
 				items = append(items, slack.ToCompactChannel(ch))
 			}
-			return printList(globals, items, listMeta(metaPagination(page.NextCursor)))
+			return printList(globals, items, listMeta(page.NextCursor, nil))
 		},
 	}
 	cmd.Flags().StringVar(&user, "user", "", "User id (U…) or @handle whose conversations to list")

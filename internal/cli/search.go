@@ -75,8 +75,11 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 			for _, f := range result.Files {
 				items = append(items, map[string]any{"file": f})
 			}
-			meta := listMeta(metaEntry("referenced_users", result.ReferencedUsers, result.ReferencedUsers == nil))
-			return printList(globals, items, meta)
+			var extra map[string]any
+			if result.ReferencedUsers != nil {
+				extra = map[string]any{"referenced_users": result.ReferencedUsers}
+			}
+			return printList(globals, items, listMeta("", extra))
 		},
 	}
 	cmd.Flags().StringArrayVar(&channels, "channel", nil, "Channel filter (#name, name, or id; repeatable)")

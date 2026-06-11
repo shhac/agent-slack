@@ -1,7 +1,8 @@
 package cli
 
 import (
-	"sort"
+	"maps"
+	"slices"
 
 	"github.com/shhac/agent-slack/internal/output"
 )
@@ -30,7 +31,7 @@ func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
 				return err
 			}
 		}
-		for _, key := range sortedMetaKeys(meta) {
+		for _, key := range slices.Sorted(maps.Keys(meta)) {
 			if err := w.WriteMetaLine("@"+key, meta[key]); err != nil {
 				return err
 			}
@@ -46,15 +47,6 @@ func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
 	return nil
 }
 
-func sortedMetaKeys(meta map[string]any) []string {
-	keys := make([]string, 0, len(meta))
-	for k := range meta {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 func toAnySlice[T any](items []T) []any {
 	out := make([]any, len(items))
 	for i, item := range items {
@@ -63,35 +55,16 @@ func toAnySlice[T any](items []T) []any {
 	return out
 }
 
-// listMeta builds the meta map, skipping empties.
-func listMeta(pairs ...metaPair) map[string]any {
+// listMeta merges extra meta entries with pagination (added only when a
+// next cursor exists). Returns nil when there is nothing to emit.
+func listMeta(nextCursor string, extra map[string]any) map[string]any {
 	meta := map[string]any{}
-	for _, p := range pairs {
-		if p.skip {
-			continue
-		}
-		meta[p.key] = p.value
+	maps.Copy(meta, extra)
+	if nextCursor != "" {
+		meta["pagination"] = output.Pagination{HasMore: true, NextCursor: nextCursor}
 	}
 	if len(meta) == 0 {
 		return nil
 	}
 	return meta
-}
-
-type metaPair struct {
-	key   string
-	value any
-	skip  bool
-}
-
-func metaPagination(nextCursor string) metaPair {
-	return metaPair{
-		key:   "pagination",
-		value: output.Pagination{HasMore: nextCursor != "", NextCursor: nextCursor},
-		skip:  nextCursor == "",
-	}
-}
-
-func metaEntry(key string, value any, skip bool) metaPair {
-	return metaPair{key: key, value: value, skip: skip}
 }

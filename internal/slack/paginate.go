@@ -7,12 +7,7 @@ import (
 
 // NextCursor extracts response_metadata.next_cursor from a Slack response.
 func NextCursor(resp map[string]any) string {
-	meta, ok := resp["response_metadata"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	cursor, _ := meta["next_cursor"].(string)
-	return cursor
+	return getStr(getRec(resp, "response_metadata"), "next_cursor")
 }
 
 // EachPage calls method repeatedly, threading Slack's cursor between calls,

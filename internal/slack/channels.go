@@ -49,16 +49,9 @@ func ResolveChannelID(ctx context.Context, c *Client, input string) (string, err
 		"limit":            200,
 		"types":            "public_channel,private_channel",
 	}, func(resp map[string]any) (bool, error) {
-		channels, _ := resp["channels"].([]any)
-		for _, chAny := range channels {
-			ch, ok := chAny.(map[string]any)
-			if !ok {
-				continue
-			}
-			chName, _ := ch["name"].(string)
-			chID, _ := ch["id"].(string)
-			if chName == name && chID != "" {
-				found = chID
+		for _, ch := range recItems(getArr(resp, "channels")) {
+			if getStr(ch, "name") == name && getStr(ch, "id") != "" {
+				found = getStr(ch, "id")
 				return false, nil
 			}
 		}
@@ -84,15 +77,11 @@ func channelIDViaSearch(ctx context.Context, c *Client, name string) string {
 	if err != nil {
 		return ""
 	}
-	messages, _ := resp["messages"].(map[string]any)
-	matches, _ := messages["matches"].([]any)
+	matches := recItems(getArr(getRec(resp, "messages"), "matches"))
 	if len(matches) == 0 {
 		return ""
 	}
-	match, _ := matches[0].(map[string]any)
-	channel, _ := match["channel"].(map[string]any)
-	id, _ := channel["id"].(string)
-	return id
+	return getStr(getRec(matches[0], "channel"), "id")
 }
 
 // ResolveChannelName resolves a conversation ID to a readable name — the
@@ -104,13 +93,13 @@ func ResolveChannelName(ctx context.Context, c *Client, channelID string) string
 	if err != nil {
 		return channelID
 	}
-	channel, ok := resp["channel"].(map[string]any)
-	if !ok {
+	channel := getRec(resp, "channel")
+	if channel == nil {
 		return channelID
 	}
 
-	if isIM, _ := channel["is_im"].(bool); isIM {
-		userID, _ := channel["user"].(string)
+	if getBool(channel, "is_im") {
+		userID := getStr(channel, "user")
 		if userID == "" {
 			return channelID
 		}
@@ -118,18 +107,17 @@ func ResolveChannelName(ctx context.Context, c *Client, channelID string) string
 		if err != nil {
 			return channelID
 		}
-		user, _ := userResp["user"].(map[string]any)
-		profile, _ := user["profile"].(map[string]any)
-		if displayName, _ := profile["display_name"].(string); displayName != "" {
+		profile := getRec(getRec(userResp, "user"), "profile")
+		if displayName := getStr(profile, "display_name"); displayName != "" {
 			return displayName
 		}
-		if realName, _ := profile["real_name"].(string); realName != "" {
+		if realName := getStr(profile, "real_name"); realName != "" {
 			return realName
 		}
 		return channelID
 	}
 
-	if name, _ := channel["name"].(string); name != "" {
+	if name := getStr(channel, "name"); name != "" {
 		return name
 	}
 	return channelID

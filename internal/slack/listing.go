@@ -116,10 +116,6 @@ func ListUsers(ctx context.Context, c *Client, opts ListUsersOptions) (UsersPage
 
 	var users []CompactUser
 	nextCursor := ""
-	params := map[string]any{}
-	if opts.Cursor != "" {
-		params["cursor"] = opts.Cursor
-	}
 	cursor := opts.Cursor
 	for len(users) < limit {
 		pageSize := min(200, limit-len(users))

@@ -86,14 +86,7 @@ func fixableForCode(code string) agenterrors.FixableBy {
 }
 
 func metadataMessages(data map[string]any) string {
-	meta, ok := data["response_metadata"].(map[string]any)
-	if !ok {
-		return ""
-	}
-	raw, ok := meta["messages"].([]any)
-	if !ok {
-		return ""
-	}
+	raw := getArr(getRec(data, "response_metadata"), "messages")
 	var parts []string
 	for _, m := range raw {
 		if s, ok := m.(string); ok && s != "" {
