@@ -74,6 +74,27 @@ func TestReadTargetCompletions(t *testing.T) {
 	}
 }
 
+func TestReadTargetCompletionsCorruptFile(t *testing.T) {
+	dir := t.TempDir()
+	ws := "https://acme.slack.com"
+	wsDir := filepath.Join(dir, hashWorkspaceURL(ws))
+	if err := os.MkdirAll(wsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wsDir, "channels.json"), []byte("{{{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A corrupt category must not panic or pollute results — and other intact
+	// categories still complete.
+	writeCacheCategory(t, dir, ws, "users", map[string]cacheEntry[CompactUser]{
+		"U0ALICE": {FetchedAt: 100, Value: CompactUser{ID: "U0ALICE", DisplayName: "Alice"}},
+	})
+	got := completionValues(ReadTargetCompletions(dir, ws, "", 10))
+	if len(got) != 1 || got[0] != "U0ALICE" {
+		t.Errorf("got %v, want just the intact category's entry", got)
+	}
+}
+
 func TestReadTargetCompletionsColdCache(t *testing.T) {
 	if got := ReadTargetCompletions(t.TempDir(), "https://acme.slack.com", "", 10); len(got) != 0 {
 		t.Errorf("cold cache should yield nothing, got %v", got)

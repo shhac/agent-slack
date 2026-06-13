@@ -108,6 +108,35 @@ type cacheSnapshot[T any] struct {
 	changed  bool
 }
 
+// cacheFilePath locates one workspace's category file, or "" when caching
+// cannot apply (no dir, or no host to key the workspace by).
+func cacheFilePath(dir, workspaceURL, category string) string {
+	key := hashWorkspaceURL(workspaceURL)
+	if dir == "" || key == "" {
+		return ""
+	}
+	return filepath.Join(dir, key, category+".json")
+}
+
+// readCacheFile parses one category file, returning nil when the path is
+// empty or the file is missing, corrupt, or a different version. Both the
+// TTL-respecting snapshot and the TTL-ignoring completion reader go through
+// this single point, so the on-disk format has exactly one parser.
+func readCacheFile[T any](path string) map[string]cacheEntry[T] {
+	if path == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var data cacheData[T]
+	if err := json.Unmarshal(raw, &data); err != nil || data.Version != cacheFileVersion || data.Entries == nil {
+		return nil
+	}
+	return data.Entries
+}
+
 // openCache loads (once) the category file for the workspace. category is the
 // filename suffix; ttl is that category's freshness window; validate prunes
 // corrupt entries on load (nil keeps every non-empty key).
@@ -118,29 +147,24 @@ func openCache[T any](c *Cache, category, workspaceURL string, ttl time.Duration
 		validate: validate,
 		data:     &cacheData[T]{Version: cacheFileVersion, Entries: map[string]cacheEntry[T]{}},
 	}
-	if c == nil || c.Dir == "" || c.Mode == CacheOff {
+	if c == nil || c.Mode == CacheOff {
 		return s // disabled: usable, all gets miss, save no-ops
 	}
-	key := hashWorkspaceURL(workspaceURL)
-	if key == "" {
+	s.path = cacheFilePath(c.Dir, workspaceURL, category)
+	if s.path == "" {
 		return s
 	}
-	s.path = filepath.Join(c.Dir, key, category+".json")
 
-	raw, err := os.ReadFile(s.path)
-	if err != nil {
+	entries := readCacheFile[T](s.path)
+	if entries == nil {
 		return s
 	}
-	var data cacheData[T]
-	if err := json.Unmarshal(raw, &data); err != nil || data.Version != cacheFileVersion || data.Entries == nil {
-		return s
-	}
-	for k, e := range data.Entries {
+	for k, e := range entries {
 		if k == "" || e.FetchedAt <= 0 || (validate != nil && !validate(k, e.Value)) {
-			delete(data.Entries, k)
+			delete(entries, k)
 		}
 	}
-	s.data = &data
+	s.data.Entries = entries
 	return s
 }
 

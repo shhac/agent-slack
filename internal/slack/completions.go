@@ -1,9 +1,6 @@
 package slack
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -19,19 +16,7 @@ type CompletionItem struct {
 // TTL — completions surface even slightly-stale hints) and returns its entries
 // with their fetched_at timestamps. Pure read; no API, no credentials.
 func loadCacheEntries[T any](cacheDir, workspaceURL, category string) map[string]cacheEntry[T] {
-	key := hashWorkspaceURL(workspaceURL)
-	if cacheDir == "" || key == "" {
-		return nil
-	}
-	raw, err := os.ReadFile(filepath.Join(cacheDir, key, category+".json"))
-	if err != nil {
-		return nil
-	}
-	var data cacheData[T]
-	if json.Unmarshal(raw, &data) != nil || data.Entries == nil {
-		return nil
-	}
-	return data.Entries
+	return readCacheFile[T](cacheFilePath(cacheDir, workspaceURL, category))
 }
 
 // ReadTargetCompletions returns channel and user <target> candidates from the
