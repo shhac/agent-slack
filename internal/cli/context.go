@@ -168,7 +168,11 @@ func buildCache(globals *GlobalFlags) *slack.Cache {
 // AGENT_SLACK_CACHE_TTL_<CATEGORY> env vars (most specific wins).
 func resolveCacheTTL(globals *GlobalFlags) slack.CacheTTL {
 	ttl := slack.DefaultCacheTTL()
-	if d, ok := parseTTL(firstNonEmpty(globals.CacheTTL, os.Getenv("AGENT_SLACK_CACHE_TTL"))); ok {
+	global := globals.CacheTTL
+	if global == "" {
+		global = os.Getenv("AGENT_SLACK_CACHE_TTL")
+	}
+	if d, ok := parseTTL(global); ok {
 		ttl = slack.CacheTTL{Users: d, Channels: d, ChannelNames: d, Handles: d, WorkflowPreview: d, WorkflowSchema: d}
 	}
 	for env, field := range map[string]*time.Duration{
@@ -200,15 +204,6 @@ func parseTTL(raw string) (time.Duration, bool) {
 		return 0, false
 	}
 	return d, true
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // desktopRefresh re-extracts credentials from Slack Desktop when a call hits
