@@ -141,10 +141,13 @@ func (s *Store) Save(creds *Credentials) error {
 	}
 
 	if s.kc.Available() {
-		// xoxd is shared across browser workspaces; store it once.
+		// xoxd is shared across browser workspaces; store it once. Only swap the
+		// file copies for the placeholder if that store succeeded — otherwise the
+		// cookie would be lost (mirrors the xoxc/token gating below).
+		xoxdStored := false
 		for _, w := range out.Workspaces {
 			if w.Auth.Type == AuthBrowser && !isPlaceholder(w.Auth.XOXD) {
-				s.kc.Set(xoxdAccount, w.Auth.XOXD)
+				xoxdStored = s.kc.Set(xoxdAccount, w.Auth.XOXD)
 				break
 			}
 		}
@@ -155,7 +158,7 @@ func (s *Store) Save(creds *Credentials) error {
 				if !isPlaceholder(w.Auth.XOXC) && s.kc.Set(xoxcAccount(w.URL), w.Auth.XOXC) {
 					w.Auth.XOXC = keychainPlaceholder
 				}
-				if !isPlaceholder(w.Auth.XOXD) {
+				if !isPlaceholder(w.Auth.XOXD) && xoxdStored {
 					w.Auth.XOXD = keychainPlaceholder
 				}
 			case AuthStandard:

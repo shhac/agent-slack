@@ -14,6 +14,51 @@ func newTestStore(t *testing.T, kc Keychain) *Store {
 	return NewWithStore(path, kc)
 }
 
+// failingKeychain reports itself available but fails every Set — the macOS
+// "keychain locked / security CLI errored" case. Secrets must then stay in the
+// file rather than being replaced by an unrecoverable placeholder.
+type failingKeychain struct{}
+
+func (failingKeychain) Get(string) (string, bool) { return "", false }
+func (failingKeychain) Set(string, string) bool   { return false }
+func (failingKeychain) Delete(string)             {}
+func (failingKeychain) Available() bool           { return true }
+
+func TestSecretsStayInFileWhenKeychainSetFails(t *testing.T) {
+	s := newTestStore(t, failingKeychain{})
+	if _, err := s.Upsert(Workspace{
+		URL:  "https://acme.slack.com",
+		Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-secret", XOXD: "xoxd-secret"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Neither secret was persisted to the keychain, so both must remain in the
+	// file — including xoxd, which previously got the placeholder unconditionally.
+	raw, err := os.ReadFile(s.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "xoxc-secret") {
+		t.Errorf("xoxc dropped when keychain Set failed:\n%s", raw)
+	}
+	if !strings.Contains(string(raw), "xoxd-secret") {
+		t.Errorf("xoxd dropped when keychain Set failed:\n%s", raw)
+	}
+	if strings.Contains(string(raw), keychainPlaceholder) {
+		t.Errorf("placeholder written for a secret the keychain never stored:\n%s", raw)
+	}
+
+	// A fresh load still recovers both secrets from the file.
+	got, err := s.ResolveDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Auth.XOXC != "xoxc-secret" || got.Auth.XOXD != "xoxd-secret" {
+		t.Errorf("secrets not recoverable after a failed keychain store: %+v", got.Auth)
+	}
+}
+
 func TestNormalizeURL(t *testing.T) {
 	cases := map[string]string{
 		"https://acme.slack.com":                "https://acme.slack.com",
