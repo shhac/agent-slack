@@ -319,14 +319,9 @@ func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, sl
 	var resolved []render.MessageSummary
 	var out []SearchMessageItem
 	for _, ref := range refs {
-		msgRef := &render.MessageRef{WorkspaceURL: opts.WorkspaceURL, ChannelID: ref.channelID, MessageTS: ref.ts, Raw: ref.permalink}
-		if parsed, perr := render.ParseMessageURL(ref.permalink); perr == nil {
-			msgRef.WorkspaceURL = parsed.WorkspaceURL
-			msgRef.ThreadTSHint = parsed.ThreadTSHint
-		}
-		full, ferr := FetchMessage(ctx, c, msgRef, false)
-		if ferr != nil {
-			continue // matches can point at since-deleted or inaccessible messages
+		full, ok := fetchSearchMessage(ctx, c, opts, ref)
+		if !ok {
+			continue
 		}
 		hit, ok := searchHit(ctx, c, opts, full, downloaded, ref.permalink)
 		if !ok {
@@ -341,6 +336,23 @@ func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, sl
 
 	users := resolveSearchUsers(ctx, c, opts, resolved)
 	return out, users, nil
+}
+
+// fetchSearchMessage resolves one search match to its full message. The
+// match's permalink (when parseable) corrects the workspace and supplies the
+// thread hint. Misses are expected — matches can point at since-deleted or
+// inaccessible messages — so failures report !ok rather than an error.
+func fetchSearchMessage(ctx context.Context, c *Client, opts SearchOptions, ref matchRef) (render.MessageSummary, bool) {
+	msgRef := &render.MessageRef{WorkspaceURL: opts.WorkspaceURL, ChannelID: ref.channelID, MessageTS: ref.ts, Raw: ref.permalink}
+	if parsed, err := render.ParseMessageURL(ref.permalink); err == nil {
+		msgRef.WorkspaceURL = parsed.WorkspaceURL
+		msgRef.ThreadTSHint = parsed.ThreadTSHint
+	}
+	full, err := FetchMessage(ctx, c, msgRef, false)
+	if err != nil {
+		return render.MessageSummary{}, false
+	}
+	return full, true
 }
 
 func searchFilesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slackQuery string) ([]SearchFileItem, error) {
