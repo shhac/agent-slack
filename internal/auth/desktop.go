@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,33 +81,41 @@ func ExtractFromSlackDesktop() (*Extracted, error) {
 
 	var failures []string
 	for _, c := range candidates {
-		raw, err := readSlackLocalConfig(c.leveldbDir)
+		extracted, err := extractChromiumFromFiles(c.leveldbDir, c.cookiesDB, desktopSafeStorageQueries,
+			map[string]string{"leveldb_path": c.leveldbDir, "cookies_path": c.cookiesDB})
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("%s: %v", c.baseDir, err))
 			continue
 		}
-		cfg, err := parseLocalConfig(raw)
-		if err != nil {
-			failures = append(failures, fmt.Sprintf("%s: %v", c.baseDir, err))
-			continue
-		}
-		teams := teamsFromLocalConfig(cfg)
-		if len(teams) == 0 {
-			failures = append(failures, fmt.Sprintf("%s: no xoxc tokens in localConfig", c.baseDir))
-			continue
-		}
-		cookie, err := extractChromiumCookieD(c.cookiesDB, desktopSafeStorageQueries)
-		if err != nil {
-			failures = append(failures, fmt.Sprintf("%s: %v", c.baseDir, err))
-			continue
-		}
-		return &Extracted{
-			CookieD: cookie,
-			Teams:   teams,
-			Source:  map[string]string{"leveldb_path": c.leveldbDir, "cookies_path": c.cookiesDB},
-		}, nil
+		return extracted, nil
 	}
 
 	return nil, agenterrors.Newf(agenterrors.FixableByHuman,
 		"could not extract Slack Desktop credentials:\n  - %s", strings.Join(failures, "\n  - "))
+}
+
+// extractChromiumFromFiles reads Slack credentials from a Chromium-family
+// profile on disk: the localConfig (xoxc tokens) from its Local Storage
+// LevelDB, and the xoxd cookie from its encrypted Cookies SQLite. Shared by
+// Slack Desktop and file-based browser sources (Opera, …). The caller owns
+// multi-candidate iteration and failure aggregation; source labels this
+// result's origin. Returns a plain error so callers can wrap or accumulate it.
+func extractChromiumFromFiles(leveldbDir, cookiesDB string, queries []safeStorageQuery, source map[string]string) (*Extracted, error) {
+	raw, err := readSlackLocalConfig(leveldbDir)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := parseLocalConfig(raw)
+	if err != nil {
+		return nil, err
+	}
+	teams := teamsFromLocalConfig(cfg)
+	if len(teams) == 0 {
+		return nil, errors.New("no xoxc tokens in localConfig")
+	}
+	cookie, err := extractChromiumCookieD(cookiesDB, queries)
+	if err != nil {
+		return nil, err
+	}
+	return &Extracted{CookieD: cookie, Teams: teams, Source: source}, nil
 }

@@ -25,13 +25,7 @@ func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
 	registerAuthImport(authCmd, globals, "import-desktop",
 		"Import xoxc tokens + the d cookie from Slack Desktop (no need to quit Slack)",
 		auth.ExtractFromSlackDesktop)
-	registerAuthImport(authCmd, globals, "import-chrome",
-		"Import xoxc/xoxd from a logged-in Slack tab in Google Chrome (macOS)",
-		auth.ExtractFromChrome)
-	registerAuthImport(authCmd, globals, "import-brave",
-		"Import xoxc/xoxd from a logged-in Slack tab in Brave (macOS)",
-		auth.ExtractFromBrave)
-	registerAuthImportFirefox(authCmd, globals)
+	registerAuthImportBrowser(authCmd, globals)
 	registerAuthParseCurl(authCmd, globals)
 	registerAuthAdd(authCmd, globals)
 	registerAuthSetDefault(authCmd, globals)
@@ -162,19 +156,42 @@ func registerAuthImport(parent *cobra.Command, globals *GlobalFlags, use, short 
 	parent.AddCommand(cmd)
 }
 
-func registerAuthImportFirefox(parent *cobra.Command, globals *GlobalFlags) {
+func registerAuthImportBrowser(parent *cobra.Command, globals *GlobalFlags) {
 	var profile string
+	browsers := auth.SupportedBrowsers()
+	names := make([]string, len(browsers))
+	for i, b := range browsers {
+		names[i] = b.Name
+	}
 	cmd := &cobra.Command{
-		Use:   "import-firefox",
-		Short: "Import xoxc/xoxd from a Firefox profile (macOS/Linux/Windows)",
+		Use:               "import-browser <browser>",
+		Short:             "Import xoxc/xoxd from a browser: " + strings.Join(names, ", "),
+		Long:              browserImportLongHelp(browsers),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: fixedCompletions(names...),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAuthImport(globals, func() (*auth.Extracted, error) {
-				return auth.ExtractFromFirefox(profile)
+				return auth.ImportBrowser(args[0], profile)
 			})
 		},
 	}
-	cmd.Flags().StringVar(&profile, "profile", "", "Firefox profile name, directory, or path substring to select")
+	cmd.Flags().StringVar(&profile, "profile", "", "Profile selector (name, directory, or path substring) for Firefox-based browsers")
 	parent.AddCommand(cmd)
+}
+
+// browserImportLongHelp renders the supported-browser list, marking which
+// accept --profile.
+func browserImportLongHelp(browsers []auth.BrowserInfo) string {
+	var b strings.Builder
+	b.WriteString("Import Slack credentials (xoxc tokens + the d cookie) from a browser.\n\nSupported browsers:\n")
+	for _, br := range browsers {
+		b.WriteString("  " + br.Name)
+		if br.SupportsProfile {
+			b.WriteString(" [--profile]")
+		}
+		b.WriteString(" — " + br.Summary + "\n")
+	}
+	return b.String()
 }
 
 func registerAuthParseCurl(parent *cobra.Command, globals *GlobalFlags) {

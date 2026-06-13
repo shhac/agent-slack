@@ -74,8 +74,9 @@ SQLite via `modernc.org/sqlite` + Safe Storage password from the Keychain),
 (profile SQLite). Both pure-Go deps preserve the single static binary.
 
 The `auth` CLI commands (`internal/cli/auth.go`) are import-only:
-`import-desktop`, `import-chrome`, `import-brave`, `import-firefox`,
-`parse-curl`, plus `list`, `add`, `set-default`, `remove`. The store is
+`import-desktop`, `import-browser <name>` (chrome/brave/firefox/zen/opera via a
+browser-source registry in `internal/auth/sources.go`), `parse-curl`, plus
+`list`, `add`, `set-default`, `remove`. The store is
 behind a `newStore` seam so CLI tests run against a temp file + in-memory
 Keychain. Windows Slack Desktop / Firefox import works via DPAPI cookie
 decryption (`dpapi_windows.go`). `auth add --form` prompts for secrets via a

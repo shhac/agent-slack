@@ -121,15 +121,6 @@ func parseProfilesIni(raw, baseDir string) []firefoxProfile {
 	return profiles
 }
 
-func listFirefoxProfiles() ([]firefoxProfile, error) {
-	baseDir, err := firefoxBaseDir()
-	if err != nil {
-		return nil, err
-	}
-	profilesSubdir := runtime.GOOS == "darwin" || runtime.GOOS == "windows"
-	return listFirefoxProfilesIn(baseDir, profilesSubdir), nil
-}
-
 // listFirefoxProfilesIn discovers profiles under an explicit base dir —
 // parameterized so tests exercise the discovery rules (profiles.ini parsing,
 // unlisted-dir pickup, default-first ordering, existence filtering) against
@@ -298,17 +289,20 @@ func decodeFirefoxCookie(cookie string) string {
 	return current
 }
 
-// ExtractFromFirefox imports xoxc tokens and the xoxd cookie from a Firefox
-// profile's local storage and cookie databases. An optional profile selector
-// (name, directory basename, or path substring) narrows which profile is used.
-func ExtractFromFirefox(profileSelector string) (*Extracted, error) {
-	all, err := listFirefoxProfiles()
+// extractFromGecko imports xoxc tokens and the xoxd cookie from a Firefox-based
+// (Gecko) browser's profile local storage and cookie databases. displayName
+// names the browser in errors; baseDir resolves its profile root; an optional
+// profile selector (name, directory basename, or path substring) narrows which
+// profile is used. Firefox, Zen, and other Firefox forks share this path.
+func extractFromGecko(displayName string, baseDir func() (string, error), profileSelector string) (*Extracted, error) {
+	base, err := baseDir()
 	if err != nil {
 		return nil, err
 	}
-	candidates := pickFirefoxProfiles(all, profileSelector)
+	profilesSubdir := runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+	candidates := pickFirefoxProfiles(listFirefoxProfilesIn(base, profilesSubdir), profileSelector)
 	if len(candidates) == 0 {
-		return nil, agenterrors.New("no matching Firefox profile found; open Slack in Firefox and sign in, then retry", agenterrors.FixableByHuman)
+		return nil, agenterrors.Newf(agenterrors.FixableByHuman, "no matching %s profile found; open Slack in %s and sign in, then retry", displayName, displayName)
 	}
 
 	for _, c := range candidates {
@@ -326,5 +320,5 @@ func ExtractFromFirefox(profileSelector string) (*Extracted, error) {
 			Source:  map[string]string{"profile_path": c.path, "localstorage_path": lsPath, "cookies_path": filepath.Join(c.path, "cookies.sqlite")},
 		}, nil
 	}
-	return nil, agenterrors.New("could not find a Firefox profile with a complete Slack session (tokens + cookie)", agenterrors.FixableByHuman)
+	return nil, agenterrors.Newf(agenterrors.FixableByHuman, "could not find a %s profile with a complete Slack session (tokens + cookie)", displayName)
 }

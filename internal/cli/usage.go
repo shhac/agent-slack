@@ -10,7 +10,7 @@ const usageText = `agent-slack: Slack CLI for AI agents. JSON in, JSON out, no i
 
 COMMANDS
   auth       list | test | add | set-default | remove | import-desktop |
-             import-chrome | import-brave | import-firefox | parse-curl
+             import-browser <name> | parse-curl
   message    get | list | send | edit* | delete* | react add/remove |
              scheduled list/cancel*
   channel    list | get | members | new* | invite* | mark
@@ -63,7 +63,7 @@ ERRORS
 
 AUTH
   Stored per workspace (OS keychain where available). Setup: 'auth
-  import-desktop' (or import-chrome/brave/firefox, parse-curl, add; 'auth
+  import-desktop' (or import-browser <name>, parse-curl, add; 'auth
   add --form' opens a native dialog so a human can enter a token without it
   ever appearing in chat). Env override: SLACK_TOKEN
   (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser tokens).
@@ -177,7 +177,7 @@ CALL  api call <method> [--params '<json>'|<file>|-] [--multipart]
 	"auth": `agent-slack auth — credentials (stored in the OS keychain where available).
 
 SETUP   auth import-desktop — extract xoxc/xoxd from Slack Desktop (best).
-        auth import-chrome | import-brave | import-firefox
+        auth import-browser <name> — chrome, brave, firefox, zen, opera
         auth parse-curl — paste a copied 'Copy as cURL' Slack request (stdin)
         auth add --workspace-url <url> (--token xoxb…|--xoxc … --xoxd …)
         auth add --workspace-url <url> --form — native OS dialog prompts the

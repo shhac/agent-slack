@@ -25,8 +25,9 @@ resolve from Keychain; the config file holds only metadata + `__KEYCHAIN__`
 placeholders.
 
 Credential import paths (macOS-first; gate others clearly):
-`auth import-desktop` (LevelDB), `auth import-chrome` / `import-brave`
-(AppleScript), `auth import-firefox`, `auth parse-curl`. `auth list` (aliased
+`auth import-desktop` (LevelDB) and `auth import-browser <name>` — chrome/brave
+(AppleScript, running tab), firefox/zen (Gecko profile on disk), opera
+(Chromium profile on disk) — plus `auth parse-curl`. `auth list` (aliased
 `whoami`) and `auth test` verify configuration.
 
 ## Command surface
@@ -34,8 +35,7 @@ Credential import paths (macOS-first; gate others clearly):
 The command surface:
 
 - **auth**: `list` (`ls`, `whoami`), `test`, `add` (`--form`), `set-default`,
-  `remove`, `import-desktop`, `import-chrome`, `import-brave`,
-  `import-firefox`, `parse-curl`
+  `remove`, `import-desktop`, `import-browser <name>`, `parse-curl`
 - **message**: `get`, `list`, `send`, `edit`, `delete`,
   `react add|remove`, `scheduled list|cancel`
   (there is deliberately no browser-based draft editor — see Decisions)

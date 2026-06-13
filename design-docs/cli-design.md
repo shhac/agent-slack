@@ -194,8 +194,9 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
   tokens. `--form` opens a native OS dialog (zenity) for whichever secret is
   missing; an `xoxc-` answer triggers a follow-up prompt for the `xoxd`
   cookie. The no-secret error hints agents toward `--form`.
-- **Windows support** (decision): `import-desktop`/`import-firefox` work on
-  Windows. Chromium cookie decryption uses the DPAPI scheme: AES-256-GCM key
+- **Windows support** (decision): `import-desktop` and the file-based
+  `import-browser` sources (firefox, zen, opera) work on Windows. Chromium
+  cookie decryption uses the DPAPI scheme: AES-256-GCM key
   wrapped by `CryptUnprotectData` in the profile's `Local State`, `v10`
   values are `nonce(12)‖ciphertext‖tag(16)`. Only the DPAPI syscall is
   build-tagged (`dpapi_windows.go`); the GCM/Local State parsing is pure and

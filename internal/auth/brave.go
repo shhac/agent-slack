@@ -8,7 +8,7 @@ import (
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
-const braveJSDisabledHint = "Enable it in Brave: View → Developer → Allow JavaScript from Apple Events, then re-run: agent-slack auth import-brave"
+const braveJSDisabledHint = "Enable it in Brave: View → Developer → Allow JavaScript from Apple Events, then re-run: agent-slack auth import-browser brave"
 
 var braveSafeStorageQueries = []safeStorageQuery{
 	{service: "Brave Safe Storage"},
