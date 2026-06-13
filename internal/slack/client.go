@@ -11,14 +11,9 @@ package slack
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
-	"maps"
-	"mime/multipart"
 	"net/http"
 	"net/url"
-	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -124,8 +119,6 @@ func (c *Client) APIMultipart(ctx context.Context, method string, params map[str
 	return c.apiWithRefresh(ctx, method, params, encodeMultipart)
 }
 
-type bodyEncoder func(fields map[string]string) (body []byte, contentType string, err error)
-
 func (c *Client) apiWithRefresh(ctx context.Context, method string, params map[string]any, enc bodyEncoder) (map[string]any, error) {
 	resp, err := c.call(ctx, method, params, enc)
 	if err == nil || !IsAuthError(err) {
@@ -185,9 +178,26 @@ func (c *Client) call(ctx context.Context, method string, params map[string]any,
 	}
 }
 
-// doRequest performs one HTTP round trip. retryAfter > 0 signals a 429 the
-// caller may retry; all other failures come back fully mapped.
+// doRequest performs one HTTP round trip: build the authed request, send it,
+// parse the response. retryAfter > 0 signals a 429 the caller may retry; all
+// other failures come back fully mapped.
 func (c *Client) doRequest(ctx context.Context, method string, params map[string]any, enc bodyEncoder) (map[string]any, time.Duration, error) {
+	req, err := c.buildRequest(ctx, method, params, enc)
+	if err != nil {
+		return nil, 0, err
+	}
+	httpResp, err := c.doer.Do(req)
+	if err != nil {
+		return nil, 0, mapNetworkError(method, err)
+	}
+	defer func() { _ = httpResp.Body.Close() }()
+	return c.parseResponse(method, httpResp)
+}
+
+// buildRequest assembles the POST for one method under the current auth:
+// browser auth posts the xoxc token in the body with the xoxd cookie to the
+// workspace host; standard auth sends a Bearer token to the base URL.
+func (c *Client) buildRequest(ctx context.Context, method string, params map[string]any, enc bodyEncoder) (*http.Request, error) {
 	auth := c.currentAuth()
 
 	fields := map[string]string{}
@@ -201,7 +211,7 @@ func (c *Client) doRequest(ctx context.Context, method string, params map[string
 	switch auth.Type {
 	case AuthBrowser:
 		if auth.WorkspaceURL == "" {
-			return nil, 0, errBrowserNeedsWorkspace(method)
+			return nil, errBrowserNeedsWorkspace(method)
 		}
 		endpoint = strings.TrimSuffix(auth.WorkspaceURL, "/") + "/api/" + method
 		fields["token"] = auth.XOXC
@@ -213,12 +223,12 @@ func (c *Client) doRequest(ctx context.Context, method string, params map[string
 
 	body, contentType, err := enc(fields)
 	if err != nil {
-		return nil, 0, mapNetworkError(method, err)
+		return nil, mapNetworkError(method, err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(body)))
 	if err != nil {
-		return nil, 0, mapNetworkError(method, err)
+		return nil, mapNetworkError(method, err)
 	}
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", c.userAgent)
@@ -229,13 +239,13 @@ func (c *Client) doRequest(ctx context.Context, method string, params map[string
 	default:
 		req.Header.Set("Authorization", "Bearer "+auth.Token)
 	}
+	return req, nil
+}
 
-	httpResp, err := c.doer.Do(req)
-	if err != nil {
-		return nil, 0, mapNetworkError(method, err)
-	}
-	defer func() { _ = httpResp.Body.Close() }()
-
+// parseResponse maps one HTTP response to the (data, retryAfter, error)
+// contract: 429s report a retry delay, non-2xx map to HTTP errors, 200 +
+// {ok:false} maps to a Slack error, and ok:true logs any soft-failure fields.
+func (c *Client) parseResponse(method string, httpResp *http.Response) (map[string]any, time.Duration, error) {
 	raw, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return nil, 0, mapNetworkError(method, err)
@@ -273,148 +283,10 @@ func (c *Client) doRequest(ctx context.Context, method string, params map[string
 	return data, 0, nil
 }
 
-// softFailureKeys are ok:true response fields that nonetheless signal the
-// request did not fully succeed.
-var softFailureKeys = []string{"rejected_triggers", "warning", "errors", "needed", "provided"}
-
-// debugSoftFailure returns a short " (rejected_triggers, warning)" suffix when
-// an ok:true response carries fields that indicate a partial/soft failure.
-func debugSoftFailure(data map[string]any) string {
-	var present []string
-	for _, k := range softFailureKeys {
-		if v, ok := data[k]; ok && !isEmptyValue(v) {
-			present = append(present, k)
-		}
-	}
-	if len(present) == 0 {
-		return ""
-	}
-	return " soft-failure=" + strings.Join(present, ",")
-}
-
-func isEmptyValue(v any) bool {
-	switch x := v.(type) {
-	case nil:
-		return true
-	case string:
-		return x == ""
-	case []any:
-		return len(x) == 0
-	case map[string]any:
-		return len(x) == 0
-	default:
-		return false
-	}
-}
-
 func retryAfterDuration(header string) time.Duration {
 	seconds, err := strconv.Atoi(strings.TrimSpace(header))
 	if err != nil || seconds <= 0 {
 		seconds = 5
 	}
 	return time.Duration(seconds) * time.Second
-}
-
-func encodeParam(v any) (string, bool) {
-	switch x := v.(type) {
-	case nil:
-		return "", false
-	case string:
-		return x, true
-	case bool:
-		return strconv.FormatBool(x), true
-	case int:
-		return strconv.Itoa(x), true
-	case int64:
-		return strconv.FormatInt(x, 10), true
-	case float64:
-		return strconv.FormatFloat(x, 'f', -1, 64), true
-	default:
-		b, err := json.Marshal(x)
-		if err != nil {
-			return "", false
-		}
-		return string(b), true
-	}
-}
-
-func encodeForm(fields map[string]string) ([]byte, string, error) {
-	values := url.Values{}
-	for k, v := range fields {
-		values.Set(k, v)
-	}
-	return []byte(values.Encode()), "application/x-www-form-urlencoded", nil
-}
-
-func encodeMultipart(fields map[string]string) ([]byte, string, error) {
-	var buf strings.Builder
-	w := multipart.NewWriter(&buf)
-	// Sorted for deterministic bodies (map iteration order is random).
-	for _, k := range slices.Sorted(maps.Keys(fields)) {
-		if err := w.WriteField(k, fields[k]); err != nil {
-			return nil, "", err
-		}
-	}
-	if err := w.Close(); err != nil {
-		return nil, "", err
-	}
-	return []byte(buf.String()), w.FormDataContentType(), nil
-}
-
-// debugf writes a single-line record to the debug writer.
-func (c *Client) debugf(format string, args ...any) {
-	if c.debug == nil {
-		return
-	}
-	_, _ = fmt.Fprintf(c.debug, "slack: "+format+"\n", args...)
-}
-
-const debugBodyLimit = 2000
-
-// debugRedactKeys are request param keys whose values are secrets.
-var debugRedactKeys = map[string]bool{
-	"token":       true,
-	"xoxc_token":  true,
-	"xoxd_cookie": true,
-	"cookie":      true,
-}
-
-// tokenRe matches any Slack token (xoxc-, xoxb-, xoxp-, xoxd-, …) so it can be
-// scrubbed from logged response bodies.
-var tokenRe = regexp.MustCompile(`xox[a-zA-Z]-[A-Za-z0-9-]+`)
-
-// debugParams logs the request params with secrets redacted and long values
-// truncated. Only called when debug is on.
-func (c *Client) debugParams(method string, fields map[string]string) {
-	if c.debug == nil {
-		return
-	}
-	parts := make([]string, 0, len(fields))
-	for _, k := range slices.Sorted(maps.Keys(fields)) {
-		v := fields[k]
-		switch {
-		case debugRedactKeys[strings.ToLower(k)] || strings.HasPrefix(v, "xox"):
-			v = "[redacted]"
-		case len(v) > 200:
-			v = v[:200] + "…"
-		}
-		parts = append(parts, k+"="+v)
-	}
-	c.debugf("POST %s params {%s}", method, strings.Join(parts, " "))
-}
-
-// debugResponse logs the parsed response body, token-redacted and truncated.
-func (c *Client) debugResponse(method string, data map[string]any) {
-	if c.debug == nil {
-		return
-	}
-	b, err := json.Marshal(data)
-	if err != nil {
-		return
-	}
-	s := tokenRe.ReplaceAllString(string(b), "[redacted]")
-	if len(s) > debugBodyLimit {
-		s = s[:debugBodyLimit] + "…(truncated)"
-	}
-	c.debugf("POST %s response %s", method, s)
 }
