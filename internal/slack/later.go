@@ -51,22 +51,27 @@ type LaterOptions struct {
 	Cursor       string
 }
 
+// normalizeLaterOptions fills LaterOptions defaults: state in_progress,
+// limit 20, body cap 4000. Pure, so the defaults are testable on their own.
+func normalizeLaterOptions(opts LaterOptions) LaterOptions {
+	if opts.State == "" {
+		opts.State = "in_progress"
+	}
+	if opts.Limit == 0 {
+		opts.Limit = 20
+	}
+	if opts.MaxBodyChars == 0 {
+		opts.MaxBodyChars = 4000
+	}
+	return opts
+}
+
 // FetchLaterItems lists the Later tab: pages saved.list until enough
 // message-type items in the requested state accumulate, then hydrates each
 // with its channel name and rendered message content.
 func FetchLaterItems(ctx context.Context, c *Client, opts LaterOptions) (LaterResult, error) {
-	state := opts.State
-	if state == "" {
-		state = "in_progress"
-	}
-	limit := opts.Limit
-	if limit == 0 {
-		limit = 20
-	}
-	maxBodyChars := opts.MaxBodyChars
-	if maxBodyChars == 0 {
-		maxBodyChars = 4000
-	}
+	opts = normalizeLaterOptions(opts)
+	state, limit := opts.State, opts.Limit
 
 	var allRaw []map[string]any
 	var counts map[string]any
@@ -111,30 +116,36 @@ func FetchLaterItems(ctx context.Context, c *Client, opts LaterOptions) (LaterRe
 	}
 
 	for _, item := range filtered {
-		channelID := getStr(item, "item_id")
-		ts := getStr(item, "ts")
-		out := LaterItem{
-			ChannelID: channelID,
-			TS:        ts,
-			State:     getStr(item, "state"),
-			DateSaved: int64(getNum(item, "date_created")),
-		}
-		if out.State == "" {
-			out.State = "in_progress"
-		}
-		if completed := int64(getNum(item, "date_completed")); completed > 0 {
-			out.DateCompleted = completed
-		}
-		out.ChannelName = ResolveChannelName(ctx, c, channelID)
-		if out.ChannelName == channelID {
-			out.ChannelName = ""
-		}
-		if ts != "" {
-			out.Message = fetchLaterMessage(ctx, c, channelID, ts, maxBodyChars)
-		}
-		result.Items = append(result.Items, out)
+		result.Items = append(result.Items, hydrateLaterItem(ctx, c, item, opts.MaxBodyChars))
 	}
 	return result, nil
+}
+
+// hydrateLaterItem shapes one raw saved.list item and decorates it with its
+// channel name and rendered message content (both best-effort).
+func hydrateLaterItem(ctx context.Context, c *Client, item map[string]any, maxBodyChars int) LaterItem {
+	channelID := getStr(item, "item_id")
+	ts := getStr(item, "ts")
+	out := LaterItem{
+		ChannelID: channelID,
+		TS:        ts,
+		State:     getStr(item, "state"),
+		DateSaved: int64(getNum(item, "date_created")),
+	}
+	if out.State == "" {
+		out.State = "in_progress"
+	}
+	if completed := int64(getNum(item, "date_completed")); completed > 0 {
+		out.DateCompleted = completed
+	}
+	out.ChannelName = ResolveChannelName(ctx, c, channelID)
+	if out.ChannelName == channelID {
+		out.ChannelName = ""
+	}
+	if ts != "" {
+		out.Message = fetchLaterMessage(ctx, c, channelID, ts, maxBodyChars)
+	}
+	return out
 }
 
 func filterLaterItems(items []map[string]any, state string) []map[string]any {
