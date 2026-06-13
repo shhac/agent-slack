@@ -32,16 +32,51 @@ family so conventions, output contract, and credential handling are shared.
   would happen without it.
 - **Multi-workspace**: disambiguate with `--workspace <url-or-substring>`.
 
-## Quick Start
+## Installation
+
+### Homebrew
 
 ```bash
+brew install shhac/tap/agent-slack       # upgrade: brew upgrade shhac/tap/agent-slack
+```
+
+### Go install
+
+```bash
+go install github.com/shhac/agent-slack/cmd/agent-slack@latest
+```
+
+Installs a binary stamped `dev`; for a version-stamped build, clone and
+`make build`. Prebuilt binaries are also on the
+[releases page](https://github.com/shhac/agent-slack/releases).
+
+### Build from source
+
+```bash
+git clone https://github.com/shhac/agent-slack.git
+cd agent-slack
 make build
-./agent-slack auth import-desktop     # from Slack Desktop (macOS/Linux/Windows)
-./agent-slack auth import-browser firefox   # or a browser: chrome|brave|firefox|zen|opera|safari
-./agent-slack auth test               # verify credentials
-./agent-slack auth usage              # every auth method (browser caveats, bot tokens, cURL, env vars)
-./agent-slack usage                   # LLM-oriented overview
-./agent-slack message usage           # per-domain detail pages
+```
+
+### Claude Code / AI agent skill
+
+```bash
+npx skills add shhac/agent-slack
+```
+
+This installs the `agent-slack` skill so Claude Code (and other AI agents) can
+discover and drive `agent-slack` automatically. See
+[skills.sh](https://skills.sh) for details.
+
+## Getting started
+
+```bash
+agent-slack auth import-desktop            # from Slack Desktop (macOS/Linux/Windows)
+agent-slack auth import-browser firefox    # or a browser: chrome|brave|firefox|zen|opera|safari
+agent-slack auth test                      # verify credentials
+agent-slack auth usage                     # every auth method (browser caveats, bot tokens, cURL, env vars)
+agent-slack usage                          # LLM-oriented overview
+agent-slack message usage                  # per-domain detail pages
 ```
 
 ## Command Surface
