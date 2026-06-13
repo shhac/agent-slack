@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -121,6 +122,39 @@ func TestReadCompletionsSourceFiltering(t *testing.T) {
 	// Combined draws from every requested source.
 	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteChannels|CompleteUsers|CompleteTriggers)); len(got) != 3 {
 		t.Errorf("combined: %v", got)
+	}
+}
+
+// A bulk warm stamps every entry with the same fetched_at. Ordering — and,
+// once the cap truncates, which entries survive — must be deterministic
+// (alphabetical), not the randomized map-iteration order.
+func TestReadCompletionsEqualFetchedIsStableAndAlphabetical(t *testing.T) {
+	dir := t.TempDir()
+	ws := "https://acme.slack.com"
+	users := map[string]cacheEntry[CompactUser]{}
+	for _, name := range []string{"zoe", "alex", "mary", "bob", "yara"} {
+		users["U0"+strings.ToUpper(name)] = cacheEntry[CompactUser]{
+			FetchedAt: 100, // identical timestamp — the tie the bug hinged on
+			Value:     CompactUser{ID: "U0" + strings.ToUpper(name), Name: name},
+		}
+	}
+	writeCacheCategory(t, dir, ws, "users", users)
+
+	// Same result every call (no map-iteration shuffle), alphabetical by value.
+	want := []string{"@alex", "@bob", "@mary", "@yara", "@zoe"}
+	for range 5 {
+		got := completionValues(ReadCompletions(dir, ws, "", 50, CompleteUsers))
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("position %d: got %q, want %q (alphabetical tiebreak)", i, got[i], want[i])
+			}
+		}
+	}
+
+	// The cap keeps the alphabetically-first N — a stable subset, not a random one.
+	capped := completionValues(ReadCompletions(dir, ws, "", 2, CompleteUsers))
+	if len(capped) != 2 || capped[0] != "@alex" || capped[1] != "@bob" {
+		t.Errorf("capped subset must be the alphabetical head: %v", capped)
 	}
 }
 

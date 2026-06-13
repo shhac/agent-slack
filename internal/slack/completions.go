@@ -116,7 +116,17 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 		}
 	}
 
-	sort.SliceStable(all, func(i, j int) bool { return all[i].fetched > all[j].fetched })
+	// Most-recently-fetched first; ties broken alphabetically by value. The
+	// alphabetical tiebreak is load-bearing: a bulk warm (e.g. `user list`)
+	// stamps every entry with the same fetched_at, so without it the order —
+	// and, once the cap truncates, which entries even survive — would follow
+	// Go's randomized map iteration and shuffle on every keystroke.
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].fetched != all[j].fetched {
+			return all[i].fetched > all[j].fetched
+		}
+		return strings.ToLower(all[i].item.Value) < strings.ToLower(all[j].item.Value)
+	})
 	if limit > 0 && len(all) > limit {
 		all = all[:limit]
 	}
