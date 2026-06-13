@@ -28,6 +28,7 @@ var browserSources = []browserSource{
 	chromiumAppleSource("chrome", "Google Chrome — reads a logged-in Slack tab (running; macOS)", ExtractFromChrome),
 	chromiumAppleSource("brave", "Brave — reads a logged-in Slack tab (running; macOS)", ExtractFromBrave),
 	chromiumFileSource("opera", "Opera profile on disk (browser need not be running)", locateOpera),
+	webkitSource("safari", "Safari — running tab for tokens + cookie store (macOS; needs Develop-menu JS + Full Disk Access)"),
 }
 
 // BrowserInfo is the public description of one supported browser.
@@ -83,6 +84,16 @@ func chromiumAppleSource(name, summary string, extract func() (*Extracted, error
 	return browserSource{
 		name: name, summary: summary, supportsProfile: false,
 		extract: func(string) (*Extracted, error) { return extract() },
+	}
+}
+
+// webkitSource builds a WebKit-family source (Safari): tokens from a running
+// tab via AppleScript, the cookie from Safari's binarycookies store. No profile
+// concept.
+func webkitSource(name, summary string) browserSource {
+	return browserSource{
+		name: name, summary: summary, supportsProfile: false,
+		extract: func(string) (*Extracted, error) { return ExtractFromSafari() },
 	}
 }
 

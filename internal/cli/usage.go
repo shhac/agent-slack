@@ -177,7 +177,7 @@ CALL  api call <method> [--params '<json>'|<file>|-] [--multipart]
 	"auth": `agent-slack auth — credentials (stored in the OS keychain where available).
 
 SETUP   auth import-desktop — extract xoxc/xoxd from Slack Desktop (best).
-        auth import-browser <name> — chrome, brave, firefox, zen, opera
+        auth import-browser <name> — chrome, brave, firefox, zen, opera, safari
         auth parse-curl — paste a copied 'Copy as cURL' Slack request (stdin)
         auth add --workspace-url <url> (--token xoxb…|--xoxc … --xoxd …)
         auth add --workspace-url <url> --form — native OS dialog prompts the

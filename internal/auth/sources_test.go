@@ -12,7 +12,7 @@ func TestSupportedBrowsers(t *testing.T) {
 	for _, b := range SupportedBrowsers() {
 		got[b.Name] = b
 	}
-	for _, name := range []string{"firefox", "zen", "chrome", "brave", "opera"} {
+	for _, name := range []string{"firefox", "zen", "chrome", "brave", "opera", "safari"} {
 		if _, ok := got[name]; !ok {
 			t.Errorf("registry missing browser %q", name)
 		}
@@ -21,8 +21,8 @@ func TestSupportedBrowsers(t *testing.T) {
 	if !got["firefox"].SupportsProfile || !got["zen"].SupportsProfile {
 		t.Error("firefox and zen should support --profile")
 	}
-	if got["chrome"].SupportsProfile || got["brave"].SupportsProfile || got["opera"].SupportsProfile {
-		t.Error("chrome/brave/opera should not support --profile")
+	if got["chrome"].SupportsProfile || got["brave"].SupportsProfile || got["opera"].SupportsProfile || got["safari"].SupportsProfile {
+		t.Error("chrome/brave/opera/safari should not support --profile")
 	}
 }
 
@@ -39,7 +39,7 @@ func TestImportBrowserUnknown(t *testing.T) {
 		t.Errorf("fixable_by = %q, want agent", apiErr.FixableBy)
 	}
 	// The hint enumerates the supported names so a caller can correct the input.
-	for _, name := range []string{"firefox", "zen", "chrome", "brave", "opera"} {
+	for _, name := range []string{"firefox", "zen", "chrome", "brave", "opera", "safari"} {
 		if !strings.Contains(apiErr.Hint, name) {
 			t.Errorf("hint %q missing supported browser %q", apiErr.Hint, name)
 		}
