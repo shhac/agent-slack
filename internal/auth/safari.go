@@ -103,14 +103,24 @@ func safariSlackCookie() (cookie, path string, err error) {
 		if perr != nil {
 			continue
 		}
-		for _, c := range cookies {
-			if c.Name == "d" && strings.Contains(c.Domain, "slack.com") && strings.HasPrefix(c.Value, "xoxd-") {
-				return decodeFirefoxCookie(c.Value), p, nil
-			}
+		if cookie, ok := selectSafariSlackCookie(cookies); ok {
+			return cookie, p, nil
 		}
 	}
 	if !readAny {
 		return "", "", agenterrors.New("could not read Safari's cookie store", agenterrors.FixableByHuman).WithHint(safariFDAHint)
 	}
 	return "", "", agenterrors.New("no Slack 'd' cookie found in Safari; open Slack in Safari and sign in, then retry", agenterrors.FixableByHuman)
+}
+
+// selectSafariSlackCookie returns the decoded Slack `d` cookie value from a
+// parsed cookie set: the entry named "d" on a slack.com domain whose value is
+// an xoxd- token. The value is URL-decoded like the other browser paths.
+func selectSafariSlackCookie(cookies []binaryCookie) (string, bool) {
+	for _, c := range cookies {
+		if c.Name == "d" && strings.Contains(c.Domain, "slack.com") && strings.HasPrefix(c.Value, "xoxd-") {
+			return decodeFirefoxCookie(c.Value), true
+		}
+	}
+	return "", false
 }
