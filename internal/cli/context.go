@@ -271,6 +271,11 @@ func storedWorkspaceURLs(store *credential.Store) []string {
 
 // workspaceMatches compares two workspace identifiers by host (URL forms) or
 // case-insensitive equality.
+// workspaceMatches compares two workspace references by exact host. It is
+// deliberately stricter and simpler than the credential store's selector
+// matching (no substring/name/team-domain forms): it only guards whether
+// env-var credentials may serve a request, where a fuzzy match could hand the
+// wrong workspace's token to a permalink. Don't unify it with Store.Resolve.
 func workspaceMatches(a, b string) bool {
 	ha, hb := workspaceHost(a), workspaceHost(b)
 	if ha == "" || hb == "" {
