@@ -108,6 +108,8 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	registerCanvas(root, globals)
 	registerFile(root, globals)
 	registerWorkflow(root, globals)
+	registerCache(root, globals)
+	registerConfig(root, globals)
 	registerAPI(root, globals)
 	attachDomainUsage(root)
 

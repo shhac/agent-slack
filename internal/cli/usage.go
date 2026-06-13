@@ -21,6 +21,8 @@ COMMANDS
   unreads    (top-level) unread messages across channels/DMs/threads
   later      list | save | complete | archive | reopen | remove | remind
   file       download <F…> — point-pull a file seen in any output
+  cache      info | purge — inspect or clear the local resolution cache
+  config     get | set | list | unset — persist settings (cache TTLs)
   api        call <method> — raw Slack API escape hatch
   usage      this overview; '<domain> usage' has per-domain detail
   * = destructive: requires --yes, otherwise returns what WOULD happen
@@ -48,9 +50,11 @@ CHAINING
 CACHE
   Awkward resolutions (channel name→ID, @handle→ID, profiles, workflow
   metadata) are cached per workspace under ~/.cache/app.paulie.agent-slack/.
-  Never message bodies. --no-cache bypasses entirely; --refresh-cache
-  re-fetches but still writes; --cache-ttl <dur> (or per-category
-  AGENT_SLACK_CACHE_TTL[_<CATEGORY>]) tunes freshness.
+  Never message bodies. get/list serve from cache within a short window
+  (5m); completions/resolution use longer TTLs. --no-cache bypasses;
+  --refresh-cache re-fetches but still writes. Tune TTLs via --cache-ttl,
+  AGENT_SLACK_CACHE_TTL[_<CATEGORY>], or 'config set cache.ttl.<cat>'.
+  'cache info' / 'cache purge' inspect and clear it.
 
 ERRORS
   JSON on stderr: {"error","fixable_by","hint"}. fixable_by=agent → fix the

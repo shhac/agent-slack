@@ -81,29 +81,39 @@ workspace under `<cacheDir>/<wshash>/<category>.json` (never message bodies):
 | `users` | user ID → profile | 24h |
 | `handles` | @handle / email → user ID | 1h |
 | `channel-names` | channel name → ID | 1h |
-| `channels` | channel ID → metadata | 1h |
+| `channels` | channel ID → metadata (completions/resolution) | 1h |
+| `channel-info` | channel ID → full `conversations.info` (serves `channel get`) | 5m |
+| `conversations-pages` / `users-pages` | a `channel list`/`user list` page, keyed by query | 5m |
 | `workflow-list` | channel ID → its workflows (annotated) | 1h |
 | `workflow-triggers` | `Ft…` → preview (workflow id, shortcut) | 1h |
 | `workflow-schemas` | `Wf…` → form fields/steps | 1h |
 
-The biggest win is channel-name → ID, which otherwise pages the whole
-workspace. The cache is best-effort (never fails a command) and self-healing.
-It is populated as you work: every resolution writes through, and the list/get
-commands (`channel list`/`get`, `user list`/`get`, `workflow list`) warm the
-entity caches from what they fetch — so completions and later lookups fill up
-from ordinary use, page by page.
+Two freshness tiers off one timestamp: completions and name→ID resolution
+tolerate the long category TTLs (1h/24h); **serving a `get`/`list` from cache
+uses a short window** (the `get`/`list` TTLs, default **5m**). So `channel get`
+/ `user get` and a repeated `channel list`/`user list` are served from cache
+within 5m (great for a workflow hammering the same calls), while completions
+still draw on the longer-lived entries. The cache fills from ordinary use —
+every resolution writes through, and list/get warm the entity caches page by
+page.
 
-**Controls** (global flags / env):
+**Controls** (global flags / env / persisted config):
 
 - `--no-cache` (or `AGENT_SLACK_NO_CACHE=1`) — no read, no write.
 - `--refresh-cache` — ignore cached reads but still write fresh entries.
-- `--cache-ttl <dur>` (or `AGENT_SLACK_CACHE_TTL`) — override every category's
-  TTL; `0` disables reads. Per-category override:
-  `AGENT_SLACK_CACHE_TTL_<CATEGORY>` (e.g. `AGENT_SLACK_CACHE_TTL_CHANNELS=5m`).
-- `--refresh-users` still forces a profile re-fetch on the read commands.
+- TTLs, highest precedence first: `--cache-ttl <dur>` (all categories) >
+  `AGENT_SLACK_CACHE_TTL_<CATEGORY>` > `AGENT_SLACK_CACHE_TTL` (all) >
+  `config set cache.ttl.<category> <dur>` (persisted) > built-in default. `0`
+  disables reads for a category. Categories include `get` and `list` (the 5m
+  serve windows). `--refresh-users` still forces a profile re-fetch.
 
 Rejections are never cached (a transient `trigger_not_found` won't stick), and
 the side-effecting `workflow run` path is never cached.
+
+**Managing the cache:** `agent-slack cache info` shows what's cached per
+workspace (entries, size, age); `cache purge [--workspace … | --all-workspaces]`
+clears it (local + regenerable). `agent-slack config set/get/list/unset`
+persists the TTLs above.
 
 Shell completions read these caches (install via `agent-slack completion
 <shell>`, or Homebrew installs them automatically), most-recently-used first,

@@ -11,8 +11,29 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shhac/agent-slack/internal/settings"
 	"github.com/shhac/agent-slack/internal/slack"
 )
+
+// ttlFields maps each cache category (the cache.ttl.<cat> suffix) to its field
+// in a CacheTTL, so config, env, and flag overrides all drive one table.
+func ttlFields(t *slack.CacheTTL) map[string]*time.Duration {
+	return map[string]*time.Duration{
+		"users":            &t.Users,
+		"channels":         &t.Channels,
+		"channel-names":    &t.ChannelNames,
+		"handles":          &t.Handles,
+		"workflow-list":    &t.WorkflowList,
+		"workflow-preview": &t.WorkflowPreview,
+		"workflow-schema":  &t.WorkflowSchema,
+		"get":              &t.Get,
+		"list":             &t.List,
+	}
+}
+
+func ttlEnvVar(category string) string {
+	return "AGENT_SLACK_CACHE_TTL_" + strings.ToUpper(strings.ReplaceAll(category, "-", "_"))
+}
 
 // buildCache assembles the per-invocation resolution cache from the global
 // flags and environment. This single helper feeds both client constructors.
@@ -27,30 +48,41 @@ func buildCache(globals *GlobalFlags) *slack.Cache {
 	return slack.NewCache(appCacheDir(), mode, resolveCacheTTL(globals), nil)
 }
 
-// resolveCacheTTL builds the per-category TTL: built-in defaults, overridden by
-// a global --cache-ttl / AGENT_SLACK_CACHE_TTL, then by per-category
-// AGENT_SLACK_CACHE_TTL_<CATEGORY> env vars (most specific wins).
+// resolveCacheTTL builds the per-category TTL. Precedence, highest first:
+// the --cache-ttl flag (all categories), per-category env
+// AGENT_SLACK_CACHE_TTL_<CAT>, global env AGENT_SLACK_CACHE_TTL (all),
+// the persisted config file (cache.ttl.<cat>), then the built-in defaults.
 func resolveCacheTTL(globals *GlobalFlags) slack.CacheTTL {
 	ttl := slack.DefaultCacheTTL()
-	global := globals.CacheTTL
-	if global == "" {
-		global = os.Getenv("AGENT_SLACK_CACHE_TTL")
-	}
-	if d, ok := parseTTL(global); ok {
-		ttl = slack.CacheTTL{Users: d, Channels: d, ChannelNames: d, Handles: d, WorkflowList: d, WorkflowPreview: d, WorkflowSchema: d}
-	}
-	for env, field := range map[string]*time.Duration{
-		"AGENT_SLACK_CACHE_TTL_USERS":            &ttl.Users,
-		"AGENT_SLACK_CACHE_TTL_CHANNELS":         &ttl.Channels,
-		"AGENT_SLACK_CACHE_TTL_CHANNEL_NAMES":    &ttl.ChannelNames,
-		"AGENT_SLACK_CACHE_TTL_HANDLES":          &ttl.Handles,
-		"AGENT_SLACK_CACHE_TTL_WORKFLOW_LIST":    &ttl.WorkflowList,
-		"AGENT_SLACK_CACHE_TTL_WORKFLOW_PREVIEW": &ttl.WorkflowPreview,
-		"AGENT_SLACK_CACHE_TTL_WORKFLOW_SCHEMA":  &ttl.WorkflowSchema,
-	} {
-		if d, ok := parseTTL(os.Getenv(env)); ok {
-			*field = d
+	fields := ttlFields(&ttl)
+	setAll := func(d time.Duration) {
+		for _, f := range fields {
+			*f = d
 		}
+	}
+
+	// config file (lowest override)
+	if cfg, err := settings.Load(); err == nil {
+		for cat, raw := range cfg.CacheTTLOverrides() {
+			if f, ok := fields[cat]; ok {
+				if d, ok := parseTTL(raw); ok {
+					*f = d
+				}
+			}
+		}
+	}
+	// global env, then per-category env
+	if d, ok := parseTTL(os.Getenv("AGENT_SLACK_CACHE_TTL")); ok {
+		setAll(d)
+	}
+	for cat, f := range fields {
+		if d, ok := parseTTL(os.Getenv(ttlEnvVar(cat))); ok {
+			*f = d
+		}
+	}
+	// global flag (highest)
+	if d, ok := parseTTL(globals.CacheTTL); ok {
+		setAll(d)
 	}
 	return ttl
 }

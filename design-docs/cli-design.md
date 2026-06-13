@@ -160,6 +160,23 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
   stays per-command (it also implies `--resolve-users`) and ORs with refresh.
 - **Never cache**: message bodies, rejections (a transient `trigger_not_found`
   must not stick), or the side-effecting `workflow run` bookmark resolution.
+- **Read-through on get/list, two freshness tiers** (decision): one stored
+  `fetched_at`, two thresholds. Completions and name→ID resolution tolerate the
+  long category TTLs (1h/24h); serving a `get`/`list` as fresh uses a short
+  window (`get`/`list` TTLs, default 5m). `channel get` reads a dedicated
+  `channel-info` cache (raw `conversations.info`, so it serves compact AND
+  `--full`, and never the partial list-warmed entity record); `user get` serves
+  from the users entity store (uniform). `channel list`/`user list` cache the
+  page keyed by query (`conversations-pages`/`users-pages`) so a repeat within
+  the window is free. Modes (`--no-cache`/`--refresh-cache`) apply throughout.
+- **TTL precedence**: `--cache-ttl` flag > per-category env > global env >
+  persisted `config set cache.ttl.<cat>` > built-in default.
+- **`cache` and `config` are separate top-level commands** (decision): `cache
+  info|purge` *operates on cached data*; `config get|set|list|unset` *persists
+  settings* (the TTLs) in `config.json` beside `credentials.json`. Nesting purge
+  under config read as "configure a purge," which it isn't. `gc` was rejected:
+  entries are ignored past TTL and pruned on the next write, files are tiny, and
+  `purge` covers a clean slate.
 
 ## Credentials: resolution and refresh
 

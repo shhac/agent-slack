@@ -1,9 +1,43 @@
 package cli
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/shhac/agent-slack/internal/settings"
 )
+
+func TestResolveCacheTTLSources(t *testing.T) {
+	t.Setenv("AGENT_SLACK_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+
+	// Defaults include the new serve TTLs.
+	if d := resolveCacheTTL(&GlobalFlags{}); d.Get != 5*time.Minute || d.List != 5*time.Minute {
+		t.Fatalf("serve defaults: get=%v list=%v", d.Get, d.List)
+	}
+
+	// Config file is the lowest override above defaults.
+	if err := settings.Set("cache.ttl.channels", "30m"); err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.Set("cache.ttl.get", "2m"); err != nil {
+		t.Fatal(err)
+	}
+	if d := resolveCacheTTL(&GlobalFlags{}); d.Channels != 30*time.Minute || d.Get != 2*time.Minute {
+		t.Errorf("config overrides not applied: %+v", d)
+	}
+
+	// Per-category env beats the config file.
+	t.Setenv("AGENT_SLACK_CACHE_TTL_CHANNELS", "10m")
+	if d := resolveCacheTTL(&GlobalFlags{}); d.Channels != 10*time.Minute {
+		t.Errorf("env should beat config: channels=%v", d.Channels)
+	}
+
+	// The --cache-ttl flag beats everything, for all categories.
+	if d := resolveCacheTTL(&GlobalFlags{CacheTTL: "1m"}); d.Channels != time.Minute || d.Get != time.Minute || d.Users != time.Minute {
+		t.Errorf("flag should override all: %+v", d)
+	}
+}
 
 func TestResolveCacheTTLPrecedence(t *testing.T) {
 	// Built-in defaults when nothing is set.
