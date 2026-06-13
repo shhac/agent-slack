@@ -36,8 +36,10 @@ family so conventions, output contract, and credential handling are shared.
 
 ```bash
 make build
-./agent-slack auth import-desktop     # extract tokens from Slack Desktop (macOS/Linux/Windows)
+./agent-slack auth import-desktop     # from Slack Desktop (macOS/Linux/Windows)
+./agent-slack auth import-browser firefox   # or a browser: chrome|brave|firefox|zen|opera|safari
 ./agent-slack auth test               # verify credentials
+./agent-slack auth usage              # every auth method (browser caveats, bot tokens, cURL, env vars)
 ./agent-slack usage                   # LLM-oriented overview
 ./agent-slack message usage           # per-domain detail pages
 ```

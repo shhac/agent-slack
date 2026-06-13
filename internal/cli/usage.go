@@ -186,6 +186,8 @@ VERIFY  auth list (ls) — workspaces + where each secret is stored; flags
           secrets whose Keychain entry is gone. No secret material printed.
         auth test — calls Slack's auth.test with the resolved credentials.
 MANAGE  auth set-default <url> | auth remove <url>
+ENV     SLACK_TOKEN (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser
+          tokens) override the stored credentials for one invocation.
 NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,
 }
 

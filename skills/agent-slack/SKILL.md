@@ -26,17 +26,19 @@ invite, or create channels unless the user explicitly asked for that action.
 ## Setup (once)
 
 ```bash
-agent-slack auth import-desktop   # extract tokens from Slack Desktop
-agent-slack auth test             # verify
+agent-slack auth import-desktop            # from Slack Desktop — best, no need to quit
+# …or, if you don't run Slack Desktop:
+agent-slack auth import-browser firefox    # chrome|brave|firefox|zen|opera|safari
+agent-slack auth test                      # verify
 agent-slack auth set-default https://acme.slack.com   # if several workspaces
 ```
 
-If desktop/browser import isn't available, run
-`agent-slack auth add --workspace-url https://acme.slack.com --form` — a
-native OS dialog asks the human for the token, so it never appears in chat.
+If no import works, `agent-slack auth add --workspace-url <url> --form` opens a
+native OS dialog so the human enters the token without it appearing in chat.
 Never ask the user to paste a token into the conversation, and never read
-credentials out of the store yourself; every command authenticates
-internally.
+credentials out of the store yourself; every command authenticates internally.
+For the full menu (per-browser caveats, bot tokens, cURL import) run
+`agent-slack auth usage`.
 
 Env override: `SLACK_TOKEN` (+ `SLACK_COOKIE_D` + `SLACK_WORKSPACE_URL` for
 xoxc browser tokens). Expired browser tokens self-heal from Slack Desktop.
