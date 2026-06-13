@@ -163,7 +163,14 @@ func PreviewWorkflowTrigger(ctx context.Context, c *Client, triggerID string) (W
 			"no preview data returned for trigger %s", triggerID).
 			WithHint("check the trigger id (Ft…); 'agent-slack workflow list <channel>' lists the triggers in a channel")
 	}
-	t := triggers[0]
+	preview := assembleWorkflowPreview(triggers[0], triggerID)
+	c.cacheWorkflowPreview(triggerID, preview)
+	return preview, nil
+}
+
+// assembleWorkflowPreview shapes one raw workflows.triggers.preview trigger
+// object. Pure: testable against captured API payloads without a client.
+func assembleWorkflowPreview(t map[string]any, triggerID string) WorkflowPreview {
 	wf := getRec(t, "workflow")
 	wfApp := getRec(wf, "app")
 	details := getRec(t, "workflow_details")
@@ -174,7 +181,7 @@ func PreviewWorkflowTrigger(ctx context.Context, c *Client, triggerID string) (W
 			collaborators = append(collaborators, s)
 		}
 	}
-	preview := WorkflowPreview{
+	return WorkflowPreview{
 		TriggerID:   firstNonEmpty(getStr(t, "id"), triggerID),
 		Type:        getStr(t, "type"),
 		Name:        getStr(t, "name"),
@@ -189,8 +196,6 @@ func PreviewWorkflowTrigger(ctx context.Context, c *Client, triggerID string) (W
 		},
 		Collaborators: collaborators,
 	}
-	c.cacheWorkflowPreview(triggerID, preview)
-	return preview, nil
 }
 
 // WorkflowRunResult is the outcome of tripping a trigger.
@@ -284,6 +289,14 @@ func GetWorkflowSchema(ctx context.Context, c *Client, workflowID string) (Workf
 			WithHint("check the workflow id (Wf…); 'agent-slack workflow get <Ft-trigger>' resolves a trigger to its workflow")
 	}
 
+	schema := assembleWorkflowSchema(wf, workflowID)
+	c.cacheWorkflowSchema(workflowID, schema)
+	return schema, nil
+}
+
+// assembleWorkflowSchema shapes a raw workflows.get workflow object into the
+// schema: step titles plus the open_form step's fields. Pure.
+func assembleWorkflowSchema(wf map[string]any, workflowID string) WorkflowSchema {
 	schema := WorkflowSchema{
 		WorkflowID:  firstNonEmpty(getStr(wf, "id"), workflowID),
 		Title:       getStr(wf, "title"),
@@ -294,38 +307,42 @@ func GetWorkflowSchema(ctx context.Context, c *Client, workflowID string) (Workf
 	for _, step := range recItems(getArr(wf, "steps")) {
 		fn := getRec(step, "function")
 		callbackID := getStr(fn, "callback_id")
-		title := firstNonEmpty(getStr(fn, "title"), callbackID)
-		schema.Steps = append(schema.Steps, title)
+		schema.Steps = append(schema.Steps, firstNonEmpty(getStr(fn, "title"), callbackID))
 
 		if callbackID != "open_form" {
 			continue
 		}
 		inputs := getRec(step, "inputs")
 		schema.FormTitle = getStr(getRec(inputs, "title"), "value")
+		schema.Fields = append(schema.Fields, extractFormFields(getRec(getRec(inputs, "fields"), "value"))...)
+	}
+	return schema
+}
 
-		fieldsValue := getRec(getRec(inputs, "fields"), "value")
-		required := map[string]bool{}
-		for _, r := range getArr(fieldsValue, "required") {
-			if s, ok := r.(string); ok && s != "" {
-				required[s] = true
-			}
-		}
-		for _, el := range recItems(getArr(fieldsValue, "elements")) {
-			name := getStr(el, "name")
-			fieldType := getStr(el, "type")
-			if fieldType == "" {
-				fieldType = "string"
-			}
-			schema.Fields = append(schema.Fields, FormField{
-				Name:        name,
-				Title:       getStr(el, "title"),
-				Type:        fieldType,
-				Description: getStr(el, "description"),
-				Required:    required[name],
-				Long:        getBool(el, "long"),
-			})
+// extractFormFields shapes an open_form step's fields.value object — the
+// element list plus its sibling required-names array — into FormFields.
+func extractFormFields(fieldsValue map[string]any) []FormField {
+	required := map[string]bool{}
+	for _, r := range getArr(fieldsValue, "required") {
+		if s, ok := r.(string); ok && s != "" {
+			required[s] = true
 		}
 	}
-	c.cacheWorkflowSchema(workflowID, schema)
-	return schema, nil
+	var fields []FormField
+	for _, el := range recItems(getArr(fieldsValue, "elements")) {
+		name := getStr(el, "name")
+		fieldType := getStr(el, "type")
+		if fieldType == "" {
+			fieldType = "string"
+		}
+		fields = append(fields, FormField{
+			Name:        name,
+			Title:       getStr(el, "title"),
+			Type:        fieldType,
+			Description: getStr(el, "description"),
+			Required:    required[name],
+			Long:        getBool(el, "long"),
+		})
+	}
+	return fields
 }
