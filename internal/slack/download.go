@@ -45,6 +45,21 @@ func sanitizeFilename(name string) string {
 	return cleaned
 }
 
+// setDownloadAuthHeaders applies the auth headers for a file download: browser
+// auth sends the xoxc bearer + d cookie + Slack referer/UA, standard auth the
+// bearer token.
+func (c *Client) setDownloadAuthHeaders(req *http.Request) {
+	auth := c.currentAuth()
+	if auth.Type == AuthBrowser {
+		req.Header.Set("Authorization", "Bearer "+auth.XOXC)
+		req.Header.Set("Cookie", "d="+url.QueryEscape(auth.XOXD))
+		req.Header.Set("Referer", "https://app.slack.com/")
+		req.Header.Set("User-Agent", c.userAgent)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+auth.Token)
+}
+
 // DownloadFile fetches a Slack-hosted file to DestDir with the account's
 // credentials and returns the local path. Existing files are reused (file IDs
 // are immutable, so the cache never goes stale).
@@ -75,15 +90,7 @@ func (c *Client) DownloadFile(ctx context.Context, opts DownloadOptions) (string
 	if err != nil {
 		return "", &DownloadError{Message: err.Error()}
 	}
-	auth := c.currentAuth()
-	if auth.Type == AuthBrowser {
-		req.Header.Set("Authorization", "Bearer "+auth.XOXC)
-		req.Header.Set("Cookie", "d="+url.QueryEscape(auth.XOXD))
-		req.Header.Set("Referer", "https://app.slack.com/")
-		req.Header.Set("User-Agent", c.userAgent)
-	} else {
-		req.Header.Set("Authorization", "Bearer "+auth.Token)
-	}
+	c.setDownloadAuthHeaders(req)
 
 	resp, err := c.doer.Do(req)
 	if err != nil {

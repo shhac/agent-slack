@@ -156,27 +156,35 @@ func searchFilesInChannels(ctx context.Context, c *Client, opts SearchOptions) (
 	}
 	queryLower := strings.ToLower(strings.TrimSpace(opts.Query))
 
+	// The user filter and date window don't vary by channel or page — resolve
+	// them once (eagerly returning a bad-date error) into a template the page
+	// loop clones, instead of re-parsing the dates on every request.
+	baseParams := map[string]any{"count": 100}
+	if userID != "" {
+		baseParams["user"] = userID
+	}
+	if opts.After != "" {
+		tsFrom, derr := dateToUnixSeconds(opts.After, false)
+		if derr != nil {
+			return nil, derr
+		}
+		baseParams["ts_from"] = tsFrom
+	}
+	if opts.Before != "" {
+		tsTo, derr := dateToUnixSeconds(opts.Before, true)
+		if derr != nil {
+			return nil, derr
+		}
+		baseParams["ts_to"] = tsTo
+	}
+
 	var out []SearchFileItem
 	for _, channelID := range channelIDs {
 		page := 1
 		for {
-			params := map[string]any{"channel": channelID, "count": 100, "page": page}
-			if userID != "" {
-				params["user"] = userID
-			}
-			if opts.After != "" {
-				tsFrom, derr := dateToUnixSeconds(opts.After, false)
-				if derr != nil {
-					return nil, derr
-				}
-				params["ts_from"] = tsFrom
-			}
-			if opts.Before != "" {
-				tsTo, derr := dateToUnixSeconds(opts.Before, true)
-				if derr != nil {
-					return nil, derr
-				}
-				params["ts_to"] = tsTo
+			params := map[string]any{"channel": channelID, "page": page}
+			for k, v := range baseParams {
+				params[k] = v
 			}
 			resp, ferr := c.API(ctx, "files.list", params)
 			if ferr != nil {

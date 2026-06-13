@@ -31,12 +31,12 @@ func parseLocalConfig(raw []byte) (map[string]json.RawMessage, error) {
 
 	lastErr := errors.New("localConfig not parseable")
 	for _, enc := range encodings {
-		text := decodeText(data, enc)
-		if m, err := decodeConfigObject(text); err == nil {
-			return m, nil
-		} else {
+		m, err := decodeConfigObject(decodeText(data, enc))
+		if err != nil {
 			lastErr = err
+			continue
 		}
+		return m, nil
 	}
 	return nil, lastErr
 }

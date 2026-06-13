@@ -53,6 +53,35 @@ var systemSubtypes = map[string]bool{
 	"group_archive": true, "group_unarchive": true,
 }
 
+// unreadEntry is one conversation from client.counts, tagged with its type.
+type unreadEntry struct {
+	raw         map[string]any
+	channelType string
+}
+
+// unreadEntries collects the channels/mpims/dms from a client.counts response
+// that have unreads.
+func unreadEntries(resp map[string]any) []unreadEntry {
+	var all []unreadEntry
+	for _, ch := range recItems(getArr(resp, "channels")) {
+		all = append(all, unreadEntry{ch, "channel"})
+	}
+	for _, ch := range recItems(getArr(resp, "mpims")) {
+		all = append(all, unreadEntry{ch, "mpim"})
+	}
+	for _, ch := range recItems(getArr(resp, "ims")) {
+		all = append(all, unreadEntry{ch, "dm"})
+	}
+
+	var withUnreads []unreadEntry
+	for _, e := range all {
+		if getBool(e.raw, "has_unreads") {
+			withUnreads = append(withUnreads, e)
+		}
+	}
+	return withUnreads
+}
+
 // FetchUnreads reads client.counts (internal API: browser auth) and hydrates
 // each unread conversation with its name and the messages since last_read.
 func FetchUnreads(ctx context.Context, c *Client, opts UnreadsOptions) (UnreadsResult, error) {
@@ -70,27 +99,7 @@ func FetchUnreads(ctx context.Context, c *Client, opts UnreadsOptions) (UnreadsR
 		return UnreadsResult{}, err
 	}
 
-	type entry struct {
-		raw         map[string]any
-		channelType string
-	}
-	var entries []entry
-	for _, ch := range recItems(getArr(resp, "channels")) {
-		entries = append(entries, entry{ch, "channel"})
-	}
-	for _, ch := range recItems(getArr(resp, "mpims")) {
-		entries = append(entries, entry{ch, "mpim"})
-	}
-	for _, ch := range recItems(getArr(resp, "ims")) {
-		entries = append(entries, entry{ch, "dm"})
-	}
-
-	var withUnreads []entry
-	for _, e := range entries {
-		if getBool(e.raw, "has_unreads") {
-			withUnreads = append(withUnreads, e)
-		}
-	}
+	withUnreads := unreadEntries(resp)
 
 	// Each channel needs 1-2 extra calls; bound the fan-out.
 	channels := make([]UnreadChannel, len(withUnreads))
