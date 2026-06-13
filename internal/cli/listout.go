@@ -41,7 +41,7 @@ func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
 
 	payload := map[string]any{"data": items}
 	for key, value := range meta {
-		payload[key] = value
+		payload["@"+key] = value // @-prefixed, matching the NDJSON meta lines and the docs
 	}
 	output.Print(globals.stdout, payload, format, true)
 	return nil
