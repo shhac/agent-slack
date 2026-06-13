@@ -163,6 +163,21 @@ func hydrateUnreadChannel(ctx context.Context, c *Client, raw map[string]any, ch
 		return out
 	}
 
+	msgs, inferred := fetchUnreadMessages(ctx, c, channelID, lastRead, hasCount, opts)
+	out.Messages = msgs
+	if inferred >= 0 {
+		out.UnreadCount = inferred
+	}
+	return out
+}
+
+// fetchUnreadMessages pulls conversations.history since lastRead, drops system
+// messages when asked, and shapes the rest into UnreadMessages (oldest first).
+// When the counts API gave no number (hasCount is false) it also infers an
+// unread count from what it fetched, returned as inferredCount; otherwise
+// inferredCount is -1. Best effort: a history error yields no messages.
+func fetchUnreadMessages(ctx context.Context, c *Client, channelID, lastRead string, hasCount bool, opts hydrateOptions) (msgs []UnreadMessage, inferredCount int) {
+	inferredCount = -1
 	history, err := c.API(ctx, "conversations.history", map[string]any{
 		"channel":   channelID,
 		"oldest":    lastRead,
@@ -170,28 +185,29 @@ func hydrateUnreadChannel(ctx context.Context, c *Client, raw map[string]any, ch
 		"inclusive": false,
 	})
 	if err != nil {
-		return out
+		return nil, -1
 	}
-	var msgs []map[string]any
+
+	var kept []map[string]any
 	for _, m := range recItems(getArr(history, "messages")) {
 		if opts.skipSystem {
 			if subtype := getStr(m, "subtype"); subtype != "" && systemSubtypes[subtype] {
 				continue
 			}
 		}
-		msgs = append(msgs, m)
+		kept = append(kept, m)
 	}
 
 	if !hasCount {
-		out.UnreadCount = len(msgs)
-		if getBool(history, "has_more") && out.UnreadCount < 2 {
-			out.UnreadCount = 2
+		inferredCount = len(kept)
+		if getBool(history, "has_more") && inferredCount < 2 {
+			inferredCount = 2
 		}
 	}
 
-	for _, m := range msgs {
+	for _, m := range kept {
 		inline := toInlineMessage(m, opts.maxBodyChars)
-		out.Messages = append(out.Messages, UnreadMessage{
+		msgs = append(msgs, UnreadMessage{
 			TS:         getStr(m, "ts"),
 			Author:     inline.Author,
 			Content:    inline.Content,
@@ -199,12 +215,12 @@ func hydrateUnreadChannel(ctx context.Context, c *Client, raw map[string]any, ch
 			ReplyCount: inline.ReplyCount,
 		})
 	}
-	sort.SliceStable(out.Messages, func(i, j int) bool {
-		a, _ := strconv.ParseFloat(out.Messages[i].TS, 64)
-		b, _ := strconv.ParseFloat(out.Messages[j].TS, 64)
+	sort.SliceStable(msgs, func(i, j int) bool {
+		a, _ := strconv.ParseFloat(msgs[i].TS, 64)
+		b, _ := strconv.ParseFloat(msgs[j].TS, 64)
 		return a < b
 	})
-	return out
+	return msgs, inferredCount
 }
 
 // channelIdentity derives a conversation's display name and corrected type

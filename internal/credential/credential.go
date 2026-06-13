@@ -141,32 +141,7 @@ func (s *Store) Save(creds *Credentials) error {
 	}
 
 	if s.kc.Available() {
-		// xoxd is shared across browser workspaces; store it once. Only swap the
-		// file copies for the placeholder if that store succeeded — otherwise the
-		// cookie would be lost (mirrors the xoxc/token gating below).
-		xoxdStored := false
-		for _, w := range out.Workspaces {
-			if w.Auth.Type == AuthBrowser && !isPlaceholder(w.Auth.XOXD) {
-				xoxdStored = s.kc.Set(xoxdAccount, w.Auth.XOXD)
-				break
-			}
-		}
-		for i := range out.Workspaces {
-			w := &out.Workspaces[i]
-			switch w.Auth.Type {
-			case AuthBrowser:
-				if !isPlaceholder(w.Auth.XOXC) && s.kc.Set(xoxcAccount(w.URL), w.Auth.XOXC) {
-					w.Auth.XOXC = keychainPlaceholder
-				}
-				if !isPlaceholder(w.Auth.XOXD) && xoxdStored {
-					w.Auth.XOXD = keychainPlaceholder
-				}
-			case AuthStandard:
-				if !isPlaceholder(w.Auth.Token) && s.kc.Set(tokenAccount(w.URL), w.Auth.Token) {
-					w.Auth.Token = keychainPlaceholder
-				}
-			}
-		}
+		s.pushSecretsToKeychain(out.Workspaces)
 	}
 
 	data, err := json.MarshalIndent(&out, "", "  ")
@@ -177,6 +152,37 @@ func (s *Store) Save(creds *Credentials) error {
 		return err
 	}
 	return os.WriteFile(s.path, data, 0o600)
+}
+
+// pushSecretsToKeychain stores each workspace's secrets in the Keychain and
+// replaces the in-place file copy with the placeholder — but only for secrets
+// the Keychain actually accepted; a failed Set leaves the real value in the
+// file so it is never lost. xoxd is shared across browser workspaces and stored
+// once. The caller is responsible for checking s.kc.Available() first.
+func (s *Store) pushSecretsToKeychain(workspaces []Workspace) {
+	xoxdStored := false
+	for _, w := range workspaces {
+		if w.Auth.Type == AuthBrowser && !isPlaceholder(w.Auth.XOXD) {
+			xoxdStored = s.kc.Set(xoxdAccount, w.Auth.XOXD)
+			break
+		}
+	}
+	for i := range workspaces {
+		w := &workspaces[i]
+		switch w.Auth.Type {
+		case AuthBrowser:
+			if !isPlaceholder(w.Auth.XOXC) && s.kc.Set(xoxcAccount(w.URL), w.Auth.XOXC) {
+				w.Auth.XOXC = keychainPlaceholder
+			}
+			if !isPlaceholder(w.Auth.XOXD) && xoxdStored {
+				w.Auth.XOXD = keychainPlaceholder
+			}
+		case AuthStandard:
+			if !isPlaceholder(w.Auth.Token) && s.kc.Set(tokenAccount(w.URL), w.Auth.Token) {
+				w.Auth.Token = keychainPlaceholder
+			}
+		}
+	}
 }
 
 // Upsert inserts or replaces a workspace by normalized URL and persists.
