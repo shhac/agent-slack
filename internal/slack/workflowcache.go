@@ -6,36 +6,46 @@ package slack
 // denied) must never stick for the TTL, and the side-effecting `workflow run`
 // bookmark resolution (ResolveShortcut) is deliberately left uncached.
 
+// The same validator guards both directions of each pair, so an entry that
+// would be pruned on the next load is never written in the first place.
+func validWorkflowPreview(_ string, p WorkflowPreview) bool {
+	return p.TriggerID != "" || p.Workflow.ID != ""
+}
+
+func validWorkflowSchema(_ string, s WorkflowSchema) bool { return s.WorkflowID != "" }
+
+func (c *Client) workflowPreviewCache() *cacheSnapshot[WorkflowPreview] {
+	return openCache(c.cache, "workflow-triggers", c.currentAuth().WorkspaceURL,
+		cacheTTLOf(c.cache).WorkflowPreview, validWorkflowPreview)
+}
+
+func (c *Client) workflowSchemaCache() *cacheSnapshot[WorkflowSchema] {
+	return openCache(c.cache, "workflow-schemas", c.currentAuth().WorkspaceURL,
+		cacheTTLOf(c.cache).WorkflowSchema, validWorkflowSchema)
+}
+
 func (c *Client) cachedWorkflowPreview(triggerID string) (WorkflowPreview, bool) {
-	snap := openCache[WorkflowPreview](c.cache, "workflow-triggers", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).WorkflowPreview,
-		func(_ string, p WorkflowPreview) bool { return p.TriggerID != "" || p.Workflow.ID != "" })
-	return snap.get(triggerID)
+	return c.workflowPreviewCache().get(triggerID)
 }
 
 func (c *Client) cacheWorkflowPreview(triggerID string, p WorkflowPreview) {
-	if triggerID == "" {
+	if !validWorkflowPreview(triggerID, p) {
 		return
 	}
-	snap := openCache[WorkflowPreview](c.cache, "workflow-triggers", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).WorkflowPreview, nil)
+	snap := c.workflowPreviewCache()
 	snap.set(triggerID, p)
 	snap.save()
 }
 
 func (c *Client) cachedWorkflowSchema(workflowID string) (WorkflowSchema, bool) {
-	snap := openCache[WorkflowSchema](c.cache, "workflow-schemas", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).WorkflowSchema,
-		func(_ string, s WorkflowSchema) bool { return s.WorkflowID != "" })
-	return snap.get(workflowID)
+	return c.workflowSchemaCache().get(workflowID)
 }
 
 func (c *Client) cacheWorkflowSchema(workflowID string, s WorkflowSchema) {
-	if workflowID == "" {
+	if !validWorkflowSchema(workflowID, s) {
 		return
 	}
-	snap := openCache[WorkflowSchema](c.cache, "workflow-schemas", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).WorkflowSchema, nil)
+	snap := c.workflowSchemaCache()
 	snap.set(workflowID, s)
 	snap.save()
 }

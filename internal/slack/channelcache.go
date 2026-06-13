@@ -8,34 +8,40 @@ import "strings"
 // each a single-key open/get or open/set/save (channels are looked up one or
 // two at a time per command, so re-reading the small file is cheap).
 
-func (c *Client) cachedChannelID(name string) (string, bool) {
-	snap := openCache[string](c.cache, "channel-names", c.currentAuth().WorkspaceURL,
+func validChannel(_ string, ch CompactChannel) bool { return ch.ID != "" }
+
+func (c *Client) channelNameCache() *cacheSnapshot[string] {
+	return openCache[string](c.cache, "channel-names", c.currentAuth().WorkspaceURL,
 		cacheTTLOf(c.cache).ChannelNames, nil)
-	return snap.get(strings.ToLower(name))
+}
+
+func (c *Client) channelCache() *cacheSnapshot[CompactChannel] {
+	return openCache(c.cache, "channels", c.currentAuth().WorkspaceURL,
+		cacheTTLOf(c.cache).Channels, validChannel)
+}
+
+func (c *Client) cachedChannelID(name string) (string, bool) {
+	return c.channelNameCache().get(strings.ToLower(name))
 }
 
 func (c *Client) cacheChannelID(name, id string) {
 	if name == "" || id == "" {
 		return
 	}
-	snap := openCache[string](c.cache, "channel-names", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).ChannelNames, nil)
+	snap := c.channelNameCache()
 	snap.set(strings.ToLower(name), id)
 	snap.save()
 }
 
 func (c *Client) cachedChannel(channelID string) (CompactChannel, bool) {
-	snap := openCache[CompactChannel](c.cache, "channels", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).Channels, func(id string, ch CompactChannel) bool { return ch.ID != "" })
-	return snap.get(channelID)
+	return c.channelCache().get(channelID)
 }
 
 func (c *Client) cacheChannel(ch CompactChannel) {
-	if ch.ID == "" {
+	if !validChannel(ch.ID, ch) {
 		return
 	}
-	snap := openCache[CompactChannel](c.cache, "channels", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).Channels, func(id string, ch CompactChannel) bool { return ch.ID != "" })
+	snap := c.channelCache()
 	snap.set(ch.ID, ch)
 	snap.save()
 	// A known channel also fills the name index, so a later name lookup is free.
