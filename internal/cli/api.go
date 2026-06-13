@@ -69,7 +69,7 @@ output. This is for endpoints agent-slack does not cover.`,
 			if err != nil {
 				return err
 			}
-			format, err := resolveFormat(globals, output.FormatJSON)
+			format, err := output.ResolveFormat(globals.Format, output.FormatJSON)
 			if err != nil {
 				return err
 			}

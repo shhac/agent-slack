@@ -2,7 +2,6 @@ package slack
 
 import (
 	"context"
-	"regexp"
 	"strings"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -109,8 +108,6 @@ func ParseInviteUsersCSV(input string) []string {
 	return out
 }
 
-var likelyEmailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
-
 // SplitEmailsFromInviteTargets separates email targets (external invites)
 // from user-ID/handle targets. Emails are trimmed before deduping so
 // " a@b.com" and "a@b.com" cannot produce two invites.
@@ -118,7 +115,7 @@ func SplitEmailsFromInviteTargets(targets []string) (emails, nonEmails []string)
 	seen := map[string]bool{}
 	for _, target := range targets {
 		email := strings.TrimSpace(target)
-		if likelyEmailRe.MatchString(email) {
+		if emailRe.MatchString(email) {
 			if !seen[email] {
 				seen[email] = true
 				emails = append(emails, email)

@@ -2,15 +2,13 @@ package slack
 
 import (
 	"context"
-	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/shhac/agent-slack/internal/render"
 )
 
 const fetchConcurrency = 5
-
-// Mention collection accepts W (enterprise) IDs as well as U.
-var cacheUserIDRe = regexp.MustCompile(`^[UW][A-Z0-9]{8,}$`)
 
 // ResolveUsersByID expands user IDs to compact profiles via the Client's
 // per-workspace cache, best effort: IDs that fail to fetch are absent from the
@@ -18,12 +16,11 @@ var cacheUserIDRe = regexp.MustCompile(`^[UW][A-Z0-9]{8,}$`)
 // reads but still writes fresh entries (the per-command --refresh-users, which
 // the caller ORs with the global --refresh-cache mode).
 func validUser(id string, u CompactUser) bool {
-	return cacheUserIDRe.MatchString(id) && u.ID != ""
+	return render.IsReferencedUserID(id) && u.ID != ""
 }
 
 func (c *Client) usersCache() *cacheSnapshot[CompactUser] {
-	return openCache(c.cache, "users", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).Users, validUser)
+	return openCacheFor(c, "users", cacheTTLOf(c.cache).Users, validUser)
 }
 
 // warmUserCache records profiles a list command already fetched, so user
@@ -92,8 +89,7 @@ func handleCacheKey(input string) string {
 }
 
 func (c *Client) handlesCache() *cacheSnapshot[string] {
-	return openCache[string](c.cache, "handles", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).Handles, nil)
+	return openCacheFor[string](c, "handles", cacheTTLOf(c.cache).Handles, nil)
 }
 
 func (c *Client) cachedUserIDByHandle(key string) (string, bool) {
@@ -104,12 +100,7 @@ func (c *Client) cachedUserIDByHandle(key string) (string, bool) {
 }
 
 func (c *Client) cacheUserIDByHandle(key, id string) {
-	if key == "" || id == "" {
-		return
-	}
-	snap := c.handlesCache()
-	snap.set(key, id)
-	snap.save()
+	cacheSet(c.handlesCache(), key, id, key != "" && id != "")
 }
 
 func dedupeUserIDs(ids []string) []string {
@@ -117,7 +108,7 @@ func dedupeUserIDs(ids []string) []string {
 	var out []string
 	for _, raw := range ids {
 		id := strings.TrimSpace(raw)
-		if !cacheUserIDRe.MatchString(id) || seen[id] {
+		if !render.IsReferencedUserID(id) || seen[id] {
 			continue
 		}
 		seen[id] = true

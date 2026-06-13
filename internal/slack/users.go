@@ -216,7 +216,7 @@ func GetUser(ctx context.Context, c *Client, input string) (CompactUser, error) 
 	}
 	// A profile cached within the short Get window is complete (users.list and
 	// users.info return the same fields), so serve it without users.info.
-	serve := openCache[CompactUser](c.cache, "users", c.currentAuth().WorkspaceURL, cacheTTLOf(c.cache).Get, validUser)
+	serve := openCacheFor[CompactUser](c, "users", cacheTTLOf(c.cache).Get, validUser)
 	if u, ok := serve.get(userID); ok {
 		return u, nil
 	}

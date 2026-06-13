@@ -59,27 +59,27 @@ func downloadSearchFile(ctx context.Context, c *Client, f map[string]any, opts S
 
 // PassesContentTypeFilter classifies a compact message by its files.
 func PassesContentTypeFilter(m render.CompactMessage, contentType ContentType) bool {
-	if contentType == "any" {
+	if contentType == ContentAny {
 		return true
 	}
 	hasFiles := len(m.Files) > 0
-	if contentType == "text" {
+	if contentType == ContentText {
 		return !hasFiles
 	}
 	if !hasFiles {
 		return false
 	}
 	switch contentType {
-	case "file":
+	case ContentFile:
 		return true
-	case "snippet":
+	case ContentSnippet:
 		for _, f := range m.Files {
 			if f.Mode == "snippet" {
 				return true
 			}
 		}
 		return false
-	case "image":
+	case ContentImage:
 		for _, f := range m.Files {
 			if strings.HasPrefix(f.Mimetype, "image/") {
 				return true
@@ -92,13 +92,13 @@ func PassesContentTypeFilter(m render.CompactMessage, contentType ContentType) b
 
 func passesFileContentTypeFilter(mode, mimetype string, contentType ContentType) bool {
 	switch contentType {
-	case "any", "file":
+	case ContentAny, ContentFile:
 		return true
-	case "snippet":
+	case ContentSnippet:
 		return mode == "snippet"
-	case "image":
+	case ContentImage:
 		return strings.HasPrefix(strings.ToLower(mimetype), "image/")
-	case "text":
+	case ContentText:
 		return mimetype == "text/plain"
 	}
 	return true

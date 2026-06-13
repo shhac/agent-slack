@@ -9,13 +9,11 @@ import "fmt"
 // so completions fill regardless.
 
 func (c *Client) conversationsPageCache() *cacheSnapshot[ConversationsPage] {
-	return openCache[ConversationsPage](c.cache, "conversations-pages", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).List, nil)
+	return openCacheFor[ConversationsPage](c, "conversations-pages", cacheTTLOf(c.cache).List, nil)
 }
 
 func (c *Client) usersPageCache() *cacheSnapshot[UsersPage] {
-	return openCache[UsersPage](c.cache, "users-pages", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).List, nil)
+	return openCacheFor[UsersPage](c, "users-pages", cacheTTLOf(c.cache).List, nil)
 }
 
 // conversationsPageKey identifies one channel-list query. opts.User is already

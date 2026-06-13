@@ -178,6 +178,24 @@ func openCache[T any](c *Cache, category, workspaceURL string, ttl time.Duration
 	return s
 }
 
+// openCacheFor opens a per-workspace cache snapshot for this client, supplying
+// the client's cache handle and current workspace URL so each accessor only
+// names its category, TTL, and validator.
+func openCacheFor[T any](c *Client, category string, ttl time.Duration, validate func(string, T) bool) *cacheSnapshot[T] {
+	return openCache[T](c.cache, category, c.currentAuth().WorkspaceURL, ttl, validate)
+}
+
+// cacheSet writes one entry and persists it, but only when the caller deems it
+// valid — so a value that would be pruned on the next load (empty key, missing
+// id, a cached rejection) is never written in the first place.
+func cacheSet[T any](snap *cacheSnapshot[T], key string, value T, valid bool) {
+	if !valid {
+		return
+	}
+	snap.set(key, value)
+	snap.save()
+}
+
 // get returns the cached value when present and within the category TTL.
 // Refresh and Off modes always miss (Refresh then re-fetches and overwrites).
 func (s *cacheSnapshot[T]) get(key string) (T, bool) {

@@ -12,6 +12,13 @@ var (
 	mentionTokenRe     = regexp.MustCompile(`<@([UW][A-Z0-9]{8,})(?:\|[^>]+)?>`)
 )
 
+// IsReferencedUserID reports whether s is a user ID as referenced in message
+// payloads — including enterprise-grid "W…" IDs, unlike target parsing's
+// IsUserID (which accepts only "U…").
+func IsReferencedUserID(s string) bool {
+	return referencedUserIDRe.MatchString(s)
+}
+
 // CollectReferencedUserIDs gathers every user ID a set of messages mentions —
 // authorship, <@U…> tokens in text, user/user_id/users fields anywhere in
 // blocks and attachments, and (optionally) reaction user lists — so
@@ -21,7 +28,7 @@ func CollectReferencedUserIDs(messages []MessageSummary, includeReactions bool) 
 	seen := map[string]bool{}
 	var out []string
 	add := func(id string) {
-		if referencedUserIDRe.MatchString(id) && !seen[id] {
+		if IsReferencedUserID(id) && !seen[id] {
 			seen[id] = true
 			out = append(out, id)
 		}

@@ -21,6 +21,14 @@ const (
 
 type ContentType string
 
+const (
+	ContentAny     ContentType = "any"
+	ContentText    ContentType = "text"
+	ContentFile    ContentType = "file"
+	ContentSnippet ContentType = "snippet"
+	ContentImage   ContentType = "image"
+)
+
 // SearchOptions controls Search.
 type SearchOptions struct {
 	WorkspaceURL    string
@@ -68,7 +76,7 @@ func Search(ctx context.Context, c *Client, opts SearchOptions) (SearchResult, e
 	opts.Limit = clampInt(orDefault(opts.Limit, 20), 1, 200)
 	opts.MaxContentChars = orDefault(opts.MaxContentChars, 4000)
 	if opts.ContentType == "" {
-		opts.ContentType = "any"
+		opts.ContentType = ContentAny
 	}
 	if opts.Warn == nil {
 		opts.Warn = io.Discard

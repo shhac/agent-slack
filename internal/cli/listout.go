@@ -7,12 +7,8 @@ import (
 	"github.com/shhac/agent-slack/internal/output"
 )
 
-func resolveFormat(globals *GlobalFlags, def output.Format) (output.Format, error) {
-	return output.ResolveFormat(globals.Format, def)
-}
-
 func printSingle(globals *GlobalFlags, payload any) error {
-	format, err := resolveFormat(globals, output.FormatJSON)
+	format, err := output.ResolveFormat(globals.Format, output.FormatJSON)
 	if err != nil {
 		return err
 	}
@@ -24,7 +20,7 @@ func printSingle(globals *GlobalFlags, payload any) error {
 // entries as `{"@key": value}` lines (referenced_users, pagination, …).
 // json/yaml formats wrap everything in one envelope instead.
 func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
-	format, err := resolveFormat(globals, output.FormatNDJSON)
+	format, err := output.ResolveFormat(globals.Format, output.FormatNDJSON)
 	if err != nil {
 		return err
 	}

@@ -10,7 +10,6 @@ import (
 	"github.com/shhac/agent-slack/internal/auth"
 	"github.com/shhac/agent-slack/internal/credential"
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
-	"github.com/shhac/agent-slack/internal/output"
 )
 
 func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
@@ -133,9 +132,9 @@ func registerAuthList(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(cmd)
 }
 
-// runAuthImport is the shared import pipeline. The output format is
-// validated after extraction but before anything persists, so a bad --format
-// never half-imports credentials.
+// runAuthImport is the shared import pipeline: extract, persist, then report.
+// --format is already validated by the root PersistentPreRunE, so a bad value
+// is rejected before this runs and can't half-import credentials.
 func runAuthImport(globals *GlobalFlags, extract func() (*auth.Extracted, error)) error {
 	store, err := globals.newStore()
 	if err != nil {
@@ -145,16 +144,11 @@ func runAuthImport(globals *GlobalFlags, extract func() (*auth.Extracted, error)
 	if err != nil {
 		return err
 	}
-	format, err := resolveFormat(globals, output.FormatJSON)
-	if err != nil {
-		return err
-	}
 	summary, err := saveTeams(store, extracted.Teams, extracted.CookieD, extracted.Source)
 	if err != nil {
 		return err
 	}
-	output.Print(globals.stdout, summary, format, true)
-	return nil
+	return printSingle(globals, summary)
 }
 
 func registerAuthImport(parent *cobra.Command, globals *GlobalFlags, use, short string, extract func() (*auth.Extracted, error)) {

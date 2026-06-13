@@ -11,13 +11,11 @@ import "strings"
 func validChannel(_ string, ch CompactChannel) bool { return ch.ID != "" }
 
 func (c *Client) channelNameCache() *cacheSnapshot[string] {
-	return openCache[string](c.cache, "channel-names", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).ChannelNames, nil)
+	return openCacheFor[string](c, "channel-names", cacheTTLOf(c.cache).ChannelNames, nil)
 }
 
 func (c *Client) channelCache() *cacheSnapshot[CompactChannel] {
-	return openCache(c.cache, "channels", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).Channels, validChannel)
+	return openCacheFor(c, "channels", cacheTTLOf(c.cache).Channels, validChannel)
 }
 
 func (c *Client) cachedChannelID(name string) (string, bool) {
@@ -25,12 +23,7 @@ func (c *Client) cachedChannelID(name string) (string, bool) {
 }
 
 func (c *Client) cacheChannelID(name, id string) {
-	if name == "" || id == "" {
-		return
-	}
-	snap := c.channelNameCache()
-	snap.set(strings.ToLower(name), id)
-	snap.save()
+	cacheSet(c.channelNameCache(), strings.ToLower(name), id, name != "" && id != "")
 }
 
 // warmChannelCache records channels a list command already fetched into the
@@ -64,26 +57,19 @@ func (c *Client) cachedChannel(channelID string) (CompactChannel, bool) {
 // serves a complete record (and --full) from cache; completions/resolution
 // keep using the entity store.
 func (c *Client) channelInfoCache() *cacheSnapshot[map[string]any] {
-	return openCache[map[string]any](c.cache, "channel-info", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).Get, func(_ string, raw map[string]any) bool { return getStr(raw, "id") != "" })
+	return openCacheFor[map[string]any](c, "channel-info", cacheTTLOf(c.cache).Get,
+		func(_ string, raw map[string]any) bool { return getStr(raw, "id") != "" })
 }
 
 func (c *Client) cacheChannelInfo(channelID string, raw map[string]any) {
-	if channelID == "" || getStr(raw, "id") == "" {
-		return
-	}
-	snap := c.channelInfoCache()
-	snap.set(channelID, raw)
-	snap.save()
+	cacheSet(c.channelInfoCache(), channelID, raw, channelID != "" && getStr(raw, "id") != "")
 }
 
 func (c *Client) cacheChannel(ch CompactChannel) {
-	if !validChannel(ch.ID, ch) {
+	if ch.ID == "" {
 		return
 	}
-	snap := c.channelCache()
-	snap.set(ch.ID, ch)
-	snap.save()
+	cacheSet(c.channelCache(), ch.ID, ch, true)
 	// A known channel also fills the name index, so a later name lookup is free.
 	if ch.Name != "" {
 		c.cacheChannelID(ch.Name, ch.ID)

@@ -17,8 +17,7 @@ func validWorkflowSchema(_ string, s WorkflowSchema) bool { return s.WorkflowID 
 func validWorkflowList(_ string, w ChannelWorkflows) bool { return w.ChannelID != "" }
 
 func (c *Client) workflowListCache() *cacheSnapshot[ChannelWorkflows] {
-	return openCache(c.cache, "workflow-list", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).WorkflowList, validWorkflowList)
+	return openCacheFor(c, "workflow-list", cacheTTLOf(c.cache).WorkflowList, validWorkflowList)
 }
 
 func (c *Client) cachedWorkflowList(channelID string) (ChannelWorkflows, bool) {
@@ -26,22 +25,15 @@ func (c *Client) cachedWorkflowList(channelID string) (ChannelWorkflows, bool) {
 }
 
 func (c *Client) cacheWorkflowList(channelID string, w ChannelWorkflows) {
-	if channelID == "" || !validWorkflowList(channelID, w) {
-		return
-	}
-	snap := c.workflowListCache()
-	snap.set(channelID, w)
-	snap.save()
+	cacheSet(c.workflowListCache(), channelID, w, channelID != "" && validWorkflowList(channelID, w))
 }
 
 func (c *Client) workflowPreviewCache() *cacheSnapshot[WorkflowPreview] {
-	return openCache(c.cache, "workflow-triggers", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).WorkflowPreview, validWorkflowPreview)
+	return openCacheFor(c, "workflow-triggers", cacheTTLOf(c.cache).WorkflowPreview, validWorkflowPreview)
 }
 
 func (c *Client) workflowSchemaCache() *cacheSnapshot[WorkflowSchema] {
-	return openCache(c.cache, "workflow-schemas", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).WorkflowSchema, validWorkflowSchema)
+	return openCacheFor(c, "workflow-schemas", cacheTTLOf(c.cache).WorkflowSchema, validWorkflowSchema)
 }
 
 func (c *Client) cachedWorkflowPreview(triggerID string) (WorkflowPreview, bool) {
@@ -49,12 +41,7 @@ func (c *Client) cachedWorkflowPreview(triggerID string) (WorkflowPreview, bool)
 }
 
 func (c *Client) cacheWorkflowPreview(triggerID string, p WorkflowPreview) {
-	if !validWorkflowPreview(triggerID, p) {
-		return
-	}
-	snap := c.workflowPreviewCache()
-	snap.set(triggerID, p)
-	snap.save()
+	cacheSet(c.workflowPreviewCache(), triggerID, p, validWorkflowPreview(triggerID, p))
 }
 
 func (c *Client) cachedWorkflowSchema(workflowID string) (WorkflowSchema, bool) {
@@ -62,10 +49,5 @@ func (c *Client) cachedWorkflowSchema(workflowID string) (WorkflowSchema, bool) 
 }
 
 func (c *Client) cacheWorkflowSchema(workflowID string, s WorkflowSchema) {
-	if !validWorkflowSchema(workflowID, s) {
-		return
-	}
-	snap := c.workflowSchemaCache()
-	snap.set(workflowID, s)
-	snap.save()
+	cacheSet(c.workflowSchemaCache(), workflowID, s, validWorkflowSchema(workflowID, s))
 }
