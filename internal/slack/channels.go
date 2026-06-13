@@ -93,6 +93,43 @@ func channelIDViaSearch(ctx context.Context, c *Client, name string) string {
 	return getStr(getRec(matches[0], "channel"), "id")
 }
 
+// GetChannelInfo fetches one channel's metadata (conversations.info), warming
+// the cache (so completions/resolvers grow from a direct get), and returns the
+// compact projection plus the raw channel object for --full.
+func GetChannelInfo(ctx context.Context, c *Client, channelID string) (CompactChannel, map[string]any, error) {
+	resp, err := c.API(ctx, "conversations.info", map[string]any{"channel": channelID, "include_num_members": true})
+	if err != nil {
+		return CompactChannel{}, nil, err
+	}
+	raw := getRec(resp, "channel")
+	if getStr(raw, "id") == "" {
+		return CompactChannel{}, nil, agenterrors.New("conversations.info returned no channel", agenterrors.FixableByAgent).
+			WithHint("check the channel id/name; 'agent-slack channel list' shows conversations")
+	}
+	compact := ToCompactChannel(raw)
+	c.warmChannelCache([]CompactChannel{compact})
+	return compact, raw, nil
+}
+
+// ListChannelMembers returns one page of a channel's member user IDs.
+func ListChannelMembers(ctx context.Context, c *Client, channelID string, limit int, cursor string) ([]string, string, error) {
+	params := map[string]any{"channel": channelID, "limit": clampInt(limit, 1, 1000)}
+	if cursor != "" {
+		params["cursor"] = cursor
+	}
+	resp, err := c.API(ctx, "conversations.members", params)
+	if err != nil {
+		return nil, "", err
+	}
+	var ids []string
+	for _, m := range getArr(resp, "members") {
+		if s, ok := m.(string); ok && s != "" {
+			ids = append(ids, s)
+		}
+	}
+	return ids, NextCursor(resp), nil
+}
+
 // ResolveChannelName resolves a conversation ID to a readable name — the
 // channel name, or the counterpart's display name for DMs. Best effort: any
 // failure returns the raw ID rather than an error, because callers only use

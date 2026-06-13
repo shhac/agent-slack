@@ -17,6 +17,28 @@ var cacheUserIDRe = regexp.MustCompile(`^[UW][A-Z0-9]{8,}$`)
 // result, and cache I/O never fails the command. forceRefresh ignores cached
 // reads but still writes fresh entries (the per-command --refresh-users, which
 // the caller ORs with the global --refresh-cache mode).
+func validUser(id string, u CompactUser) bool {
+	return cacheUserIDRe.MatchString(id) && u.ID != ""
+}
+
+func (c *Client) usersCache() *cacheSnapshot[CompactUser] {
+	return openCache(c.cache, "users", c.currentAuth().WorkspaceURL,
+		cacheTTLOf(c.cache).Users, validUser)
+}
+
+// warmUserCache records profiles a list command already fetched, so user
+// completions and later ID→profile lookups are populated without their own
+// API calls. Batched (one save) and best-effort.
+func (c *Client) warmUserCache(users []CompactUser) {
+	snap := c.usersCache()
+	for _, u := range users {
+		if validUser(u.ID, u) {
+			snap.set(u.ID, u)
+		}
+	}
+	snap.save()
+}
+
 func ResolveUsersByID(ctx context.Context, c *Client, userIDs []string, forceRefresh bool) map[string]CompactUser {
 	ids := dedupeUserIDs(userIDs)
 	out := make(map[string]CompactUser, len(ids))
@@ -24,9 +46,7 @@ func ResolveUsersByID(ctx context.Context, c *Client, userIDs []string, forceRef
 		return out
 	}
 
-	snap := openCache[CompactUser](c.cache, "users", c.currentAuth().WorkspaceURL,
-		cacheTTLOf(c.cache).Users,
-		func(id string, u CompactUser) bool { return cacheUserIDRe.MatchString(id) && u.ID != "" })
+	snap := c.usersCache()
 
 	var missing []string
 	for _, id := range ids {

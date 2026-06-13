@@ -86,10 +86,17 @@ func ListConversations(ctx context.Context, c *Client, opts ConversationsOptions
 	if err != nil {
 		return ConversationsPage{}, err
 	}
-	return ConversationsPage{
+	page := ConversationsPage{
 		Channels:   recItems(getArr(resp, "channels")),
 		NextCursor: NextCursor(resp),
-	}, nil
+	}
+
+	warm := make([]CompactChannel, 0, len(page.Channels))
+	for _, ch := range page.Channels {
+		warm = append(warm, ToCompactChannel(ch))
+	}
+	c.warmChannelCache(warm)
+	return page, nil
 }
 
 // ListUsersOptions controls ListUsers.
@@ -155,6 +162,7 @@ func ListUsers(ctx context.Context, c *Client, opts ListUsersOptions) (UsersPage
 	for i := range users {
 		users[i].DMID = dmMap[users[i].ID]
 	}
+	c.warmUserCache(users)
 	return UsersPage{Users: users, NextCursor: nextCursor}, nil
 }
 
@@ -187,7 +195,9 @@ func GetUser(ctx context.Context, c *Client, input string) (CompactUser, error) 
 	if getStr(user, "id") == "" {
 		return CompactUser{}, agenterrors.New("users.info returned no user", agenterrors.FixableByAgent)
 	}
-	return ToCompactUser(user), nil
+	compact := ToCompactUser(user)
+	c.warmUserCache([]CompactUser{compact}) // grow/refresh the cache from a direct get
+	return compact, nil
 }
 
 // OpenDMChannel opens (or reuses) a DM with one user and returns its ID.

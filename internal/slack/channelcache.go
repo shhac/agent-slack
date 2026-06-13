@@ -33,6 +33,27 @@ func (c *Client) cacheChannelID(name, id string) {
 	snap.save()
 }
 
+// warmChannelCache records channels a list command already fetched into the
+// entity store and the name→ID index, so channel completions and later
+// name→ID lookups are populated without their own API calls. Batched (one
+// save per store) and best-effort. DMs go in the entity store (for ID→meta)
+// but not the name index (they have no stable name).
+func (c *Client) warmChannelCache(channels []CompactChannel) {
+	entity := c.channelCache()
+	names := c.channelNameCache()
+	for _, ch := range channels {
+		if ch.ID == "" {
+			continue
+		}
+		entity.set(ch.ID, ch)
+		if ch.Name != "" && !ch.IsIM {
+			names.set(strings.ToLower(ch.Name), ch.ID)
+		}
+	}
+	entity.save()
+	names.save()
+}
+
 func (c *Client) cachedChannel(channelID string) (CompactChannel, bool) {
 	return c.channelCache().get(channelID)
 }
