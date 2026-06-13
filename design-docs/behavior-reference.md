@@ -1,7 +1,7 @@
-# Port notes: TS behaviors the Go port must preserve
+# Behavior reference: Slack API handling agent-slack relies on
 
-Captured from the TypeScript `agent-slack` source so the port doesn't silently
-drop hard-won behavior. Source: `../stablyai-agent-slack/src`.
+The Slack-side behaviors, parsing rules, and algorithms the implementation
+depends on. Keep this current as the handling evolves.
 
 ## Slack permalink / target parsing
 
@@ -37,8 +37,8 @@ All collapse to one Markdown string. Forwarded content: extract
 ## File handling
 
 - Prefer `url_private_download` over `url_private`.
-- Canvas modes (`canvas`/`quip`/`docs`): download HTML → Markdown (turndown +
-  GFM in TS; pick a Go HTML→MD path).
+- Canvas modes (`canvas`/`quip`/`docs`): download HTML → Markdown via a Go
+  HTML→MD conversion.
 - Infer extension from mimetype/filetype.
 - On download failure, surface an `error` field rather than aborting the whole
   command.
@@ -46,26 +46,24 @@ All collapse to one Markdown string. Forwarded content: extract
 ## Rate limiting
 
 - Browser path: retry 429 up to 3× with exponential backoff, cap ~30s.
-- Standard path relied on the SDK; the Go client should implement equivalent
-  bounded retry and map exhaustion to `fixable_by: retry`.
+- Standard path applies equivalent bounded retry and maps exhaustion to
+  `fixable_by: retry`.
 
 ## Credentials
 
-- TS file: `~/.config/agent-slack/credentials.json` (`src/auth/paths.ts`),
-  Keychain service `agent-slack`. (TS separately uses `~/.agent-slack/` for
-  tmp/downloads — an earlier revision of this note conflated the two.) The Go
-  port stores at `~/.config/app.paulie.agent-slack/` with Keychain service
-  `app.paulie.agent-slack` to avoid sharing a file with the TS tool; the TS
-  file seeds a missing Go store once, read-only.
-- macOS Keychain stores tokens; file stores `"__KEYCHAIN__"` placeholder.
-  Keychain service is `app.paulie.agent-slack` (family convention, per `lin`).
-- Zod-validated schema in TS (version, workspaces[], auth per workspace).
+- Credentials live at `~/.config/app.paulie.agent-slack/credentials.json` with
+  Keychain service `app.paulie.agent-slack` (family convention, per `lin`).
+  Downloads and the user cache live separately under
+  `~/.cache/app.paulie.agent-slack/` (see `architecture.md`).
+- macOS Keychain stores tokens; the file stores a `"__KEYCHAIN__"` placeholder.
+- The store schema is versioned (version, workspaces[], auth per workspace).
 - **Import-only** to start: no interactive setup; tokens arrive via the
   `import-*` / `parse-curl` commands and env vars.
+- Legacy migration: a TypeScript agent-slack stored credentials at
+  `~/.config/agent-slack/credentials.json`; that file seeds a missing store once,
+  read-only.
 
 ## auth import-desktop (LevelDB)
-
-The TS path (`src/auth/desktop.ts`, `src/lib/leveldb-reader.ts`):
 
 - Reads Slack Desktop's `Local Storage/leveldb` (Chromium Local Storage) to find
   `localConfig_v2` / `localConfig_v3` (or `reduxPersist:localConfig`), which
@@ -74,36 +72,31 @@ The TS path (`src/auth/desktop.ts`, `src/lib/leveldb-reader.ts`):
   LevelDB.
 - Snapshots the LevelDB dir to a temp location before reading, because a running
   Slack Desktop holds the DB lock.
+- Uses a pure-Go LevelDB reader (`github.com/syndtr/goleveldb/leveldb`), no cgo.
 
-Go port: use a pure-Go reader (`github.com/syndtr/goleveldb/leveldb`), no cgo.
 The `chrome`/`brave`/`firefox` import paths instead read the same
 `localConfig_v2/v3` from the browser's live `localStorage` via AppleScript /
-profile parsing — unchanged in spirit.
+profile parsing.
 
 ## No draft editor
 
-The TS `message draft` command spins up a localhost server + browser WYSIWYG
-editor for a human to finish a message. This is dropped in the Go port: the tool
-is LLM-first and an agent never drives a browser UI. Do not port the draft
-server, its embedded HTML/JS, or the `message draft` command. Human-in-the-loop
-is the `--yes` gate on destructive mutations (see `cli-design.md`).
+agent-slack has no browser draft editor: it is LLM-first and an agent never
+drives a browser UI. There is no localhost draft server, embedded HTML/JS, or
+`message draft` command. Human-in-the-loop is the `--yes` gate on destructive
+mutations (see `cli-design.md`).
 
 ## Deliberate divergences
 
-Where the Go CLI intentionally differs from TS (NDJSON lists, compact
-channel/user projections, download policy, no first-run browser
-auto-extraction, `--yes` scope, `file download` / `api call` additions), the
-record lives in `cli-design.md` — this file only tracks TS behaviors that must
-be preserved.
+The broader behavior and output decisions (NDJSON lists, compact channel/user
+projections, download policy, no first-run browser auto-extraction, `--yes`
+scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
 
 ## User resolution / caching
 
 - In-memory user map; `--resolve-users` expands IDs to profiles,
   `--refresh-users` clears the cache first.
 
-## Fork relationship
+## Workflow and update behavior
 
-Personal fork `shhac/stablyai-agent-slack` carried these on top of upstream:
-`fix-workflow-bookmark-id`, `remove-update-command`, `feat-workflow-fields`
-(workflow form submission). Preserve workflow form-field submission and the
-removal of the self-update command.
+- Workflow form-field submission is supported.
+- There is no self-update command.

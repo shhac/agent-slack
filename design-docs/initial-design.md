@@ -1,13 +1,12 @@
 # agent-slack: initial design
 
-Port of the TypeScript `agent-slack` (stablyai/agent-slack, plus Paul's fork
-changes) to Go, adopting the `agent-*` CLI family conventions.
+agent-slack's initial design, following the `agent-*` CLI family conventions.
 
 ## Goals
 
 1. Single static binary, fast cold start (agents invoke per-call).
 2. Output and error contract identical to the rest of the `agent-*` family.
-3. Behavior parity with the TS original for the read paths first, then writes.
+3. Correct, well-tested read paths first, then writes.
 4. Keychain-first secret handling; nothing sensitive in output.
 
 ## Auth model
@@ -25,22 +24,21 @@ Resolution order per invocation: `--workspace` flag → env (`SLACK_TOKEN`,
 resolve from Keychain; the config file holds only metadata + `__KEYCHAIN__`
 placeholders.
 
-Import paths to port (macOS-first; gate others clearly):
+Credential import paths (macOS-first; gate others clearly):
 `auth import-desktop` (LevelDB), `auth import-chrome` / `import-brave`
 (AppleScript), `auth import-firefox`, `auth parse-curl`. `auth list` (aliased
 `whoami`) and `auth test` verify configuration.
 
 ## Command surface
 
-Mirrors the TS CLI exactly so existing agent prompts/skills transfer:
+The command surface:
 
 - **auth**: `list` (`ls`, `whoami`), `test`, `add` (`--form`), `set-default`,
   `remove`, `import-desktop`, `import-chrome`, `import-brave`,
   `import-firefox`, `parse-curl`
 - **message**: `get`, `list`, `send`, `edit`, `delete`,
   `react add|remove`, `scheduled list|cancel`
-  (the TS `message draft` browser editor is intentionally dropped — see
-  Decisions)
+  (there is deliberately no browser-based draft editor — see Decisions)
 - **channel**: `list`, `new`, `invite`, `mark`
 - **user**: `list`, `get`, `dm-open`
 - **search**: `all`, `messages`, `files`
@@ -48,8 +46,8 @@ Mirrors the TS CLI exactly so existing agent prompts/skills transfer:
 - **canvas**: `get`
 - **unreads**: top-level
 - **later**: `list`, `save`, `complete`, `archive`, `reopen`, `remove`, `remind`
-- **file**: `download` (point pull of a file seen in any listing; new vs TS)
-- **api**: `call` (raw Slack method escape hatch; new vs TS)
+- **file**: `download` (point pull of a file seen in any listing)
+- **api**: `call` (raw Slack method escape hatch)
 
 Flags, defaults, projections, and per-command details live in
 `cli-design.md`.
@@ -83,11 +81,13 @@ parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
   `cli-design.md` "Mutation gating".
 - Browser path retries 429 with exponential backoff (cap ~30s).
 
-## Port order
+## Build order / layering
+
+The system is built and layered bottom-up:
 
 1. **Scaffold + contract** (this commit): root, output, errors, usage, CI, docs.
 2. **Render package**: mrkdwn↔Markdown, blocks→Markdown, permalink parsing — pure
-   functions, port the TS unit tests alongside.
+   functions, with unit tests alongside.
 3. **Slack client + mockslack**: DI transport, 429 retry, error mapping.
 4. **Read commands**: `auth list/test`, `message get/list`, `channel list`,
    `user get/list`, `search`, `unreads`, `canvas get`.
@@ -98,11 +98,10 @@ parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
 
 ## Decisions
 
-- **No draft editor.** The TS `message draft` command opens a browser WYSIWYG
-  editor for a human to finish and send. This tool is LLM-first and an agent
-  will never drive a browser UI, so `message draft` is dropped entirely. The
-  human-in-the-loop safeguard is the `--yes` requirement on mutations, not a
-  draft step.
+- **No draft editor.** There is deliberately no browser-based draft/WYSIWYG
+  editor command: this tool is LLM-first and an agent will never drive a browser
+  UI. The human-in-the-loop safeguard is the `--yes` requirement on mutations,
+  not a draft step.
 - **Pure-Go LevelDB reader, no cgo.** `auth import-desktop` reads Slack
   Desktop's Chromium *Local Storage* LevelDB to recover the `localConfig_v2`/`v3`
   JSON containing workspace `xoxc` tokens (the `xoxd` cookie comes from a
@@ -110,7 +109,7 @@ parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
   (`github.com/syndtr/goleveldb/leveldb`) rather than shelling out or using a
   cgo binding — keeps the single-static-binary property. Snapshot the DB to a
   temp dir before reading so a running Slack Desktop holding the lock doesn't
-  block us, matching the TS behavior.
+  block us.
 - **Auth is import-only to start.** No interactive setup dialogs (`zenity` is
   not a dependency). Credentials arrive via the `import-*` / `parse-curl`
   commands and env vars; secrets are written straight to the Keychain.

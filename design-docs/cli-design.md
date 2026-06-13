@@ -1,8 +1,8 @@
 # CLI design: command surface, output, and LLM-first decisions
 
-Decided after mapping the TS CLI (`../stablyai-agent-slack/src/cli`) against
-`lin` (the family's best-practice reference for result formats, error hints,
-and lazy data pulls). This doc is the contract for steps 3–6 of the port.
+agent-slack's command surface, output contract, and LLM-first decisions,
+following `lin` (the family's best-practice reference for result formats,
+error hints, and lazy data pulls) for conventions.
 
 ## Principles
 
@@ -10,24 +10,24 @@ and lazy data pulls). This doc is the contract for steps 3–6 of the port.
    CI-mode special cases. If a feature exists for a human at a keyboard, it is
    out of scope (not deferred).
 2. **Token economy.** Compact projections by default; bulky payloads behind
-   `--full`; truncation with explicit markers; `--counts-only` where it exists
-   in TS.
+   `--full`; truncation with explicit markers; `--counts-only` where
+   applicable.
 3. **Chainability.** Every output carries the IDs the next command needs
    (channel_id + ts everywhere; permalink where it's free to compute).
 4. **Structured errors always.** JSON on stderr with `fixable_by` and a hint
    that names the exact follow-up command. Never a bare message.
-5. **Behavior parity where agents see it** (targets, rendering, search
-   syntax); Go conventions where they don't (package layout, typed mappers,
-   cobra registration).
+5. **Stable, well-defined behavior where agents see it** (targets, rendering,
+   search syntax); idiomatic Go where they don't (package layout, typed
+   mappers, cobra registration).
 
 ## Command tree
 
 `--workspace/-w`, `--format/-f`, `--timeout/-t`, `--debug/-d`, `--full` are
-global persistent flags (TS re-declared `--workspace` per command).
+global persistent flags.
 
 | Command | Key flags | Gate | Notes |
 |---|---|---|---|
-| `auth list` (alias `ls`, `whoami`; was TS `whoami`) | | | implemented |
+| `auth list` (alias `ls`, `whoami`) | | | implemented |
 | `auth test` | | | calls `auth.test`; lands with read commands |
 | `auth add / set-default / remove / import-* / parse-curl` | | | implemented |
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve-users`, `--refresh-users`, `--no-download` | | thread summary included; files auto-downloaded |
@@ -54,8 +54,8 @@ global persistent flags (TS re-declared `--workspace` per command).
 | `later list` | `--state`, `--limit` (20), `--max-body-chars` (4000), `--counts-only` | | NDJSON |
 | `later save/complete/archive/reopen/remove` | `--ts` | | personal state, ungated |
 | `later remind <target>` | `--in`, `--ts` | | duration parsing (30m, 2d, tomorrow…) |
-| `file download <file-id>` | `--workspace` | | point pull to cache dir; new vs TS |
-| `api call <method>` | `--params <json|->` | | raw escape hatch; new vs TS |
+| `file download <file-id>` | `--workspace` | | point pull to cache dir |
+| `api call <method>` | `--params <json|->` | | raw escape hatch |
 | `usage`, `<domain> usage` | | | see "usage system" |
 
 ## Mutation gating (`--yes`)
@@ -81,18 +81,18 @@ This supersedes the broader "all writes gated" wording in
 
 - **Lists → NDJSON** (one object per line), trailing
   `{"@pagination":{"has_more":true,"next_cursor":"…"}}` when more exist.
-  TS printed one pretty-JSON blob everywhere; we follow the family convention.
+  Follows the family convention.
 - **Single resources → pretty JSON.** `--format json|yaml|jsonl` overrides.
 - **Compact projections by default; `--full` returns the raw API payload.**
-  TS dumped raw `conversations.list`/`users.list` responses (users.list
-  profile blobs are huge); this is the biggest token win of the port.
+  Raw `users.list` profile blobs are huge; compact projections are the
+  biggest token win.
   - channel: `id, name, is_private, is_im, is_mpim, is_archived, is_member,
     member_count, topic`
   - user: `id, name, real_name, display_name, is_bot, deleted, tz, email`
   - message: `render.CompactMessage` (already implemented)
   - search results / scheduled / later items: same compaction approach,
     fields fixed when each command is built
-- **Truncation:** `--max-body-chars` defaults match TS (8000 message
+- **Truncation:** `--max-body-chars` defaults (8000 message
   get/list; 4000 search/later/unreads; 20000 canvas; `-1` unlimited),
   truncated content ends with `\n…`.
 - **Lazy pulls stay opt-in:** `--include-reactions`, `--resolve-users`
@@ -102,7 +102,7 @@ This supersedes the broader "all writes gated" wording in
   `permalink` (computed locally via `render.BuildMessageURL`, no API call).
   List rows omit it to keep NDJSON lean; `channel_id` + `ts` chain into
   `message get`.
-- All confirmations are JSON. (TS printed plain text for some auth imports.)
+- All confirmations are JSON.
 
 ## File downloads
 
@@ -115,9 +115,9 @@ metadata-only unless asked.**
 - `message list` / `search` / `unreads`: emit file metadata only
   (`id, name, mimetype, mode, permalink`); `--download` opts in.
 - `file download <file-id>`: point pull for a file seen in any listing
-  (lin's lazy-pull pattern). Canvas-mode files convert to Markdown as in TS.
+  (lin's lazy-pull pattern). Canvas-mode files convert to Markdown.
 - Failed downloads surface an `error` field on the file entry, never abort
-  the command (port-notes rule).
+  the command.
 
 ## Resolution cache
 
@@ -182,13 +182,13 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
 
 - Resolution order per invocation (unchanged): `--workspace` flag → env
   (`SLACK_TOKEN`, `SLACK_COOKIE_D`, `SLACK_WORKSPACE_URL`) → stored default.
-- **No first-run auto-extraction.** TS silently tried Slack Desktop → Chrome
-  → Brave → Firefox when nothing was configured; we return
-  `fixable_by: human` with hint `run 'agent-slack auth import-desktop'`.
+- **No first-run auto-extraction.** There is no first-run auto-extraction:
+  when nothing is configured we return `fixable_by: human` with hint
+  `run 'agent-slack auth import-desktop'`.
 - **Desktop auto-refresh kept** (decision): on `invalid_auth`/`token_expired`,
   re-extract from Slack Desktop **for already-configured workspaces only**,
   retry the command once, note the refresh on stderr. Skipped when
-  credentials came from env vars (mirrors TS). xoxc rotation is the #1
+  credentials came from env vars. xoxc rotation is the #1
   failure mode; this makes it self-healing instead of human-fixable.
 - **`auth add --form`** (decision): agents must never see or relay raw
   tokens. `--form` opens a native OS dialog (zenity) for whichever secret is
@@ -227,9 +227,9 @@ Conventions lifted from lin:
 - Unknown subcommands return a structured `fixable_by: agent` error listing
   the valid subcommands (lin's `HandleUnknownCommand`), not bare cobra help.
 - Mapping: bad input → `agent`; auth/permissions/missing creds → `human`;
-  429/5xx/network → `retry` (client layer maps these, step 3).
+  429/5xx/network → `retry` (the client layer maps these).
 - `possiblyTruncated` permalinks (thread_ts without cid) warn on stderr that
-  the shell likely ate `&cid=…` — port of message-url-warning.
+  the shell likely ate `&cid=…`.
 
 ## usage system
 
@@ -240,13 +240,13 @@ Conventions lifted from lin:
   an LLM reader (lin's per-domain usage pages are the model).
 - Ship `skills/agent-slack/SKILL.md` in-repo, kept in sync with the surface.
 
-## Not ported (decisions)
+## Out of scope (decisions)
 
-- **`message draft`** + draft HTTP server + embedded HTML editor + browser
-  launching (`open`/`xdg-open`) + its CI mode. Only browser-opening feature
-  in the TS CLI layer; LLM-first rules it out entirely.
-- **`update`/`upgrade` self-update** — the fork already removed it;
-  distribution is brew/`go install`.
+- **No browser-based draft editor** / draft HTTP server / embedded HTML
+  editor / browser launching (`open`/`xdg-open`) + its CI mode: LLM-first
+  rules out browser-opening features entirely.
+- **No self-update (`update`/`upgrade`) command**; distribution is
+  brew/`go install`.
 - **First-run browser auto-extraction** (see Credentials).
 - Plain-text output paths, interactive terminal anything. (Native OS dialogs
   are the one sanctioned interaction: `auth add --form` prompts the human for
@@ -254,23 +254,21 @@ Conventions lifted from lin:
   superseding the earlier blanket "no zenity" call. Family precedent:
   agent-posthog.)
 
-## Divergence ledger vs TS (quick reference)
+## Output & behavior choices (quick reference)
 
-| Area | TS | Go |
-|---|---|---|
-| List output | one pretty-JSON document | NDJSON + `@pagination` trailer |
-| channel/user list payloads | raw Slack API responses | compact projections, `--full` for raw |
-| Errors | bare `console.error` text | structured `APIError` JSON + hints |
-| `--workspace` | declared per command | global persistent flag |
-| Mutation gating | none | `--yes` on edit/delete/scheduled-cancel/new/invite |
-| File downloads | auto on get+list+search | auto on get only; `--download`; `file download` |
-| First-run creds | silent browser extraction chain | explicit `auth import-*` + hint |
-| Raw API access | none | `api call` escape hatch |
-| Self-docs | `--help` only | `usage` + per-domain usage + SKILL.md |
+- **Lists:** NDJSON + `@pagination` trailer.
+- **channel/user list:** compact projections, `--full` for raw.
+- **Errors:** structured `APIError` JSON + hints.
+- **`--workspace`:** global persistent flag.
+- **Mutation gating:** `--yes` on edit/delete/scheduled-cancel/new/invite.
+- **File downloads:** auto on get only; `--download`; `file download`.
+- **First-run creds:** explicit `auth import-*` + hint.
+- **Raw API access:** `api call` escape hatch.
+- **Self-docs:** `usage` + per-domain usage + SKILL.md.
 
-## Implementation order (refines port-order steps 3–5; all complete)
+## Implementation order (all complete)
 
-1. **Client + mockslack** (step 3): DI transport (browser + standard), 429
+1. **Client + mockslack**: DI transport (browser + standard), 429
    retry/backoff, error mapping, auto-refresh hook, pagination helper,
    channel/user resolvers, per-run user cache.
 2. **Read slice A**: `auth test`, `message get/list`, `channel list`,
@@ -285,5 +283,5 @@ Conventions lifted from lin:
 
 New dependencies taken: `github.com/coder/websocket` (workflow form
 submission needs a short-lived RTM WebSocket; zero transitive deps) and
-`github.com/JohannesKaufmann/html-to-markdown/v2` (canvas HTML→Markdown;
-closest behavioral match to the TS original's turndown+GFM).
+`github.com/JohannesKaufmann/html-to-markdown/v2` (canvas HTML→Markdown,
+with GFM support).

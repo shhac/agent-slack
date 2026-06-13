@@ -1,6 +1,6 @@
 # agent-slack architecture
 
-This note records the intended package layout so the port stays inside clean
+This note records the intended package layout so the code stays inside clean
 boundaries. It mirrors the conventions of the sibling `agent-*` CLIs
 (`agent-postmark`, `agent-stripe`, `lin`).
 
@@ -83,9 +83,8 @@ native OS dialog so tokens never transit the agent's conversation.
 
 ## Rendering (implemented)
 
-`internal/render` holds the pure conversion logic ported from the TypeScript
-original — no network, no I/O, table-tested for behavior parity with the TS
-unit tests:
+`internal/render` holds the pure conversion logic — no network, no I/O,
+table-tested for behavior coverage:
 
 - Slack permalink parsing (`/archives/<channel>/p<ts>` + `thread_ts`, with the
   truncated-URL heuristic) and CLI `<target>` parsing (`url.go`, `target.go`).
@@ -97,8 +96,9 @@ unit tests:
   (`message.go`, `richtext_mrkdwn.go`).
 - Outbound: text → `rich_text` blocks (list/code/quote detection, inline
   parsing) and mrkdwn escaping/mention promotion (`richtext.go`,
-  `outbound.go`). The TS inline regex used lookarounds RE2 lacks; the Go
-  scanner was differentially fuzzed against the TS implementation.
+  `outbound.go`). Inline parsing uses lookarounds RE2 lacks, so the scanner is
+  hand-written; it was differentially fuzzed against the original TypeScript
+  implementation.
 - Raw message JSON → `MessageSummary` / `CompactMessage` shaping
   (`compact.go`). API-dependent pieces (user resolution, file downloads,
   snippet enrichment via `files.info`) stay in the client layer, which fills
@@ -112,7 +112,7 @@ unit tests:
   `~/Library/Application Support`) holds the non-secret workspace metadata
   (URL, team id, default workspace) alongside `__KEYCHAIN__` placeholders,
   with a `version` field (currently 1). The directory deviates from the
-  family's plain-tool-name convention because the TS stablyai-agent-slack
+  family's plain-tool-name convention because the TypeScript agent-slack
   already owns `~/.config/agent-slack/credentials.json` (same filename,
   different Keychain service); that legacy file is read once to seed a
   missing store — metadata only, never written. The cache dir matches:
@@ -157,5 +157,5 @@ calls for assertions, and an `ExpectToken` knob that answers `invalid_auth`
 `cmd/mockslack` serves it standalone from a fixtures JSON file for manual
 testing and CLI contract tests. Coverage combines: client unit tests
 (headers, 429 retry, error mapping, refresh), render unit tests (the bulk of
-behavior parity with the TS source), and CLI contract tests against
+behavior coverage), and CLI contract tests against
 `mockslack`.

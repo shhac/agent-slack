@@ -34,4 +34,4 @@ The full design and command surface live in `design-docs/`:
 
 - `initial-design.md` — command surface, auth model, output contract.
 - `architecture.md` — package layout and boundaries.
-- `port-notes.md` — behaviors the implementation must preserve.
+- `behavior-reference.md` — Slack API handling the implementation relies on.
