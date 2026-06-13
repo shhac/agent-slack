@@ -2,7 +2,9 @@ package slack
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -11,6 +13,37 @@ import (
 
 func userInfoBody(id, name string) map[string]any {
 	return mockslack.UserInfo(id, name)
+}
+
+// TestResolveUsersByIDConcurrentFanout drives more distinct missing IDs than
+// fetchConcurrency, so the fan-out goroutines write the shared result map in
+// parallel. Run under -race, this validates the mutex/semaphore guarding; the
+// count assertion catches lost updates even without the detector.
+func TestResolveUsersByIDConcurrentFanout(t *testing.T) {
+	server := mockslack.New()
+	const n = 12 // > fetchConcurrency (5)
+	ids := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("U%08d", i)
+		ids = append(ids, id)
+		want := id
+		server.HandleWhen("users.info",
+			func(p url.Values) bool { return p.Get("user") == want },
+			mockslack.Response{Body: userInfoBody(want, "user-"+want)},
+		)
+	}
+
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+	got := ResolveUsersByID(context.Background(), c, ids, false)
+
+	if len(got) != n {
+		t.Fatalf("got %d users, want %d (concurrent fan-out lost entries)", len(got), n)
+	}
+	for _, id := range ids {
+		if got[id].ID != id {
+			t.Errorf("missing or wrong entry for %s: %+v", id, got[id])
+		}
+	}
 }
 
 // cachingClient builds a standard-auth client whose workspace URL and cache
