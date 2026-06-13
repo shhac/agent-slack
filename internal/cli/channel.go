@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -220,47 +221,16 @@ func registerChannelInvite(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 
+			var payload any
 			if external {
-				emails, nonEmails := slack.SplitEmailsFromInviteTargets(userInputs)
-				if len(emails) == 0 {
-					return agenterrors.New("external invites require email targets in --users", agenterrors.FixableByAgent).
-						WithHint(`e.g. --users "alice@example.com,bob@example.com"`)
-				}
-				externalLimited := !allowExternalUserInvites
-				result, err := slack.InviteExternalUsersToChannel(ctx, cc.Client, channelID, emails, externalLimited)
-				if err != nil {
-					return err
-				}
-				return printSingle(globals, map[string]any{
-					"channel_id":               channelID,
-					"external":                 true,
-					"external_limited":         externalLimited,
-					"invited_emails":           result.InvitedEmails,
-					"already_invited_emails":   result.AlreadyInvitedEmails,
-					"invalid_external_targets": nonEmails,
-				})
+				payload, err = inviteExternal(ctx, cc.Client, channelID, userInputs, allowExternalUserInvites)
+			} else {
+				payload, err = inviteInternal(ctx, cc.Client, channelID, userInputs)
 			}
-
-			var resolved []string
-			var unresolved []string
-			for _, input := range userInputs {
-				id, rerr := slack.ResolveUserID(ctx, cc.Client, input)
-				if rerr != nil {
-					unresolved = append(unresolved, input)
-					continue
-				}
-				resolved = append(resolved, id)
-			}
-			result, err := slack.InviteUsersToChannel(ctx, cc.Client, channelID, resolved)
 			if err != nil {
 				return err
 			}
-			return printSingle(globals, map[string]any{
-				"channel_id":                  channelID,
-				"invited_user_ids":            result.InvitedUserIDs,
-				"already_in_channel_user_ids": result.AlreadyInChannelUserIDs,
-				"unresolved_users":            unresolved,
-			})
+			return printSingle(globals, payload)
 		},
 	}
 	cmd.Flags().StringVar(&channel, "channel", "", "Channel id or name (required)")
@@ -272,6 +242,57 @@ func registerChannelInvite(parent *cobra.Command, globals *GlobalFlags) {
 	registerFlagCompletion(cmd, "channel", globals, slack.CompleteChannels)
 	_ = cmd.MarkFlagRequired("users")
 	parent.AddCommand(cmd)
+}
+
+// inviteExternal sends Slack Connect (email) invites to the channel.
+func inviteExternal(ctx context.Context, client *slack.Client, channelID string, userInputs []string, allowExternalUserInvites bool) (any, error) {
+	emails, nonEmails := slack.SplitEmailsFromInviteTargets(userInputs)
+	if len(emails) == 0 {
+		return nil, agenterrors.New("external invites require email targets in --users", agenterrors.FixableByAgent).
+			WithHint(`e.g. --users "alice@example.com,bob@example.com"`)
+	}
+	externalLimited := !allowExternalUserInvites
+	result, err := slack.InviteExternalUsersToChannel(ctx, client, channelID, emails, externalLimited)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"channel_id":               channelID,
+		"external":                 true,
+		"external_limited":         externalLimited,
+		"invited_emails":           result.InvitedEmails,
+		"already_invited_emails":   result.AlreadyInvitedEmails,
+		"invalid_external_targets": nonEmails,
+	}, nil
+}
+
+// inviteInternal resolves the user targets to ids and adds them to the channel.
+func inviteInternal(ctx context.Context, client *slack.Client, channelID string, userInputs []string) (any, error) {
+	resolved, unresolved := resolveUserIDs(ctx, client, userInputs)
+	result, err := slack.InviteUsersToChannel(ctx, client, channelID, resolved)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"channel_id":                  channelID,
+		"invited_user_ids":            result.InvitedUserIDs,
+		"already_in_channel_user_ids": result.AlreadyInChannelUserIDs,
+		"unresolved_users":            unresolved,
+	}, nil
+}
+
+// resolveUserIDs resolves each input (U…, @handle, or email) to a user id,
+// collecting the inputs that don't resolve.
+func resolveUserIDs(ctx context.Context, client *slack.Client, inputs []string) (resolved, unresolved []string) {
+	for _, input := range inputs {
+		id, err := slack.ResolveUserID(ctx, client, input)
+		if err != nil {
+			unresolved = append(unresolved, input)
+			continue
+		}
+		resolved = append(resolved, id)
+	}
+	return resolved, unresolved
 }
 
 func registerChannelMark(parent *cobra.Command, globals *GlobalFlags) {

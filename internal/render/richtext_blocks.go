@@ -36,80 +36,26 @@ func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
 
 	for idx < len(lines) {
 		line := lines[idx]
-
-		if codeFenceRe.MatchString(line) {
-			idx++ // skip opening ```
-			var codeLines []string
-			for idx < len(lines) && !codeFenceRe.MatchString(lines[idx]) {
-				codeLines = append(codeLines, lines[idx])
-				idx++
-			}
-			if idx < len(lines) {
-				idx++ // skip closing ```
-			}
-			elements = append(elements, RichTextElement{
-				Type:     "rich_text_preformatted",
-				Elements: []any{textEl(strings.Join(codeLines, "\n"))},
-			})
+		switch {
+		case codeFenceRe.MatchString(line):
+			idx = collectCodeBlock(lines, idx, &elements)
 			hasFormatting = true
-			continue
-		}
-
-		if blockquoteRe.MatchString(line) {
-			var quoteLines []string
-			for idx < len(lines) {
-				qm := blockquoteRe.FindStringSubmatch(lines[idx])
-				if qm == nil {
-					break
-				}
-				quoteLines = append(quoteLines, qm[1])
-				idx++
-			}
-			elements = append(elements, RichTextElement{
-				Type:     "rich_text_quote",
-				Elements: inlineToAny(ParseInlineElements(strings.Join(quoteLines, "\n"))),
-			})
+		case blockquoteRe.MatchString(line):
+			idx = collectBlockquote(lines, idx, &elements)
 			hasFormatting = true
-			continue
-		}
-
-		if bulletLineRe.MatchString(line) {
+		case bulletLineRe.MatchString(line):
 			hasLists = true
 			idx = collectList(lines, idx, "bullet", bulletLineRe, &elements)
-			continue
-		}
-		if orderedLineRe.MatchString(line) {
+		case orderedLineRe.MatchString(line):
 			hasLists = true
 			idx = collectList(lines, idx, "ordered", orderedLineRe, &elements)
-			continue
-		}
-
-		// Plain text — collect consecutive non-special lines.
-		var textLines []string
-		for idx < len(lines) {
-			l := lines[idx]
-			if bulletLineRe.MatchString(l) || orderedLineRe.MatchString(l) ||
-				codeFenceRe.MatchString(l) || blockquoteRe.MatchString(l) {
-				break
+		default:
+			var formatted bool
+			idx, formatted = collectPlainText(lines, idx, &elements)
+			if formatted {
+				hasFormatting = true
 			}
-			textLines = append(textLines, l)
-			idx++
 		}
-		content := strings.Join(textLines, "\n")
-		if strings.TrimSpace(content) == "" {
-			continue
-		}
-		if !strings.HasSuffix(content, "\n") {
-			content += "\n"
-		}
-		inline := ParseInlineElements(content)
-		if hasRichInlineFormatting(inline) {
-			hasFormatting = true
-		}
-		elements = append(elements, RichTextElement{
-			Type:     "rich_text_section",
-			Elements: inlineToAny(inline),
-		})
 	}
 
 	if !hasLists && (!opts.IncludeInlineFormatting || !hasFormatting) {
@@ -133,6 +79,76 @@ func inlineToAny(elements []InlineElement) []any {
 		out[i] = el
 	}
 	return out
+}
+
+// collectCodeBlock consumes a ``` fenced block starting at startIdx and appends
+// a rich_text_preformatted element. Returns the index past the closing fence.
+func collectCodeBlock(lines []string, startIdx int, elements *[]RichTextElement) int {
+	idx := startIdx + 1 // skip opening ```
+	var codeLines []string
+	for idx < len(lines) && !codeFenceRe.MatchString(lines[idx]) {
+		codeLines = append(codeLines, lines[idx])
+		idx++
+	}
+	if idx < len(lines) {
+		idx++ // skip closing ```
+	}
+	*elements = append(*elements, RichTextElement{
+		Type:     "rich_text_preformatted",
+		Elements: []any{textEl(strings.Join(codeLines, "\n"))},
+	})
+	return idx
+}
+
+// collectBlockquote consumes consecutive "> " lines starting at startIdx and
+// appends a rich_text_quote element. Returns the index past the quote.
+func collectBlockquote(lines []string, startIdx int, elements *[]RichTextElement) int {
+	idx := startIdx
+	var quoteLines []string
+	for idx < len(lines) {
+		qm := blockquoteRe.FindStringSubmatch(lines[idx])
+		if qm == nil {
+			break
+		}
+		quoteLines = append(quoteLines, qm[1])
+		idx++
+	}
+	*elements = append(*elements, RichTextElement{
+		Type:     "rich_text_quote",
+		Elements: inlineToAny(ParseInlineElements(strings.Join(quoteLines, "\n"))),
+	})
+	return idx
+}
+
+// collectPlainText consumes consecutive non-structural lines starting at
+// startIdx and, when they aren't all blank, appends a rich_text_section. The
+// bool reports whether the run carried rich inline formatting. Returns the
+// next index.
+func collectPlainText(lines []string, startIdx int, elements *[]RichTextElement) (int, bool) {
+	idx := startIdx
+	var textLines []string
+	for idx < len(lines) {
+		l := lines[idx]
+		if bulletLineRe.MatchString(l) || orderedLineRe.MatchString(l) ||
+			codeFenceRe.MatchString(l) || blockquoteRe.MatchString(l) {
+			break
+		}
+		textLines = append(textLines, l)
+		idx++
+	}
+	content := strings.Join(textLines, "\n")
+	if strings.TrimSpace(content) == "" {
+		return idx, false
+	}
+	if !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	inline := ParseInlineElements(content)
+	*elements = append(*elements, RichTextElement{
+		Type:     "rich_text_section",
+		Elements: inlineToAny(inline),
+	})
+	return idx, hasRichInlineFormatting(inline)
 }
 
 func collectList(lines []string, startIdx int, style string, pattern *regexp.Regexp, elements *[]RichTextElement) int {

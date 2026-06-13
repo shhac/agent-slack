@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -122,54 +123,22 @@ func registerWorkflowRun(parent *cobra.Command, globals *GlobalFlags) {
 			}
 
 			if len(fields) == 0 {
-				shortcut, err := slack.ResolveShortcut(ctx, cc.Client, channelID, triggerID)
+				payload, err := runTrigger(ctx, cc.Client, channelID, triggerID)
 				if err != nil {
 					return err
 				}
-				result, err := slack.RunWorkflowTrigger(ctx, cc.Client, shortcut.URL, channelID, shortcut.BookmarkID)
-				if err != nil {
-					return err
-				}
-				return printSingle(globals, map[string]any{"ok": true, "run": result})
+				return printSingle(globals, payload)
 			}
 
-			fieldValues := map[string]string{}
-			for _, arg := range fields {
-				title, value, found := strings.Cut(arg, "=")
-				if !found || title == "" {
-					return agenterrors.Newf(agenterrors.FixableByAgent, "invalid --field format: %q", arg).
-						WithHint("expected Title=value; 'workflow get <trigger-id>' lists field titles")
-				}
-				fieldValues[title] = value
-			}
-
-			preview, err := slack.PreviewWorkflowTrigger(ctx, cc.Client, triggerID)
+			fieldValues, err := parseFieldArgs(fields)
 			if err != nil {
 				return err
 			}
-			schema, err := slack.GetWorkflowSchema(ctx, cc.Client, preview.Workflow.ID)
+			payload, err := submitForm(ctx, cc.Client, channelID, triggerID, fieldValues)
 			if err != nil {
 				return err
 			}
-			if errs := slack.ValidateWorkflowFields(fieldValues, schema); len(errs) > 0 {
-				return agenterrors.New(strings.Join(errs, "; "), agenterrors.FixableByAgent).
-					WithHint("'agent-slack workflow get " + triggerID + "' shows the form schema")
-			}
-			shortcut, err := slack.ResolveShortcut(ctx, cc.Client, channelID, triggerID)
-			if err != nil {
-				return err
-			}
-			result, err := slack.SubmitWorkflowForm(ctx, cc.Client, slack.WorkflowSubmission{
-				ShortcutURL: shortcut.URL,
-				ChannelID:   channelID,
-				BookmarkID:  shortcut.BookmarkID,
-				Fields:      fieldValues,
-				Schema:      schema,
-			})
-			if err != nil {
-				return err
-			}
-			return printSingle(globals, result)
+			return printSingle(globals, payload)
 		},
 	}
 	runCmd.Flags().StringVar(&channel, "channel", "", "Channel where the workflow is bookmarked (required)")
@@ -177,4 +146,59 @@ func registerWorkflowRun(parent *cobra.Command, globals *GlobalFlags) {
 	_ = runCmd.MarkFlagRequired("channel")
 	registerFlagCompletion(runCmd, "channel", globals, slack.CompleteChannels)
 	parent.AddCommand(runCmd)
+}
+
+// parseFieldArgs turns repeated --field Title=value args into a value map.
+func parseFieldArgs(fields []string) (map[string]string, error) {
+	values := map[string]string{}
+	for _, arg := range fields {
+		title, value, found := strings.Cut(arg, "=")
+		if !found || title == "" {
+			return nil, agenterrors.Newf(agenterrors.FixableByAgent, "invalid --field format: %q", arg).
+				WithHint("expected Title=value; 'workflow get <trigger-id>' lists field titles")
+		}
+		values[title] = value
+	}
+	return values, nil
+}
+
+// runTrigger trips a workflow trigger with no form input.
+func runTrigger(ctx context.Context, client *slack.Client, channelID, triggerID string) (any, error) {
+	shortcut, err := slack.ResolveShortcut(ctx, client, channelID, triggerID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := slack.RunWorkflowTrigger(ctx, client, shortcut.URL, channelID, shortcut.BookmarkID)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true, "run": result}, nil
+}
+
+// submitForm validates the supplied fields against the trigger's schema and
+// submits the form.
+func submitForm(ctx context.Context, client *slack.Client, channelID, triggerID string, fieldValues map[string]string) (any, error) {
+	preview, err := slack.PreviewWorkflowTrigger(ctx, client, triggerID)
+	if err != nil {
+		return nil, err
+	}
+	schema, err := slack.GetWorkflowSchema(ctx, client, preview.Workflow.ID)
+	if err != nil {
+		return nil, err
+	}
+	if errs := slack.ValidateWorkflowFields(fieldValues, schema); len(errs) > 0 {
+		return nil, agenterrors.New(strings.Join(errs, "; "), agenterrors.FixableByAgent).
+			WithHint("'agent-slack workflow get " + triggerID + "' shows the form schema")
+	}
+	shortcut, err := slack.ResolveShortcut(ctx, client, channelID, triggerID)
+	if err != nil {
+		return nil, err
+	}
+	return slack.SubmitWorkflowForm(ctx, client, slack.WorkflowSubmission{
+		ShortcutURL: shortcut.URL,
+		ChannelID:   channelID,
+		BookmarkID:  shortcut.BookmarkID,
+		Fields:      fieldValues,
+		Schema:      schema,
+	})
 }
