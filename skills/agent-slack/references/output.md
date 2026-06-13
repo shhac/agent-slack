@@ -102,7 +102,10 @@ Rejections are never cached (a transient `trigger_not_found` won't stick), and
 the side-effecting `workflow run` path is never cached.
 
 Shell completions read these caches (install via `agent-slack completion
-<shell>`, or Homebrew installs them automatically): completing a `<target>`
-suggests channels and seen users from the cache, most-recently-used first,
-capped and prefix-filtered. It is cache-only — never hits the API — so it is
-empty on a cold cache and fills as you work.
+<shell>`, or Homebrew installs them automatically), most-recently-used first,
+capped and prefix-filtered. Suggestions are kind-appropriate: a `<target>`
+(message get/list/send/edit/delete, channel mark, later remind) suggests
+channels and DM users; `workflow list` and `--channel` flags suggest channels;
+`user get`/`dm-open` suggest users; `workflow preview/get/run` suggest cached
+`Ft…` triggers (with the workflow name as the hint). Cache-only — never hits
+the API — so it is empty on a cold cache and fills as you work.

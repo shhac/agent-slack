@@ -6,19 +6,23 @@ import (
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
-// maxTargetCompletions caps how many cached candidates a <target> completion
-// returns, so a large workspace never floods the shell.
-const maxTargetCompletions = 50
+// maxCompletions caps how many cached candidates a completion returns, so a
+// large workspace never floods the shell.
+const maxCompletions = 50
 
-// targetCompletion completes a <target> argument (first positional) from the
-// per-workspace cache: channel names and seen user IDs, most-recently-used
-// first. Cache-only and read-only — never hits the API, so it stays instant.
-func targetCompletion(globals *GlobalFlags) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+type compFunc = func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective)
+
+// cacheCompletion builds a completion that draws from the per-workspace cache
+// for the given sources. firstArgOnly stops after one positional (a <target>);
+// false completes every positional (e.g. dm-open's user list). Cache-only and
+// read-only — never hits the API, so it stays instant and is empty on a cold
+// cache rather than falling back to filenames.
+func cacheCompletion(globals *GlobalFlags, sources slack.CompletionSource, firstArgOnly bool) compFunc {
 	return func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) > 0 { // only the first positional is a target
+		if firstArgOnly && len(args) > 0 {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		items := slack.ReadTargetCompletions(appCacheDir(), completionWorkspaceURL(globals), toComplete, maxTargetCompletions)
+		items := slack.ReadCompletions(appCacheDir(), completionWorkspaceURL(globals), toComplete, maxCompletions, sources)
 		out := make([]string, 0, len(items))
 		for _, it := range items {
 			if it.Description != "" {
@@ -29,6 +33,31 @@ func targetCompletion(globals *GlobalFlags) func(*cobra.Command, []string, strin
 		}
 		return out, cobra.ShellCompDirectiveNoFileComp | cobra.ShellCompDirectiveNoSpace
 	}
+}
+
+// targetCompletion completes a <target> (channel or DM user) first positional.
+func targetCompletion(globals *GlobalFlags) compFunc {
+	return cacheCompletion(globals, slack.CompleteChannels|slack.CompleteUsers, true)
+}
+
+// channelArgCompletion completes a channel-only first positional.
+func channelArgCompletion(globals *GlobalFlags) compFunc {
+	return cacheCompletion(globals, slack.CompleteChannels, true)
+}
+
+// triggerArgCompletion completes an Ft… trigger id from the cache.
+func triggerArgCompletion(globals *GlobalFlags) compFunc {
+	return cacheCompletion(globals, slack.CompleteTriggers, true)
+}
+
+// userArgsCompletion completes a user on every positional (dm-open takes many).
+func userArgsCompletion(globals *GlobalFlags) compFunc {
+	return cacheCompletion(globals, slack.CompleteUsers, false)
+}
+
+// registerFlagCompletion attaches a cache-backed completion to a flag value.
+func registerFlagCompletion(cmd *cobra.Command, flag string, globals *GlobalFlags, sources slack.CompletionSource) {
+	_ = cmd.RegisterFlagCompletionFunc(flag, cacheCompletion(globals, sources, false))
 }
 
 // completionWorkspaceURL picks the workspace whose cache to read for

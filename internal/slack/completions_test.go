@@ -74,6 +74,38 @@ func TestReadTargetCompletions(t *testing.T) {
 	}
 }
 
+func TestReadCompletionsSourceFiltering(t *testing.T) {
+	dir := t.TempDir()
+	ws := "https://acme.slack.com"
+	writeCacheCategory(t, dir, ws, "channels", map[string]cacheEntry[CompactChannel]{
+		"C0DEVS": {FetchedAt: 100, Value: CompactChannel{ID: "C0DEVS", Name: "devs"}},
+	})
+	writeCacheCategory(t, dir, ws, "users", map[string]cacheEntry[CompactUser]{
+		"U0ALICE": {FetchedAt: 100, Value: CompactUser{ID: "U0ALICE", DisplayName: "Alice"}},
+	})
+	writeCacheCategory(t, dir, ws, "workflow-triggers", map[string]cacheEntry[WorkflowPreview]{
+		"Ft0PING": {FetchedAt: 100, Value: WorkflowPreview{TriggerID: "Ft0PING", Name: "Ping Monitor"}},
+	})
+
+	// Channels-only must not leak users or triggers.
+	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteChannels)); len(got) != 1 || got[0] != "#devs" {
+		t.Errorf("channels-only: %v", got)
+	}
+	// Users-only.
+	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteUsers)); len(got) != 1 || got[0] != "U0ALICE" {
+		t.Errorf("users-only: %v", got)
+	}
+	// Triggers-only, with the workflow name as the description.
+	items := ReadCompletions(dir, ws, "", 10, CompleteTriggers)
+	if len(items) != 1 || items[0].Value != "Ft0PING" || items[0].Description != "Ping Monitor" {
+		t.Errorf("triggers-only: %+v", items)
+	}
+	// Combined draws from every requested source.
+	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteChannels|CompleteUsers|CompleteTriggers)); len(got) != 3 {
+		t.Errorf("combined: %v", got)
+	}
+}
+
 func TestReadTargetCompletionsCorruptFile(t *testing.T) {
 	dir := t.TempDir()
 	ws := "https://acme.slack.com"

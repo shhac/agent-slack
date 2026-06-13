@@ -187,6 +187,7 @@ func registerChannelInvite(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().BoolVar(&allowExternalUserInvites, "allow-external-user-invites", false, "Allow external invitees to invite others")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm the invite")
 	_ = cmd.MarkFlagRequired("channel")
+	registerFlagCompletion(cmd, "channel", globals, slack.CompleteChannels)
 	_ = cmd.MarkFlagRequired("users")
 	parent.AddCommand(cmd)
 }

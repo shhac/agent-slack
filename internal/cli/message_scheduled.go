@@ -46,6 +46,7 @@ func registerMessageScheduled(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	listCmd.Flags().StringVar(&channel, "channel", "", "Limit to a channel/DM (id, #name, or U… for a DM)")
+	registerFlagCompletion(listCmd, "channel", globals, slack.CompleteChannels|slack.CompleteUsers)
 	listCmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
 	listCmd.Flags().StringVar(&oldest, "oldest", "", "Only messages scheduled after this unix time")
 	listCmd.Flags().StringVar(&latest, "latest", "", "Only messages scheduled before this unix time")
@@ -81,6 +82,7 @@ func registerMessageScheduled(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cancelCmd.Flags().StringVar(&cancelChannel, "channel", "", "Channel/DM the message was scheduled for (required)")
+	registerFlagCompletion(cancelCmd, "channel", globals, slack.CompleteChannels|slack.CompleteUsers)
 	cancelCmd.Flags().BoolVar(&yes, "yes", false, "Confirm the cancellation")
 	scheduledCmd.AddCommand(cancelCmd)
 }

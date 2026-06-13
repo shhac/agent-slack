@@ -25,9 +25,10 @@ func registerWorkflow(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerWorkflowList(parent *cobra.Command, globals *GlobalFlags) {
 	listCmd := &cobra.Command{
-		Use:   "list <channel>",
-		Short: "List workflows bookmarked or featured in a channel",
-		Args:  cobra.ExactArgs(1),
+		Use:               "list <channel>",
+		Short:             "List workflows bookmarked or featured in a channel",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: channelArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cc, err := getClient(globals)
@@ -51,9 +52,10 @@ func registerWorkflowList(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerWorkflowPreview(parent *cobra.Command, globals *GlobalFlags) {
 	previewCmd := &cobra.Command{
-		Use:   "preview <trigger-id>",
-		Short: "Get workflow metadata from a trigger ID (no side effects)",
-		Args:  cobra.ExactArgs(1),
+		Use:               "preview <trigger-id>",
+		Short:             "Get workflow metadata from a trigger ID (no side effects)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: triggerArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc, err := getClient(globals)
 			if err != nil {
@@ -71,9 +73,10 @@ func registerWorkflowPreview(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerWorkflowGet(parent *cobra.Command, globals *GlobalFlags) {
 	getCmd := &cobra.Command{
-		Use:   "get <id>",
-		Short: "Get a workflow definition (form fields + steps) by Ft… trigger or Wf… workflow id",
-		Args:  cobra.ExactArgs(1),
+		Use:               "get <id>",
+		Short:             "Get a workflow definition (form fields + steps) by Ft… trigger or Wf… workflow id",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: triggerArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cc, err := getClient(globals)
@@ -102,9 +105,10 @@ func registerWorkflowRun(parent *cobra.Command, globals *GlobalFlags) {
 	var channel string
 	var fields []string
 	runCmd := &cobra.Command{
-		Use:   "run <trigger-id>",
-		Short: "Trip a workflow trigger; with --field Title=value, submits its form",
-		Args:  cobra.ExactArgs(1),
+		Use:               "run <trigger-id>",
+		Short:             "Trip a workflow trigger; with --field Title=value, submits its form",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: triggerArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			triggerID := args[0]
@@ -171,5 +175,6 @@ func registerWorkflowRun(parent *cobra.Command, globals *GlobalFlags) {
 	runCmd.Flags().StringVar(&channel, "channel", "", "Channel where the workflow is bookmarked (required)")
 	runCmd.Flags().StringArrayVar(&fields, "field", nil, "Form field value as Title=value (repeatable)")
 	_ = runCmd.MarkFlagRequired("channel")
+	registerFlagCompletion(runCmd, "channel", globals, slack.CompleteChannels)
 	parent.AddCommand(runCmd)
 }

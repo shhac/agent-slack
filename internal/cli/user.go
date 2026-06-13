@@ -43,9 +43,10 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 	userCmd.AddCommand(listCmd)
 
 	getCmd := &cobra.Command{
-		Use:   "get <user>",
-		Short: "Get one user by id (U…), @handle, or email",
-		Args:  cobra.ExactArgs(1),
+		Use:               "get <user>",
+		Short:             "Get one user by id (U…), @handle, or email",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cacheCompletion(globals, slack.CompleteUsers, true),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc, err := getClient(globals)
 			if err != nil {
@@ -61,9 +62,10 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 	userCmd.AddCommand(getCmd)
 
 	dmOpenCmd := &cobra.Command{
-		Use:   "dm-open <users...>",
-		Short: "Open (or get) a DM / group DM channel for one or more users",
-		Args:  cobra.MinimumNArgs(1),
+		Use:               "dm-open <users...>",
+		Short:             "Open (or get) a DM / group DM channel for one or more users",
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: userArgsCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc, err := getClient(globals)
 			if err != nil {

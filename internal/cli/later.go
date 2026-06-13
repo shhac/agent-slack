@@ -118,9 +118,10 @@ func registerLaterMark(parent *cobra.Command, globals *GlobalFlags, name, short 
 func registerLaterRemind(parent *cobra.Command, globals *GlobalFlags) {
 	var ts, in string
 	cmd := &cobra.Command{
-		Use:   "remind <target>",
-		Short: "Set a reminder on a saved message",
-		Args:  cobra.ExactArgs(1),
+		Use:               "remind <target>",
+		Short:             "Set a reminder on a saved message",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if strings.TrimSpace(in) == "" {
