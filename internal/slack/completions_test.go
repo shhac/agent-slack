@@ -98,20 +98,20 @@ func TestReadCompletionsSourceFiltering(t *testing.T) {
 	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteChannels)); len(got) != 1 || got[0] != "#devs" {
 		t.Errorf("channels-only: %v", got)
 	}
-	// Users-only: bare tab → primary "@handle" with the real name as the hint;
-	// each form matches its own prefix style.
+	// Users-only: each form's hint shows the OTHER two datapoints — a
+	// handle/name form names the id, the id form names the handle.
 	users := ReadCompletions(dir, ws, "", 10, CompleteUsers)
-	if len(users) != 1 || users[0].Value != "@alice" || users[0].Description != "Alice Anderson" {
-		t.Errorf("users-only: %+v", users)
+	if len(users) != 1 || users[0].Value != "@alice" || users[0].Description != "Alice Anderson (U0ALICE)" {
+		t.Errorf("primary @handle: %+v", users)
 	}
-	if got := completionValues(ReadCompletions(dir, ws, "@al", 10, CompleteUsers)); len(got) != 1 || got[0] != "@alice" {
-		t.Errorf("@-prefix → @handle: %v", got)
+	if got := ReadCompletions(dir, ws, "@al", 10, CompleteUsers); len(got) != 1 || got[0].Value != "@alice" || got[0].Description != "Alice Anderson (U0ALICE)" {
+		t.Errorf("@-prefix: %+v", got)
 	}
-	if got := completionValues(ReadCompletions(dir, ws, "al", 10, CompleteUsers)); len(got) != 1 || got[0] != "alice" {
-		t.Errorf("bare prefix → bare handle: %v", got)
+	if got := ReadCompletions(dir, ws, "al", 10, CompleteUsers); len(got) != 1 || got[0].Value != "alice" || got[0].Description != "Alice Anderson (U0ALICE)" {
+		t.Errorf("bare handle: %+v", got)
 	}
-	if got := completionValues(ReadCompletions(dir, ws, "U0AL", 10, CompleteUsers)); len(got) != 1 || got[0] != "U0ALICE" {
-		t.Errorf("id prefix → id: %v", got)
+	if got := ReadCompletions(dir, ws, "U0AL", 10, CompleteUsers); len(got) != 1 || got[0].Value != "U0ALICE" || got[0].Description != "Alice Anderson (@alice)" {
+		t.Errorf("id form must name the handle: %+v", got)
 	}
 	// Triggers-only, with the workflow name as the description.
 	triggers := ReadCompletions(dir, ws, "", 10, CompleteTriggers)

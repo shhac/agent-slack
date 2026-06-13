@@ -94,12 +94,20 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 	if sources&CompleteUsers != 0 {
 		for _, e := range loadCacheEntries[CompactUser](cacheDir, workspaceURL, "users") {
 			u := e.Value
-			desc := firstNonEmpty(u.RealName, u.DisplayName)
+			realName := firstNonEmpty(u.RealName, u.DisplayName)
 			if u.Name == "" {
-				add(u.ID, desc, e.FetchedAt) // no handle — id only
+				add(u.ID, realName, e.FetchedAt) // no handle — id only
 				continue
 			}
-			addForms(desc, e.FetchedAt, "@"+u.Name, u.ID, u.Name) // @handle, id, handle
+			// Each form's hint shows the OTHER two datapoints: a handle/name form
+			// shows the id, the id form shows the handle.
+			withID := userHint(realName, "("+u.ID+")")
+			withHandle := userHint(realName, "(@"+u.Name+")")
+			add("@"+u.Name, withID, e.FetchedAt) // primary
+			if needle != "" {
+				add(u.ID, withHandle, e.FetchedAt)
+				add(u.Name, withID, e.FetchedAt)
+			}
 		}
 	}
 	if sources&CompleteTriggers != 0 {
@@ -117,4 +125,13 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 		out[i] = r.item
 	}
 	return out
+}
+
+// userHint joins a real name with a parenthetical of the other identifier,
+// dropping the name when absent.
+func userHint(realName, paren string) string {
+	if realName == "" {
+		return paren
+	}
+	return realName + " " + paren
 }
