@@ -1,11 +1,41 @@
 package cli
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/shhac/agent-slack/internal/mockslack"
 )
+
+func TestChannelGetMultiple(t *testing.T) {
+	f := newCLIFixture(t)
+	for _, c := range []struct{ id, name string }{{"C0DEVSAAA", "devs"}, {"C0OPSAAAA", "ops"}} {
+		id, name := c.id, c.name
+		f.server.HandleWhen("conversations.info",
+			func(p url.Values) bool { return p.Get("channel") == id },
+			mockslack.Response{Body: map[string]any{"ok": true, "channel": map[string]any{"id": id, "name": name}}})
+	}
+	f.server.HandleWhen("conversations.info",
+		func(p url.Values) bool { return p.Get("channel") == "C0GONEAAA" },
+		mockslack.Response{Body: map[string]any{"ok": false, "error": "channel_not_found"}})
+
+	out, _, err := f.run(t, "channel", "get", "C0DEVSAAA", "C0OPSAAAA", "C0GONEAAA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	if len(lines) != 3 {
+		t.Fatalf("want 2 channels + 1 meta line, got %d: %v", len(lines), lines)
+	}
+	if lines[0]["name"] != "devs" || lines[1]["name"] != "ops" {
+		t.Errorf("channels = %v", lines[:2])
+	}
+	un, ok := lines[2]["@unresolved"].([]any)
+	if !ok || len(un) != 1 || un[0] != "C0GONEAAA" {
+		t.Errorf("@unresolved = %v", lines[2])
+	}
+}
 
 func TestChannelListCompact(t *testing.T) {
 	f := newCLIFixture(t)

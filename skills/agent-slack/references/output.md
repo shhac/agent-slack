@@ -23,6 +23,7 @@
 | `{"@thread_ts": "…"}` | the thread root, when listing a thread |
 | `{"@threads": {"has_unreads", "mention_count"}}` | unread thread-reply summary (`unreads`) |
 | `{"@counts": {…}}` | totals when `--counts-only` is set (`unreads`, `later`) |
+| `{"@unresolved": ["…"]}` | inputs that didn't resolve in a multi-arg `user get` / `channel get` (the rest still return) |
 
 ## Compact by default, `--full` for raw
 

@@ -101,10 +101,12 @@ happen — show it to the user before retrying with `--yes`.
 
 ```bash
 agent-slack channel list                      # compact; --full for raw
-agent-slack channel get "#general"            # one channel's metadata
+agent-slack channel get "#general"            # one → object; several → NDJSON
+agent-slack channel get "#general" "#ops"     # batch; --full for raw
 agent-slack channel members "#general" --resolve-users   # who's in it
-agent-slack user get @paul
-agent-slack user dm-open @paul @sam           # group DM channel id
+agent-slack user get @alice                   # one → object
+agent-slack user get @alice @bob @carol       # several → NDJSON (+ @unresolved for misses)
+agent-slack user dm-open @alice @bob          # group DM channel id
 agent-slack workflow list "#ops"
 agent-slack workflow get Ft0001               # form fields + steps
 agent-slack workflow run Ft0001 --channel "#ops" --field "Summary=EU deploy failed"

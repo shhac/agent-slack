@@ -1,8 +1,42 @@
 package cli
 
 import (
+	"net/url"
 	"testing"
+
+	"github.com/shhac/agent-slack/internal/mockslack"
 )
+
+func TestUserGetMultiple(t *testing.T) {
+	f := newCLIFixture(t)
+	for _, u := range []struct{ id, name string }{{"U0ALICEAA", "alice"}, {"U0BOBBBBB", "bob"}} {
+		id, name := u.id, u.name
+		f.server.HandleWhen("users.info",
+			func(p url.Values) bool { return p.Get("user") == id },
+			mockslack.Response{Body: mockslack.UserInfo(id, name)})
+	}
+	f.server.HandleWhen("users.info",
+		func(p url.Values) bool { return p.Get("user") == "U0NOBODYZ" },
+		mockslack.Response{Body: map[string]any{"ok": false, "error": "user_not_found"}})
+
+	// Several args → NDJSON: the resolved users, then an @unresolved meta line
+	// for the input that didn't resolve (a typo never drops the others).
+	out, _, err := f.run(t, "user", "get", "U0ALICEAA", "U0BOBBBBB", "U0NOBODYZ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	if len(lines) != 3 {
+		t.Fatalf("want 2 users + 1 meta line, got %d: %v", len(lines), lines)
+	}
+	if lines[0]["id"] != "U0ALICEAA" || lines[1]["id"] != "U0BOBBBBB" {
+		t.Errorf("users = %v", lines[:2])
+	}
+	un, ok := lines[2]["@unresolved"].([]any)
+	if !ok || len(un) != 1 || un[0] != "U0NOBODYZ" {
+		t.Errorf("@unresolved = %v", lines[2])
+	}
+}
 
 func TestUserListWithDMAnnotations(t *testing.T) {
 	f := newCLIFixture(t)

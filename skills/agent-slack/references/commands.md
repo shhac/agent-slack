@@ -43,25 +43,26 @@ apply to channel-history mode and require `--oldest` to bound the scan.
 | Command | Key flags | Gate |
 |---|---|---|
 | `channel list` | `--user`, `--all`, `--limit` (100), `--cursor` | |
-| `channel get <channel>` | `--full` | |
+| `channel get <channel…>` | `--full` | |
 | `channel members <channel>` | `--resolve-users`, `--refresh-users`, `--limit` (100), `--cursor` | |
 | `channel new` | `--name`, `--private` | `--yes` |
 | `channel invite` | `--channel`, `--users`, `--external`, `--allow-external-user-invites` | `--yes` |
 | `channel mark <target>` | `--ts` | |
 
 `channel get` returns one channel's metadata (topic, membership, member count,
-archive state; `--full` for the raw object). `channel members` lists the user
-IDs in a channel (chain into `user get`, or pass `--resolve-users` to expand to
-profiles inline). `channel invite --users` accepts user IDs and (with
-`--external`) email addresses, comma-separated. `channel mark` is personal read
-state, ungated.
+archive state; `--full` for the raw object). Pass several channels and it
+returns NDJSON instead, one per line, with a trailing `{"@unresolved": […]}`
+for any that didn't resolve. `channel members` lists the user IDs in a channel
+(chain into `user get`, or pass `--resolve-users` to expand to profiles inline).
+`channel invite --users` accepts user IDs and (with `--external`) email
+addresses, comma-separated. `channel mark` is personal read state, ungated.
 
 ## user
 
 | Command | Notes |
 |---|---|
 | `user list` | `--limit` (200), `--cursor`, `--include-bots` |
-| `user get <user>` | accepts `U…` or `@handle` |
+| `user get <user…>` | accepts `U…`, `@handle`, or email; one → object, several → NDJSON (+ `{"@unresolved": […]}`) |
 | `user dm-open <users…>` | returns the DM / group-DM channel id (up to 8 users) |
 
 ## search

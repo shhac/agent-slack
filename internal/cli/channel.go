@@ -29,31 +29,54 @@ func registerChannel(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerChannelGet(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
-		Use:               "get <channel>",
-		Short:             "Get one channel's metadata (topic, membership, archive state); --full for the raw object",
-		Args:              cobra.ExactArgs(1),
+		Use:               "get <channel...>",
+		Short:             "Get channel metadata (topic, membership, archive state); one → object, several → NDJSON; --full for the raw object",
+		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: channelArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			target, err := render.ParseTarget(args[0])
-			if err != nil {
-				return err
+			if len(args) == 1 {
+				channel, err := getChannel(ctx, globals, args[0])
+				if err != nil {
+					return err
+				}
+				return printSingle(globals, channel)
 			}
-			cc, channelID, err := resolveTargetClient(ctx, globals, target, "channel get does not support user ID targets")
-			if err != nil {
-				return err
+			var items []any
+			var unresolved []string
+			for _, arg := range args {
+				channel, err := getChannel(ctx, globals, arg)
+				if err != nil {
+					unresolved = append(unresolved, arg)
+					continue
+				}
+				items = append(items, channel)
 			}
-			compact, raw, err := slack.GetChannelInfo(ctx, cc.Client, channelID)
-			if err != nil {
-				return err
-			}
-			if globals.Full {
-				return printSingle(globals, raw)
-			}
-			return printSingle(globals, compact)
+			return printList(globals, items, unresolvedMeta(unresolved))
 		},
 	}
 	parent.AddCommand(cmd)
+}
+
+// getChannel resolves one channel target and returns its compact projection
+// (or the raw conversations.info object when --full is set).
+func getChannel(ctx context.Context, globals *GlobalFlags, arg string) (any, error) {
+	target, err := render.ParseTarget(arg)
+	if err != nil {
+		return nil, err
+	}
+	cc, channelID, err := resolveTargetClient(ctx, globals, target, "channel get does not support user ID targets")
+	if err != nil {
+		return nil, err
+	}
+	compact, raw, err := slack.GetChannelInfo(ctx, cc.Client, channelID)
+	if err != nil {
+		return nil, err
+	}
+	if globals.Full {
+		return raw, nil
+	}
+	return compact, nil
 }
 
 func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {

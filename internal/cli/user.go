@@ -43,20 +43,24 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 	userCmd.AddCommand(listCmd)
 
 	getCmd := &cobra.Command{
-		Use:               "get <user>",
-		Short:             "Get one user by id (U…), @handle, or email",
-		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: cacheCompletion(globals, slack.CompleteUsers, true),
+		Use:               "get <user...>",
+		Short:             "Get users by id (U…), @handle, or email; one → object, several → NDJSON",
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: cacheCompletion(globals, slack.CompleteUsers, false),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc, err := getClient(globals)
 			if err != nil {
 				return err
 			}
-			user, err := slack.GetUser(cmd.Context(), cc.Client, args[0])
-			if err != nil {
-				return err
+			if len(args) == 1 {
+				user, err := slack.GetUser(cmd.Context(), cc.Client, args[0])
+				if err != nil {
+					return err
+				}
+				return printSingle(globals, user)
 			}
-			return printSingle(globals, user)
+			users, unresolved := slack.GetUsers(cmd.Context(), cc.Client, args)
+			return printList(globals, toAnySlice(users), unresolvedMeta(unresolved))
 		},
 	}
 	userCmd.AddCommand(getCmd)

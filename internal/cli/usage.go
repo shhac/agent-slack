@@ -105,7 +105,8 @@ SCHED  message scheduled list [--channel …] [--cursor …]
 LIST   channel list [--user U…|@handle] [--all] [--limit 100] [--cursor …]
        Default: the authed user's conversations. Compact rows: id, name,
        is_private/is_im/is_mpim, is_member, num_members, topic; --full = raw.
-GET    channel get <channel> [--full] — one channel's metadata.
+GET    channel get <channel…> [--full] — channel metadata. One arg → object;
+       several → NDJSON, with a trailing {"@unresolved": […]} for any misses.
 MEMBERS channel members <channel> [--resolve-users] [--limit] [--cursor]
        Who is in the channel: user ids (chain into 'user get'), or profiles
        with --resolve-users.
@@ -121,7 +122,8 @@ MARK   channel mark <target> [--ts …] — mark read up to a message.`,
 LIST     user list [--limit 200] [--cursor …] [--include-bots]
          Compact rows: id, name (handle), real_name, display_name, email,
          title, tz, dm_id (open DM channel if one exists).
-GET      user get <U…|@handle|email>
+GET      user get <U…|@handle|email …> — one arg → object; several → NDJSON,
+         with a trailing {"@unresolved": […]} for inputs that didn't resolve.
 DM-OPEN  user dm-open <users…> — open a DM or group DM (max 8); returns
          dm_channel_id to send into.`,
 

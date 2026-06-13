@@ -55,6 +55,15 @@ func toAnySlice[T any](items []T) []any {
 	return out
 }
 
+// unresolvedMeta is the trailing meta for a multi-arg get: an `@unresolved`
+// list of the inputs that didn't resolve, or nil when everything resolved.
+func unresolvedMeta(unresolved []string) map[string]any {
+	if len(unresolved) == 0 {
+		return nil
+	}
+	return map[string]any{"unresolved": unresolved}
+}
+
 // listMeta merges extra meta entries with pagination (added only when a
 // next cursor exists). Returns nil when there is nothing to emit.
 func listMeta(nextCursor string, extra map[string]any) map[string]any {
