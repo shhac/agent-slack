@@ -44,12 +44,18 @@ apply to channel-history mode and require `--oldest` to bound the scan.
 | Command | Key flags | Gate |
 |---|---|---|
 | `channel list` | `--user`, `--all`, `--limit` (100), `--cursor` | |
+| `channel get <channel>` | `--full` | |
+| `channel members <channel>` | `--resolve-users`, `--refresh-users`, `--limit` (100), `--cursor` | |
 | `channel new` | `--name`, `--private` | `--yes` |
 | `channel invite` | `--channel`, `--users`, `--external`, `--allow-external-user-invites` | `--yes` |
 | `channel mark <target>` | `--ts` | |
 
-`channel invite --users` accepts user IDs and (with `--external`) email
-addresses, comma-separated. `channel mark` is personal read state, ungated.
+`channel get` returns one channel's metadata (topic, membership, member count,
+archive state; `--full` for the raw object). `channel members` lists the user
+IDs in a channel (chain into `user get`, or pass `--resolve-users` to expand to
+profiles inline). `channel invite --users` accepts user IDs and (with
+`--external`) email addresses, comma-separated. `channel mark` is personal read
+state, ungated.
 
 ## user
 

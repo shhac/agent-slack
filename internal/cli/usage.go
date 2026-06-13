@@ -13,7 +13,7 @@ COMMANDS
              import-chrome | import-brave | import-firefox | parse-curl
   message    get | list | send | edit* | delete* | react add/remove |
              scheduled list/cancel*
-  channel    list | new* | invite* | mark
+  channel    list | get | members | new* | invite* | mark
   user       list | get | dm-open
   search     all | messages | files
   workflow   list | preview | get | run
@@ -101,6 +101,10 @@ SCHED  message scheduled list [--channel …] [--cursor …]
 LIST   channel list [--user U…|@handle] [--all] [--limit 100] [--cursor …]
        Default: the authed user's conversations. Compact rows: id, name,
        is_private/is_im/is_mpim, is_member, num_members, topic; --full = raw.
+GET    channel get <channel> [--full] — one channel's metadata.
+MEMBERS channel members <channel> [--resolve-users] [--limit] [--cursor]
+       Who is in the channel: user ids (chain into 'user get'), or profiles
+       with --resolve-users.
 NEW    channel new --name <name> [--private] --yes        (requires --yes)
 INVITE channel invite --channel <…> --users "U…,@a,b@x.com" --yes
        --external sends Slack Connect email invites

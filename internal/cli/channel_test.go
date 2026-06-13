@@ -43,6 +43,50 @@ func TestChannelListCompact(t *testing.T) {
 	}
 }
 
+func TestChannelGet(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.info", map[string]any{
+		"ok":      true,
+		"channel": map[string]any{"id": "C12345678", "name": "general", "num_members": float64(7), "is_private": false},
+	})
+	out, _, err := f.run(t, "channel", "get", "C12345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := parseJSON(t, out)
+	if ch["name"] != "general" || ch["num_members"] != float64(7) {
+		t.Errorf("channel = %v", ch)
+	}
+	if got := f.server.CallsFor("conversations.info")[0].Params.Get("include_num_members"); got != "true" {
+		t.Errorf("include_num_members = %q, want true", got)
+	}
+}
+
+func TestChannelMembers(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.members", map[string]any{
+		"ok": true, "members": []any{"U11111111", "U22222222"},
+		"response_metadata": map[string]any{"next_cursor": "more"},
+	})
+	out, _, err := f.run(t, "channel", "members", "C12345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	if lines[0]["id"] != "U11111111" || lines[1]["id"] != "U22222222" {
+		t.Errorf("members = %v", lines)
+	}
+	var sawChannelMeta bool
+	for _, l := range lines {
+		if l["@channel_id"] == "C12345678" {
+			sawChannelMeta = true
+		}
+	}
+	if !sawChannelMeta {
+		t.Errorf("missing @channel_id meta: %v", lines)
+	}
+}
+
 func TestChannelListFullPassthrough(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("users.conversations", map[string]any{

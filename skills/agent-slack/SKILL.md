@@ -99,6 +99,8 @@ happen — show it to the user before retrying with `--yes`.
 
 ```bash
 agent-slack channel list                      # compact; --full for raw
+agent-slack channel get "#general"            # one channel's metadata
+agent-slack channel members "#general" --resolve-users   # who's in it
 agent-slack user get @paul
 agent-slack user dm-open @paul @sam           # group DM channel id
 agent-slack workflow list "#ops"

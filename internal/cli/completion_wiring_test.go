@@ -37,6 +37,8 @@ const shellCompDirectiveNoFileComp = 4
 // matters is the NoFileComp directive, which proves the completer is wired.
 func TestCompletionsAreWiredNotFileFallback(t *testing.T) {
 	args := [][]string{
+		{"channel", "get", ""},
+		{"channel", "members", ""},
 		{"workflow", "list", ""},
 		{"workflow", "preview", ""},
 		{"workflow", "get", ""},

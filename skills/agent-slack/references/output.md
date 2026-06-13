@@ -88,6 +88,10 @@ workspace under `<cacheDir>/<wshash>/<category>.json` (never message bodies):
 
 The biggest win is channel-name → ID, which otherwise pages the whole
 workspace. The cache is best-effort (never fails a command) and self-healing.
+It is populated as you work: every resolution writes through, and the list/get
+commands (`channel list`/`get`, `user list`/`get`, `workflow list`) warm the
+entity caches from what they fetch — so completions and later lookups fill up
+from ordinary use, page by page.
 
 **Controls** (global flags / env):
 

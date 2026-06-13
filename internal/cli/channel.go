@@ -19,9 +19,91 @@ func registerChannel(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(channelCmd)
 	handleUnknownSubcommand(channelCmd)
 	registerChannelList(channelCmd, globals)
+	registerChannelGet(channelCmd, globals)
+	registerChannelMembers(channelCmd, globals)
 	registerChannelNew(channelCmd, globals)
 	registerChannelInvite(channelCmd, globals)
 	registerChannelMark(channelCmd, globals)
+}
+
+func registerChannelGet(parent *cobra.Command, globals *GlobalFlags) {
+	cmd := &cobra.Command{
+		Use:               "get <channel>",
+		Short:             "Get one channel's metadata (topic, membership, archive state); --full for the raw object",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: channelArgCompletion(globals),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			target, err := render.ParseTarget(args[0])
+			if err != nil {
+				return err
+			}
+			cc, channelID, err := resolveTargetClient(ctx, globals, target, "channel get does not support user ID targets")
+			if err != nil {
+				return err
+			}
+			compact, raw, err := slack.GetChannelInfo(ctx, cc.Client, channelID)
+			if err != nil {
+				return err
+			}
+			if globals.Full {
+				return printSingle(globals, raw)
+			}
+			return printSingle(globals, compact)
+		},
+	}
+	parent.AddCommand(cmd)
+}
+
+func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {
+	var limit int
+	var cursor string
+	var resolveUsers, refreshUsers bool
+	cmd := &cobra.Command{
+		Use:               "members <channel>",
+		Short:             "List the users in a channel (ids by default; --resolve-users for profiles)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: channelArgCompletion(globals),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			target, err := render.ParseTarget(args[0])
+			if err != nil {
+				return err
+			}
+			cc, channelID, err := resolveTargetClient(ctx, globals, target, "channel members does not support user ID targets")
+			if err != nil {
+				return err
+			}
+			ids, next, err := slack.ListChannelMembers(ctx, cc.Client, channelID, limit, cursor)
+			if err != nil {
+				return err
+			}
+
+			meta := listMeta(next, map[string]any{"channel_id": channelID})
+			if !resolveUsers && !refreshUsers {
+				items := make([]any, len(ids))
+				for i, id := range ids {
+					items[i] = map[string]any{"id": id}
+				}
+				return printList(globals, items, meta)
+			}
+			users := slack.ResolveUsersByID(ctx, cc.Client, ids, refreshUsers)
+			items := make([]any, 0, len(ids))
+			for _, id := range ids {
+				if u, ok := users[id]; ok {
+					items = append(items, u)
+				} else {
+					items = append(items, map[string]any{"id": id}) // profile fetch failed; keep the id
+				}
+			}
+			return printList(globals, items, meta)
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 100, "Max members per page")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
+	cmd.Flags().BoolVar(&resolveUsers, "resolve-users", false, "Expand member ids to compact profiles")
+	cmd.Flags().BoolVar(&refreshUsers, "refresh-users", false, "Bypass the user cache when resolving")
+	parent.AddCommand(cmd)
 }
 
 func registerChannelList(parent *cobra.Command, globals *GlobalFlags) {
