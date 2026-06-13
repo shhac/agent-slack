@@ -13,12 +13,12 @@ const safariEnableJSHint = "In Safari, enable Develop → Allow JavaScript from 
 
 const safariFDAHint = "Safari's cookie store is sandboxed; grant your terminal Full Disk Access (System Settings → Privacy & Security → Full Disk Access), then re-run: agent-slack auth import-browser safari"
 
-// ExtractFromSafari imports xoxc tokens from a logged-in Slack tab in Safari via
+// extractFromSafari imports xoxc tokens from a logged-in Slack tab in Safari via
 // AppleScript, and the xoxd cookie from Safari's Cookies.binarycookies (macOS
 // only). The token read needs Develop-menu "Allow JavaScript from Apple Events"
 // plus Automation permission; the cookie read needs Full Disk Access because
 // the store lives in Safari's TCC-protected container.
-func ExtractFromSafari() (*Extracted, error) {
+func extractFromSafari() (*Extracted, error) {
 	if runtime.GOOS != "darwin" {
 		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "Safari import is only supported on macOS, not %s", runtime.GOOS)
 	}
@@ -51,11 +51,7 @@ func ExtractFromSafari() (*Extracted, error) {
 // Safari's dictionary uses `do JavaScript … in <tab>`, unlike Chromium's
 // `execute … javascript`.
 func safariTeamsAppleScript() string {
-	var tries strings.Builder
-	for _, expr := range teamJSONExprs {
-		tries.WriteString("try { var v = " + expr + "; if (v && v !== '{}' && v !== 'null') return v; } catch(e) {} ")
-	}
-	js := "(function(){ " + tries.String() + "return '{}'; })()"
+	js := slackTeamsProbeJS()
 	return `
 		tell application "Safari"
 			repeat with w in windows

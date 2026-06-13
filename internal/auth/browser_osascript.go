@@ -18,12 +18,21 @@ var teamJSONExprs = []string{
 	"JSON.stringify(window.boot_data?.teams || {})",
 }
 
-func teamsAppleScript(appName string) string {
+// slackTeamsProbeJS builds the in-page JavaScript that reads the Slack teams
+// object from a logged-in tab's localStorage, trying each known config key in
+// order and returning "{}" when none match. Shared by every AppleScript-driven
+// browser (the surrounding AppleScript verb differs per browser; this JS does
+// not).
+func slackTeamsProbeJS() string {
 	var tries strings.Builder
 	for _, expr := range teamJSONExprs {
 		tries.WriteString("try { var v = " + expr + "; if (v && v !== '{}' && v !== 'null') return v; } catch(e) {} ")
 	}
-	js := "(function(){ " + tries.String() + "return '{}'; })()"
+	return "(function(){ " + tries.String() + "return '{}'; })()"
+}
+
+func teamsAppleScript(appName string) string {
+	js := slackTeamsProbeJS()
 	return `
 		tell application "` + appName + `"
 			repeat with w in windows

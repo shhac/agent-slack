@@ -25,8 +25,8 @@ type browserSource struct {
 var browserSources = []browserSource{
 	geckoSource("firefox", "Firefox profile on disk (browser need not be running)", firefoxBaseDir),
 	geckoSource("zen", "Zen Browser profile on disk (Firefox-based; browser need not be running)", zenBaseDir),
-	chromiumAppleSource("chrome", "Google Chrome — reads a logged-in Slack tab (running; macOS)", ExtractFromChrome),
-	chromiumAppleSource("brave", "Brave — reads a logged-in Slack tab (running; macOS)", ExtractFromBrave),
+	chromiumAppleSource("chrome", "Google Chrome — reads a logged-in Slack tab (running; macOS)", extractFromChrome),
+	chromiumAppleSource("brave", "Brave — reads a logged-in Slack tab (running; macOS)", extractFromBrave),
 	chromiumFileSource("opera", "Opera profile on disk (browser need not be running)", locateOpera),
 	webkitSource("safari", "Safari — running tab for tokens + cookie store (macOS; needs Develop-menu JS + Full Disk Access)"),
 }
@@ -93,7 +93,7 @@ func chromiumAppleSource(name, summary string, extract func() (*Extracted, error
 func webkitSource(name, summary string) browserSource {
 	return browserSource{
 		name: name, summary: summary, supportsProfile: false,
-		extract: func(string) (*Extracted, error) { return ExtractFromSafari() },
+		extract: func(string) (*Extracted, error) { return extractFromSafari() },
 	}
 }
 

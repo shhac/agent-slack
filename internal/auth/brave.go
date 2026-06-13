@@ -17,10 +17,10 @@ var braveSafeStorageQueries = []safeStorageQuery{
 	{service: "Chromium Safe Storage"},
 }
 
-// ExtractFromBrave imports xoxc tokens from a logged-in Slack tab in Brave via
+// extractFromBrave imports xoxc tokens from a logged-in Slack tab in Brave via
 // AppleScript and the xoxd cookie from Brave's encrypted Cookies DB (macOS
 // only). Reading the tab requires Brave's "Allow JavaScript from Apple Events".
-func ExtractFromBrave() (*Extracted, error) {
+func extractFromBrave() (*Extracted, error) {
 	if runtime.GOOS != "darwin" {
 		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "Brave import is only supported on macOS, not %s", runtime.GOOS)
 	}

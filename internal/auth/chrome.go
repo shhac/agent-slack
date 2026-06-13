@@ -7,10 +7,10 @@ import (
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
-// ExtractFromChrome imports xoxc/xoxd from a logged-in Slack tab in Google
+// extractFromChrome imports xoxc/xoxd from a logged-in Slack tab in Google
 // Chrome via AppleScript (macOS only). Chrome serves the xoxd cookie directly
 // to the page, so no cookie decryption is needed.
-func ExtractFromChrome() (*Extracted, error) {
+func extractFromChrome() (*Extracted, error) {
 	if runtime.GOOS != "darwin" {
 		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "Chrome import is only supported on macOS, not %s", runtime.GOOS)
 	}
