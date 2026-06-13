@@ -101,50 +101,19 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 
 			switch mode {
 			case listModeURLThread:
-				warnTruncatedURL(globals, target.Ref)
-				cc, err := getClientForWorkspace(globals, target.Ref.WorkspaceURL)
-				if err != nil {
-					return err
-				}
-				rootTS, err := threadRootTS(ctx, cc, target.Ref, flags.includeReactions)
-				if err != nil {
-					return err
-				}
-				return printThread(ctx, globals, cc, flags, target.Ref.ChannelID, rootTS, download)
-
+				return listURLThread(ctx, globals, flags, target.Ref, download)
 			case listModeHistory:
-				cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
-				if err != nil {
-					return err
-				}
-				messages, err := slack.FetchChannelHistory(ctx, cc.Client, slack.HistoryOptions{
-					ChannelID:        channelID,
+				opts := slack.HistoryOptions{
 					Limit:            limit,
 					Latest:           strings.TrimSpace(latest),
 					Oldest:           strings.TrimSpace(oldest),
 					IncludeReactions: flags.includeReactions || hasReactionFilters,
 					WithReactions:    withReactions,
 					WithoutReactions: withoutReactions,
-				})
-				if err != nil {
-					return err
 				}
-				return printMessages(ctx, globals, cc, flags, messages, download, map[string]any{"channel_id": channelID}, false)
-
+				return listChannelHistory(ctx, globals, flags, target, opts, download)
 			default: // listModeThread
-				cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
-				if err != nil {
-					return err
-				}
-				rootTS := threadTS
-				if rootTS == "" {
-					ref := &render.MessageRef{WorkspaceURL: cc.WorkspaceURL, ChannelID: channelID, MessageTS: ts, Raw: args[0]}
-					rootTS, err = threadRootTS(ctx, cc, ref, flags.includeReactions)
-					if err != nil {
-						return err
-					}
-				}
-				return printThread(ctx, globals, cc, flags, channelID, rootTS, download)
+				return listChannelThread(ctx, globals, flags, target, ts, threadTS, args[0], download)
 			}
 		},
 	}
@@ -156,6 +125,53 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringArrayVar(&withoutReaction, "without-reaction", nil, "Only messages without this reaction (repeatable; requires --oldest)")
 	cmd.Flags().BoolVar(&download, "download", false, "Download attached files to the cache dir")
 	parent.AddCommand(cmd)
+}
+
+// listURLThread lists the whole thread a permalink points into.
+func listURLThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, ref *render.MessageRef, download bool) error {
+	warnTruncatedURL(globals, ref)
+	cc, err := getClientForWorkspace(globals, ref.WorkspaceURL)
+	if err != nil {
+		return err
+	}
+	rootTS, err := threadRootTS(ctx, cc, ref, flags.includeReactions)
+	if err != nil {
+		return err
+	}
+	return printThread(ctx, globals, cc, flags, ref.ChannelID, rootTS, download)
+}
+
+// listChannelHistory lists recent channel messages, with optional reaction
+// filters. opts.ChannelID is filled in after target resolution.
+func listChannelHistory(ctx context.Context, globals *GlobalFlags, flags *readFlags, target render.Target, opts slack.HistoryOptions, download bool) error {
+	cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
+	if err != nil {
+		return err
+	}
+	opts.ChannelID = channelID
+	messages, err := slack.FetchChannelHistory(ctx, cc.Client, opts)
+	if err != nil {
+		return err
+	}
+	return printMessages(ctx, globals, cc, flags, messages, download, map[string]any{"channel_id": channelID}, false)
+}
+
+// listChannelThread lists the thread named by --thread-ts, or the thread
+// containing the --ts message when only --ts was given.
+func listChannelThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, target render.Target, ts, threadTS, rawTarget string, download bool) error {
+	cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
+	if err != nil {
+		return err
+	}
+	rootTS := threadTS
+	if rootTS == "" {
+		ref := &render.MessageRef{WorkspaceURL: cc.WorkspaceURL, ChannelID: channelID, MessageTS: ts, Raw: rawTarget}
+		rootTS, err = threadRootTS(ctx, cc, ref, flags.includeReactions)
+		if err != nil {
+			return err
+		}
+	}
+	return printThread(ctx, globals, cc, flags, channelID, rootTS, download)
 }
 
 // listMode is which of message list's three behaviors an invocation gets.
