@@ -115,3 +115,120 @@ func errUserNotResolved(input string) *agenterrors.APIError {
 	return agenterrors.Newf(agenterrors.FixableByAgent, "could not resolve user: %s", strings.TrimSpace(input)).
 		WithHint("pass a user ID (U…), @handle, or email — 'agent-slack user list' shows users")
 }
+
+// ListUsersOptions controls ListUsers.
+type ListUsersOptions struct {
+	Limit       int // default 200, clamped to [1, 1000]
+	Cursor      string
+	IncludeBots bool
+}
+
+// UsersPage is a page of compact users plus the next cursor.
+type UsersPage struct {
+	Users      []CompactUser
+	NextCursor string
+}
+
+// ListUsers pages users.list until limit users accumulate, then annotates
+// each with their open DM channel id (one conversations.list types=im sweep).
+func ListUsers(ctx context.Context, c *Client, opts ListUsersOptions) (UsersPage, error) {
+	limit := opts.Limit
+	if limit == 0 {
+		limit = 200
+	}
+	limit = clampInt(limit, 1, 1000)
+
+	pages := c.usersPageCache()
+	pageKey := usersPageKey(opts)
+	if page, ok := pages.get(pageKey); ok {
+		return page, nil
+	}
+
+	var users []CompactUser
+	nextCursor := ""
+	cursor := opts.Cursor
+	for len(users) < limit {
+		pageSize := min(200, limit-len(users))
+		pageParams := map[string]any{"limit": pageSize}
+		if cursor != "" {
+			pageParams["cursor"] = cursor
+		}
+		resp, err := c.API(ctx, "users.list", pageParams)
+		if err != nil {
+			return UsersPage{}, err
+		}
+		for _, m := range recItems(getArr(resp, "members")) {
+			if getStr(m, "id") == "" {
+				continue
+			}
+			if !opts.IncludeBots && getBool(m, "is_bot") {
+				continue
+			}
+			users = append(users, ToCompactUser(m))
+			if len(users) >= limit {
+				break
+			}
+		}
+		next := NextCursor(resp)
+		if next == "" {
+			nextCursor = ""
+			break
+		}
+		cursor = next
+		nextCursor = next
+	}
+
+	dmMap, err := fetchDMMap(ctx, c)
+	if err != nil {
+		return UsersPage{}, err
+	}
+	for i := range users {
+		users[i].DMID = dmMap[users[i].ID]
+	}
+	c.warmUserCache(users)
+
+	page := UsersPage{Users: users, NextCursor: nextCursor}
+	pages.set(pageKey, page)
+	pages.save()
+	return page, nil
+}
+
+func fetchDMMap(ctx context.Context, c *Client) (map[string]string, error) {
+	out := map[string]string{}
+	err := EachPage(ctx, c, "conversations.list", map[string]any{"types": "im", "limit": 200}, func(resp map[string]any) (bool, error) {
+		for _, ch := range recItems(getArr(resp, "channels")) {
+			id := getStr(ch, "id")
+			user := getStr(ch, "user")
+			if id != "" && user != "" {
+				out[user] = id
+			}
+		}
+		return true, nil
+	})
+	return out, err
+}
+
+// GetUser fetches one user by ID, @handle, or email.
+func GetUser(ctx context.Context, c *Client, input string) (CompactUser, error) {
+	userID, err := ResolveUserID(ctx, c, input)
+	if err != nil {
+		return CompactUser{}, err
+	}
+	// A profile cached within the short Get window is complete (users.list and
+	// users.info return the same fields), so serve it without users.info.
+	serve := openCache[CompactUser](c.cache, "users", c.currentAuth().WorkspaceURL, cacheTTLOf(c.cache).Get, validUser)
+	if u, ok := serve.get(userID); ok {
+		return u, nil
+	}
+	resp, err := c.API(ctx, "users.info", map[string]any{"user": userID})
+	if err != nil {
+		return CompactUser{}, err
+	}
+	user := getRec(resp, "user")
+	if getStr(user, "id") == "" {
+		return CompactUser{}, agenterrors.New("users.info returned no user", agenterrors.FixableByAgent)
+	}
+	compact := ToCompactUser(user)
+	c.warmUserCache([]CompactUser{compact}) // grow/refresh the cache from a direct get
+	return compact, nil
+}

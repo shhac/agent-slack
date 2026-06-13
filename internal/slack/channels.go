@@ -175,3 +175,9 @@ func ResolveChannelName(ctx context.Context, c *Client, channelID string) string
 	}
 	return channelID
 }
+
+// MarkConversation marks a channel read up to ts.
+func MarkConversation(ctx context.Context, c *Client, channelID, ts string) error {
+	_, err := c.API(ctx, "conversations.mark", map[string]any{"channel": channelID, "ts": ts})
+	return err
+}
