@@ -232,19 +232,3 @@ func GetUser(ctx context.Context, c *Client, input string) (CompactUser, error) 
 	c.warmUserCache([]CompactUser{compact}) // grow/refresh the cache from a direct get
 	return compact, nil
 }
-
-// GetUsers fetches each input (id, @handle, or email) to a compact user,
-// preserving input order. Inputs that don't resolve are collected in
-// unresolved rather than failing the whole batch, so a typo doesn't drop the
-// users that did resolve.
-func GetUsers(ctx context.Context, c *Client, inputs []string) (users []CompactUser, unresolved []string) {
-	for _, in := range inputs {
-		u, err := GetUser(ctx, c, in)
-		if err != nil {
-			unresolved = append(unresolved, in)
-			continue
-		}
-		users = append(users, u)
-	}
-	return users, unresolved
-}

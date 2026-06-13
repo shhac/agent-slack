@@ -38,6 +38,61 @@ func TestUserGetMultiple(t *testing.T) {
 	}
 }
 
+// A single arg that doesn't resolve must error hard (not return an empty list)
+// — the deliberate asymmetry with the lenient multi-arg path.
+func TestUserGetSingleUnresolvedErrors(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("users.info", map[string]any{"ok": false, "error": "user_not_found"})
+	out, stderr, err := f.run(t, "user", "get", "U0NOBODYZ")
+	if err == nil {
+		t.Fatalf("single unresolved arg should error; out=%q", out)
+	}
+	if errPayload(t, stderr)["fixable_by"] == nil {
+		t.Errorf("expected a structured error on stderr: %s", stderr)
+	}
+}
+
+// --format json wraps the multi result in one envelope, with the @unresolved
+// meta folded in under its @-prefixed key (same key as the NDJSON meta line).
+func TestUserGetMultipleJSONEnvelope(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleWhen("users.info", func(p url.Values) bool { return p.Get("user") == "U0ALICEAA" },
+		mockslack.Response{Body: mockslack.UserInfo("U0ALICEAA", "alice")})
+	f.server.HandleWhen("users.info", func(p url.Values) bool { return p.Get("user") == "U0NOBODYZ" },
+		mockslack.Response{Body: map[string]any{"ok": false, "error": "user_not_found"}})
+
+	out, _, err := f.run(t, "user", "get", "U0ALICEAA", "U0NOBODYZ", "--format", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, out)
+	if data, _ := payload["data"].([]any); len(data) != 1 {
+		t.Errorf("data envelope = %v", payload["data"])
+	}
+	un, _ := payload["@unresolved"].([]any)
+	if len(un) != 1 || un[0] != "U0NOBODYZ" {
+		t.Errorf("@unresolved in envelope = %v", payload["@unresolved"])
+	}
+}
+
+// When every input fails, the result is just the @unresolved meta line.
+func TestUserGetAllUnresolved(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("users.info", map[string]any{"ok": false, "error": "user_not_found"})
+	out, _, err := f.run(t, "user", "get", "U0NOBODYZ", "U0ALSOBADX")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 {
+		t.Fatalf("want only the @unresolved meta line, got %d: %v", len(lines), lines)
+	}
+	un, _ := lines[0]["@unresolved"].([]any)
+	if len(un) != 2 {
+		t.Errorf("@unresolved = %v", lines[0])
+	}
+}
+
 func TestUserListWithDMAnnotations(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("users.list", map[string]any{

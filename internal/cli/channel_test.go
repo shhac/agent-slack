@@ -37,6 +37,46 @@ func TestChannelGetMultiple(t *testing.T) {
 	}
 }
 
+// A single channel that doesn't resolve must error hard, not return an empty
+// list (mirrors user get's single-arg contract).
+func TestChannelGetSingleUnresolvedErrors(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.info", map[string]any{"ok": false, "error": "channel_not_found"})
+	out, stderr, err := f.run(t, "channel", "get", "C0GONEAAA")
+	if err == nil {
+		t.Fatalf("single unresolved channel should error; out=%q", out)
+	}
+	if errPayload(t, stderr)["fixable_by"] == nil {
+		t.Errorf("expected a structured error on stderr: %s", stderr)
+	}
+}
+
+// --full must flow through the multi-arg loop so every NDJSON line is the raw
+// object (channel get is the only get path where --full changes the payload).
+func TestChannelGetMultipleFull(t *testing.T) {
+	f := newCLIFixture(t)
+	for _, id := range []string{"C0DEVSAAA", "C0OPSAAAA"} {
+		id := id
+		f.server.HandleWhen("conversations.info",
+			func(p url.Values) bool { return p.Get("channel") == id },
+			mockslack.Response{Body: map[string]any{"ok": true, "channel": map[string]any{
+				"id": id, "name": "x", "properties": map[string]any{"kept": true}}}})
+	}
+	out, _, err := f.run(t, "channel", "get", "C0DEVSAAA", "C0OPSAAAA", "--full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	if len(lines) != 2 {
+		t.Fatalf("want 2 raw channels, got %d: %v", len(lines), lines)
+	}
+	for _, l := range lines {
+		if _, has := l["properties"]; !has {
+			t.Errorf("--full should keep the raw 'properties' field: %v", l)
+		}
+	}
+}
+
 func TestChannelListCompact(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("users.conversations", map[string]any{

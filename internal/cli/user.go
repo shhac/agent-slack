@@ -52,15 +52,27 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			ctx := cmd.Context()
 			if len(args) == 1 {
-				user, err := slack.GetUser(cmd.Context(), cc.Client, args[0])
+				user, err := slack.GetUser(ctx, cc.Client, args[0])
 				if err != nil {
 					return err
 				}
 				return printSingle(globals, user)
 			}
-			users, unresolved := slack.GetUsers(cmd.Context(), cc.Client, args)
-			return printList(globals, toAnySlice(users), unresolvedMeta(unresolved))
+			// Several args → resolve each, collecting inputs that don't resolve
+			// rather than failing the batch (a typo doesn't drop the rest).
+			var items []any
+			var unresolved []string
+			for _, arg := range args {
+				user, err := slack.GetUser(ctx, cc.Client, arg)
+				if err != nil {
+					unresolved = append(unresolved, arg)
+					continue
+				}
+				items = append(items, user)
+			}
+			return printList(globals, items, unresolvedMeta(unresolved))
 		},
 	}
 	userCmd.AddCommand(getCmd)
