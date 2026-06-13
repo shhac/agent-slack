@@ -37,13 +37,14 @@ func resolveCacheTTL(globals *GlobalFlags) slack.CacheTTL {
 		global = os.Getenv("AGENT_SLACK_CACHE_TTL")
 	}
 	if d, ok := parseTTL(global); ok {
-		ttl = slack.CacheTTL{Users: d, Channels: d, ChannelNames: d, Handles: d, WorkflowPreview: d, WorkflowSchema: d}
+		ttl = slack.CacheTTL{Users: d, Channels: d, ChannelNames: d, Handles: d, WorkflowList: d, WorkflowPreview: d, WorkflowSchema: d}
 	}
 	for env, field := range map[string]*time.Duration{
 		"AGENT_SLACK_CACHE_TTL_USERS":            &ttl.Users,
 		"AGENT_SLACK_CACHE_TTL_CHANNELS":         &ttl.Channels,
 		"AGENT_SLACK_CACHE_TTL_CHANNEL_NAMES":    &ttl.ChannelNames,
 		"AGENT_SLACK_CACHE_TTL_HANDLES":          &ttl.Handles,
+		"AGENT_SLACK_CACHE_TTL_WORKFLOW_LIST":    &ttl.WorkflowList,
 		"AGENT_SLACK_CACHE_TTL_WORKFLOW_PREVIEW": &ttl.WorkflowPreview,
 		"AGENT_SLACK_CACHE_TTL_WORKFLOW_SCHEMA":  &ttl.WorkflowSchema,
 	} {

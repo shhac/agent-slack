@@ -14,6 +14,26 @@ func validWorkflowPreview(_ string, p WorkflowPreview) bool {
 
 func validWorkflowSchema(_ string, s WorkflowSchema) bool { return s.WorkflowID != "" }
 
+func validWorkflowList(_ string, w ChannelWorkflows) bool { return w.ChannelID != "" }
+
+func (c *Client) workflowListCache() *cacheSnapshot[ChannelWorkflows] {
+	return openCache(c.cache, "workflow-list", c.currentAuth().WorkspaceURL,
+		cacheTTLOf(c.cache).WorkflowList, validWorkflowList)
+}
+
+func (c *Client) cachedWorkflowList(channelID string) (ChannelWorkflows, bool) {
+	return c.workflowListCache().get(channelID)
+}
+
+func (c *Client) cacheWorkflowList(channelID string, w ChannelWorkflows) {
+	if channelID == "" || !validWorkflowList(channelID, w) {
+		return
+	}
+	snap := c.workflowListCache()
+	snap.set(channelID, w)
+	snap.save()
+}
+
 func (c *Client) workflowPreviewCache() *cacheSnapshot[WorkflowPreview] {
 	return openCache(c.cache, "workflow-triggers", c.currentAuth().WorkspaceURL,
 		cacheTTLOf(c.cache).WorkflowPreview, validWorkflowPreview)

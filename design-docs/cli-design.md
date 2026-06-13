@@ -133,8 +133,19 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
   one rmdir.
 - **Categories + default TTL**: `users` ID→profile (24h); `handles`
   @handle/email→ID, `channel-names` name→ID, `channels` ID→meta,
-  `workflow-triggers` Ft→preview, `workflow-schemas` Wf→schema (1h each).
-  Stable data lasts a day; volatile name/membership mappings an hour.
+  `workflow-list` channelID→annotated workflows, `workflow-triggers`
+  Ft→preview, `workflow-schemas` Wf→schema (1h each). Stable data lasts a day;
+  volatile name/membership mappings an hour.
+- **`workflow list` validates + warms** (decision): the listing endpoints
+  (`bookmarks.list`/`workflows.featured.list`) carry no liveness info, so a
+  deleted-but-bookmarked trigger used to list fine and only fail on `preview`.
+  `ListChannelWorkflows` now validates every listed trigger in ONE batched
+  `workflows.triggers.preview` call — stale/inaccessible ones are flagged
+  `stale`+`stale_reason` inline, and each live trigger's preview cache is
+  warmed for free from the same response. Best-effort: if the batch call
+  fails, the list returns unannotated rather than erroring. The whole
+  annotated result is cached per channel, so a repeated `workflow list` is 0
+  API calls instead of 2–3.
 - **Generic batch cache** (`internal/slack/cache.go`): load-once/save-once
   snapshots with a per-T validator (the user batch resolver would otherwise
   regress into per-key file I/O + a write race). Best-effort throughout: a

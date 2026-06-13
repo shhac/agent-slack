@@ -82,6 +82,7 @@ workspace under `<cacheDir>/<wshash>/<category>.json` (never message bodies):
 | `handles` | @handle / email → user ID | 1h |
 | `channel-names` | channel name → ID | 1h |
 | `channels` | channel ID → metadata | 1h |
+| `workflow-list` | channel ID → its workflows (annotated) | 1h |
 | `workflow-triggers` | `Ft…` → preview (workflow id, shortcut) | 1h |
 | `workflow-schemas` | `Wf…` → form fields/steps | 1h |
 

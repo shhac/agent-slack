@@ -5,18 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
-// ChannelWorkflow is one workflow discoverable in a channel.
+// ChannelWorkflow is one workflow discoverable in a channel. Stale marks a
+// trigger that is listed (a lingering bookmark) but cannot be previewed —
+// usually because the workflow was deleted (trigger_not_found) or is not
+// shared with this user; StaleReason carries the Slack code.
 type ChannelWorkflow struct {
-	Title     string `json:"title"`
-	TriggerID string `json:"trigger_id"`
-	Link      string `json:"link,omitempty"`
-	AppID     string `json:"app_id,omitempty"`
-	Featured  bool   `json:"featured"`
+	Title       string `json:"title"`
+	TriggerID   string `json:"trigger_id"`
+	Link        string `json:"link,omitempty"`
+	AppID       string `json:"app_id,omitempty"`
+	Featured    bool   `json:"featured"`
+	Stale       bool   `json:"stale,omitempty"`
+	StaleReason string `json:"stale_reason,omitempty"`
 }
 
 type ChannelWorkflows struct {
@@ -27,8 +33,15 @@ type ChannelWorkflows struct {
 var shortcutLinkRe = regexp.MustCompile(`slack\.com/shortcuts/(Ft[A-Za-z0-9]+)`)
 
 // ListChannelWorkflows merges a channel's bookmarked workflows with its
-// featured ones (featured adds a flag; bookmarks are the primary source).
+// featured ones (featured adds a flag; bookmarks are the primary source), then
+// validates every listed trigger in one batched preview call so stale
+// bookmarks are flagged and the per-trigger preview cache is warmed. The whole
+// annotated result is cached per channel.
 func ListChannelWorkflows(ctx context.Context, c *Client, channelID string) (ChannelWorkflows, error) {
+	if cached, ok := c.cachedWorkflowList(channelID); ok {
+		return cached, nil
+	}
+
 	bookmarked, err := listBookmarkedWorkflows(ctx, c, channelID)
 	if err != nil {
 		return ChannelWorkflows{}, err
@@ -53,7 +66,54 @@ func ListChannelWorkflows(ctx context.Context, c *Client, channelID string) (Cha
 			workflows = append(workflows, ChannelWorkflow{Title: ft.Title, TriggerID: ft.TriggerID, Featured: true})
 		}
 	}
-	return ChannelWorkflows{ChannelID: channelID, Workflows: workflows}, nil
+
+	result := ChannelWorkflows{ChannelID: channelID, Workflows: workflows}
+	annotateStaleTriggers(ctx, c, &result)
+	c.cacheWorkflowList(channelID, result)
+	return result, nil
+}
+
+// annotateStaleTriggers validates every listed trigger in a single batched
+// workflows.triggers.preview call: valid triggers warm the per-trigger preview
+// cache (so a later `workflow preview/get` is free), rejected ones are marked
+// Stale with the Slack reason. Best-effort — if the batch call fails (e.g. the
+// token cannot preview), the list is returned unannotated rather than erroring.
+func annotateStaleTriggers(ctx context.Context, c *Client, result *ChannelWorkflows) {
+	var ids []string
+	seen := map[string]bool{}
+	for _, w := range result.Workflows {
+		if w.TriggerID != "" && !seen[w.TriggerID] {
+			seen[w.TriggerID] = true
+			ids = append(ids, w.TriggerID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	resp, err := c.API(ctx, "workflows.triggers.preview", map[string]any{"trigger_ids": strings.Join(ids, ",")})
+	if err != nil {
+		return // best-effort: annotation is a bonus, never fails the list
+	}
+
+	for _, t := range recItems(getArr(resp, "triggers")) {
+		if id := getStr(t, "id"); id != "" {
+			c.cacheWorkflowPreview(id, assembleWorkflowPreview(t, id))
+		}
+	}
+
+	rejected := map[string]string{}
+	for _, r := range recItems(getArr(resp, "rejected_triggers")) {
+		if id := getStr(r, "id"); id != "" {
+			rejected[id] = getStr(r, "error")
+		}
+	}
+	for i := range result.Workflows {
+		if reason, bad := rejected[result.Workflows[i].TriggerID]; bad {
+			result.Workflows[i].Stale = true
+			result.Workflows[i].StaleReason = reason
+		}
+	}
 }
 
 func listBookmarkedWorkflows(ctx context.Context, c *Client, channelID string) ([]ChannelWorkflow, error) {

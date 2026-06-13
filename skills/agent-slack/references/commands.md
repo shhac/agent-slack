@@ -75,14 +75,17 @@ Flags: `--channel` (repeatable), `--user`, `--after YYYY-MM-DD`,
 
 | Command | Notes |
 |---|---|
-| `workflow list <channel>` | triggers (`Ft…`) published in a channel |
+| `workflow list <channel>` | triggers (`Ft…`) published in a channel; each row carries `stale: true` + `stale_reason` when its trigger can't be previewed (a lingering bookmark) |
 | `workflow preview <Ft…>` | trigger metadata + its workflow id (`Wf…`) |
 | `workflow get <Ft…\|Wf…>` | form fields + step titles |
 | `workflow run <Ft…> --channel <ch> --field "Title=value"` | submit a form; needs **browser auth** (xoxc/xoxd) + an RTM WebSocket |
 
-Workflow discovery is channel-by-channel: a trigger listed in one channel may
-still be un-previewable if you lack access (returns `fixable_by: human` with a
-hint to ask a collaborator).
+Workflow discovery is channel-by-channel. `workflow list` validates every
+listed trigger in one batched call, so stale bookmarks (deleted workflows →
+`stale_reason: trigger_not_found`) and inaccessible ones are flagged inline
+rather than only failing when you `preview` them — trust a row without `stale`.
+The whole annotated list is cached per channel, and validating it also warms
+each live trigger's preview cache.
 
 ## other
 

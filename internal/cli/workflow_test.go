@@ -14,6 +14,10 @@ func TestWorkflowListAndRun(t *testing.T) {
 		}},
 	})
 	f.server.HandleBody("workflows.featured.list", map[string]any{"ok": false, "error": "unknown_method"})
+	f.server.HandleBody("workflows.triggers.preview", map[string]any{
+		"ok":       true,
+		"triggers": []any{map[string]any{"id": "Ft0001", "workflow": map[string]any{"workflow_id": "Wf0001"}}},
+	})
 
 	out, _, err := f.run(t, "workflow", "list", "C12345678")
 	if err != nil {
@@ -22,6 +26,9 @@ func TestWorkflowListAndRun(t *testing.T) {
 	lines := parseNDJSON(t, out)
 	if lines[0]["trigger_id"] != "Ft0001" {
 		t.Errorf("workflow = %v", lines[0])
+	}
+	if _, isStale := lines[0]["stale"]; isStale {
+		t.Errorf("a validated trigger must not carry a stale flag: %v", lines[0])
 	}
 
 	f.server.HandleBody("workflows.triggers.trip", map[string]any{

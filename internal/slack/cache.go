@@ -37,6 +37,7 @@ type CacheTTL struct {
 	Channels        time.Duration
 	ChannelNames    time.Duration
 	Handles         time.Duration
+	WorkflowList    time.Duration
 	WorkflowPreview time.Duration
 	WorkflowSchema  time.Duration
 }
@@ -49,6 +50,7 @@ func DefaultCacheTTL() CacheTTL {
 		Channels:        time.Hour,
 		ChannelNames:    time.Hour,
 		Handles:         time.Hour,
+		WorkflowList:    time.Hour,
 		WorkflowPreview: time.Hour,
 		WorkflowSchema:  time.Hour,
 	}
