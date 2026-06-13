@@ -17,6 +17,13 @@ func registerWorkflow(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(workflowCmd)
 	handleUnknownSubcommand(workflowCmd)
 
+	registerWorkflowList(workflowCmd, globals)
+	registerWorkflowPreview(workflowCmd, globals)
+	registerWorkflowGet(workflowCmd, globals)
+	registerWorkflowRun(workflowCmd, globals)
+}
+
+func registerWorkflowList(parent *cobra.Command, globals *GlobalFlags) {
 	listCmd := &cobra.Command{
 		Use:   "list <channel>",
 		Short: "List workflows bookmarked or featured in a channel",
@@ -39,8 +46,10 @@ func registerWorkflow(parent *cobra.Command, globals *GlobalFlags) {
 				listMeta("", map[string]any{"channel_id": result.ChannelID}))
 		},
 	}
-	workflowCmd.AddCommand(listCmd)
+	parent.AddCommand(listCmd)
+}
 
+func registerWorkflowPreview(parent *cobra.Command, globals *GlobalFlags) {
 	previewCmd := &cobra.Command{
 		Use:   "preview <trigger-id>",
 		Short: "Get workflow metadata from a trigger ID (no side effects)",
@@ -57,8 +66,10 @@ func registerWorkflow(parent *cobra.Command, globals *GlobalFlags) {
 			return printSingle(globals, preview)
 		},
 	}
-	workflowCmd.AddCommand(previewCmd)
+	parent.AddCommand(previewCmd)
+}
 
+func registerWorkflowGet(parent *cobra.Command, globals *GlobalFlags) {
 	getCmd := &cobra.Command{
 		Use:   "get <id>",
 		Short: "Get a workflow definition (form fields + steps) by Ft… trigger or Wf… workflow id",
@@ -84,8 +95,10 @@ func registerWorkflow(parent *cobra.Command, globals *GlobalFlags) {
 			return printSingle(globals, schema)
 		},
 	}
-	workflowCmd.AddCommand(getCmd)
+	parent.AddCommand(getCmd)
+}
 
+func registerWorkflowRun(parent *cobra.Command, globals *GlobalFlags) {
 	var channel string
 	var fields []string
 	runCmd := &cobra.Command{
@@ -158,5 +171,5 @@ func registerWorkflow(parent *cobra.Command, globals *GlobalFlags) {
 	runCmd.Flags().StringVar(&channel, "channel", "", "Channel where the workflow is bookmarked (required)")
 	runCmd.Flags().StringArrayVar(&fields, "field", nil, "Form field value as Title=value (repeatable)")
 	_ = runCmd.MarkFlagRequired("channel")
-	workflowCmd.AddCommand(runCmd)
+	parent.AddCommand(runCmd)
 }
