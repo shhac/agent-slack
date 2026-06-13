@@ -115,6 +115,21 @@ agent-slack api call team.info
 agent-slack api call conversations.history --params '{"channel":"C…","limit":5}'
 ```
 
+## Cache
+
+Channel/user/workflow lookups are cached per workspace and fill as you work, so
+repeat reads are fast and completions populate. It's transparent; reach for
+these only when you need to:
+
+```bash
+agent-slack cache info                         # what's cached, per workspace
+agent-slack cache purge --workspace "#…"        # clear one workspace
+agent-slack cache purge --downloads             # clear downloaded files
+agent-slack config set cache.ttl.channels 30m   # persist a TTL
+```
+
+Per-invocation: `--no-cache`, `--refresh-cache`, `--cache-ttl <dur>`.
+
 ## More detail
 
 For anything beyond the examples above, read the bundled references:

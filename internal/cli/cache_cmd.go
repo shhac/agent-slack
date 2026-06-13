@@ -2,6 +2,7 @@ package cli
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -104,33 +105,49 @@ func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
 }
 
 func registerCachePurge(parent *cobra.Command, globals *GlobalFlags) {
-	var allWorkspaces bool
+	var allWorkspaces, downloads bool
 	cmd := &cobra.Command{
 		Use:   "purge",
-		Short: "Delete cached data for the workspace (--all-workspaces for everything). Local + regenerable.",
+		Short: "Delete cached data: the workspace's resolution cache by default; --all-workspaces and/or --downloads. Local + regenerable.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := appCacheDir()
-			if allWorkspaces {
+			result := map[string]any{}
+
+			if downloads {
+				if err := os.RemoveAll(downloadsDir()); err != nil {
+					return err
+				}
+				result["downloads"] = "cleared"
+			}
+
+			// Purge a resolution cache unless --downloads was the sole target.
+			downloadsOnly := downloads && !allWorkspaces && globals.Workspace == ""
+			switch {
+			case downloadsOnly:
+				// nothing more
+			case allWorkspaces:
 				cleared, err := slack.PurgeAllCaches(dir)
 				if err != nil {
 					return err
 				}
-				return printSingle(globals, map[string]any{"purged": "all_workspaces", "cleared_keys": cleared})
+				result["cleared_workspaces"] = cleared
+			default:
+				url := completionWorkspaceURL(globals)
+				if url == "" {
+					return agenterrors.New("no workspace to purge", agenterrors.FixableByAgent).
+						WithHint("pass --workspace <selector>, --all-workspaces, or --downloads")
+				}
+				if err := slack.PurgeCacheDir(dir, slack.WorkspaceCacheKey(url)); err != nil {
+					return err
+				}
+				result["purged"] = url
 			}
-			url := completionWorkspaceURL(globals)
-			if url == "" {
-				return agenterrors.New("no workspace to purge", agenterrors.FixableByAgent).
-					WithHint("pass --workspace <selector>, or --all-workspaces to clear everything")
-			}
-			key := slack.WorkspaceCacheKey(url)
-			if err := slack.PurgeCacheDir(dir, key); err != nil {
-				return err
-			}
-			return printSingle(globals, map[string]any{"purged": url, "cache_key": key})
+			return printSingle(globals, result)
 		},
 	}
-	cmd.Flags().BoolVar(&allWorkspaces, "all-workspaces", false, "Clear every workspace's cache")
+	cmd.Flags().BoolVar(&allWorkspaces, "all-workspaces", false, "Clear every workspace's resolution cache")
+	cmd.Flags().BoolVar(&downloads, "downloads", false, "Clear the downloaded-files cache (not workspace-scoped)")
 	parent.AddCommand(cmd)
 }
 

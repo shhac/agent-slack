@@ -108,3 +108,27 @@ each live trigger's preview cache.
 `api call` is the raw escape hatch — POST any Slack Web API method with stored
 credentials. Prefer the wrapped commands; reach for `api call` only when no
 wrapper exists.
+
+## cache / config
+
+| Command | Notes |
+|---|---|
+| `cache info` | what's cached per workspace: categories, entry counts, size, age (all workspaces unless `--workspace`) |
+| `cache purge [--workspace … \| --all-workspaces] [--downloads]` | clear cached data (local + regenerable; no `--yes`). `--downloads` clears the downloaded-files cache (global — see below) |
+| `config list` | persisted settings + the settable keys |
+| `config get <key>` / `config set <key> <value>` / `config unset <key>` | read/write persisted settings |
+
+The resolution cache (channel/user/workflow lookups, never message bodies)
+fills from ordinary use and serves `get`/`list` from cache within a short
+window (default 5m); completions and name→ID resolution use longer TTLs.
+Persist a TTL with `config set cache.ttl.<category> <dur>` (categories:
+`users`, `channels`, `channel-names`, `handles`, `workflow-list`,
+`workflow-preview`, `workflow-schema`, `get`, `list`). Per-invocation:
+`--no-cache`, `--refresh-cache`, `--cache-ttl`. See output.md for the cache
+contract in full.
+
+Downloaded files are **not** workspace-scoped: Slack file IDs (`F…`) are
+globally unique and immutable, so the file ID is a sufficient, workspace-
+independent key, and one flat `downloads/` dir naturally dedupes a file shared
+across workspaces. So `cache purge --downloads` is global, while
+`--workspace`/`--all-workspaces` scope only the resolution cache.
