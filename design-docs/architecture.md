@@ -64,21 +64,37 @@ for tests), with `__KEYCHAIN__` placeholders in the file. `--workspace`
 selection (exact URL, else unique substring of url/host/name/team domain) lives
 here as `Store.Resolve`.
 
-`internal/auth` extracts browser credentials from local sources. Pure,
-unit-tested cores: `ParseCurl`, `parseLocalConfig` (Chromium LevelDB value
-decode), `parseTeamsJSON`, `decryptChromiumCookie` (PBKDF2-HMAC-SHA1 +
-AES-128-CBC), Firefox `parseProfilesIni`. Platform orchestration:
-`ExtractFromSlackDesktop` (pure-Go LevelDB read via `goleveldb` + Cookies
-SQLite via `modernc.org/sqlite` + Safe Storage password from the Keychain),
-`ExtractFromChrome`/`ExtractFromBrave` (osascript), `ExtractFromFirefox`
-(profile SQLite). Both pure-Go deps preserve the single static binary.
+`internal/auth` extracts credentials from local sources behind a **browser-
+source registry** (`sources.go`): each importable browser is one entry mapping
+to an extractor *family* that supplies only its config, so adding a browser is a
+registry row, not a new command. The families:
+
+- **gecko** (file-based; supports `--profile`): firefox, zen — `extractFromGecko`
+  reads the profile's localStorage SQLite + `cookies.sqlite`, parametrized by a
+  per-browser base dir (zen is a Firefox fork with the same layout).
+- **chromium/AppleScript** (running tab; macOS): chrome, brave — read a
+  logged-in Slack tab via `osascript`; brave additionally decrypts its Cookies
+  DB.
+- **chromium/file** (browser need not run): opera — `extractChromiumFromFiles`
+  reads the Local Storage LevelDB + encrypted Cookies DB, the same core
+  `ExtractFromSlackDesktop` uses.
+- **webkit**: safari — tokens via Safari's AppleScript dialect (`do JavaScript …
+  in <tab>`), the httpOnly `d` cookie via a `Cookies.binarycookies` parser
+  (`binarycookies.go`); needs Develop-menu JS + Full Disk Access.
+
+Pure, unit-tested cores reused across families: `parseLocalConfig` (Chromium
+LevelDB value decode), `parseTeamsJSON`, `decryptChromiumCookie`
+(PBKDF2-HMAC-SHA1 + AES-128-CBC), `parseBinaryCookies`, Firefox
+`parseProfilesIni`, `ParseCurl`. Pure-Go deps (`goleveldb`,
+`modernc.org/sqlite`) preserve the single static binary. The registry exposes
+`ImportBrowser(name, profile)` / `SupportedBrowsers()`.
 
 The `auth` CLI commands (`internal/cli/auth.go`) are import-only:
-`import-desktop`, `import-browser <name>` (chrome/brave/firefox/zen/opera via a
-browser-source registry in `internal/auth/sources.go`), `parse-curl`, plus
+`import-desktop`, `import-browser <name>` (chrome/brave/firefox/zen/opera/safari,
+completing names and marking which accept `--profile`), `parse-curl`, plus
 `list`, `add`, `set-default`, `remove`. The store is
 behind a `newStore` seam so CLI tests run against a temp file + in-memory
-Keychain. Windows Slack Desktop / Firefox import works via DPAPI cookie
+Keychain. Windows Slack Desktop / browser import works via DPAPI cookie
 decryption (`dpapi_windows.go`). `auth add --form` prompts for secrets via a
 native OS dialog so tokens never transit the agent's conversation.
 
