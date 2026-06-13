@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"strings"
-
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/slack"
@@ -34,26 +32,19 @@ func targetCompletion(globals *GlobalFlags) func(*cobra.Command, []string, strin
 }
 
 // completionWorkspaceURL picks the workspace whose cache to read for
-// completions: the --workspace selector if it matches a configured workspace,
-// else the stored default. Best-effort and read-only.
+// completions, via the same credential resolver every command uses (URL,
+// host, name, team-domain, or unique-substring matching; "" means the stored
+// default). Best-effort: any resolution failure just means no suggestions.
 func completionWorkspaceURL(globals *GlobalFlags) string {
 	store, err := globals.newStore()
 	if err != nil {
 		return ""
 	}
-	creds, err := store.Load()
+	ws, err := store.Resolve(globals.Workspace)
 	if err != nil {
 		return ""
 	}
-	if sel := strings.TrimSpace(globals.Workspace); sel != "" {
-		for _, w := range creds.Workspaces {
-			if strings.Contains(strings.ToLower(w.URL), strings.ToLower(sel)) ||
-				strings.EqualFold(w.Name, sel) {
-				return w.URL
-			}
-		}
-	}
-	return creds.DefaultWorkspaceURL
+	return ws.URL
 }
 
 // fixedCompletions completes a flag from a closed set of values (no file
