@@ -3,14 +3,14 @@ package render
 import "testing"
 
 func TestParseMessageURL(t *testing.T) {
-	ref, err := ParseMessageURL("https://stablygroup.slack.com/archives/C060RS20UMV/p1770165109628379")
+	ref, err := ParseMessageURL("https://acme.slack.com/archives/C0123ABCD/p1770165109628379")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ref.WorkspaceURL != "https://stablygroup.slack.com" {
+	if ref.WorkspaceURL != "https://acme.slack.com" {
 		t.Errorf("WorkspaceURL = %q", ref.WorkspaceURL)
 	}
-	if ref.ChannelID != "C060RS20UMV" {
+	if ref.ChannelID != "C0123ABCD" {
 		t.Errorf("ChannelID = %q", ref.ChannelID)
 	}
 	if ref.MessageTS != "1770165109.628379" {
@@ -22,7 +22,7 @@ func TestParseMessageURL(t *testing.T) {
 }
 
 func TestParseMessageURLThreadTS(t *testing.T) {
-	ref, err := ParseMessageURL("https://stablygroup.slack.com/archives/C060RS20UMV/p1770165109628379?thread_ts=1770160000.000001&cid=C060RS20UMV")
+	ref, err := ParseMessageURL("https://acme.slack.com/archives/C0123ABCD/p1770165109628379?thread_ts=1770160000.000001&cid=C0123ABCD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,11 +80,11 @@ func TestParseMessageURLErrors(t *testing.T) {
 
 func TestBuildMessageURLRoot(t *testing.T) {
 	got := BuildMessageURL(MessageURLParts{
-		WorkspaceURL: "https://stablygroup.slack.com/",
-		ChannelID:    "C060RS20UMV",
+		WorkspaceURL: "https://acme.slack.com/",
+		ChannelID:    "C0123ABCD",
 		MessageTS:    "1770165109.628379",
 	})
-	want := "https://stablygroup.slack.com/archives/C060RS20UMV/p1770165109628379"
+	want := "https://acme.slack.com/archives/C0123ABCD/p1770165109628379"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -92,12 +92,12 @@ func TestBuildMessageURLRoot(t *testing.T) {
 
 func TestBuildMessageURLReply(t *testing.T) {
 	got := BuildMessageURL(MessageURLParts{
-		WorkspaceURL: "https://stablygroup.slack.com",
-		ChannelID:    "C060RS20UMV",
+		WorkspaceURL: "https://acme.slack.com",
+		ChannelID:    "C0123ABCD",
 		MessageTS:    "1770165110.000001",
 		ThreadTS:     "1770165109.628379",
 	})
-	want := "https://stablygroup.slack.com/archives/C060RS20UMV/p1770165110000001?thread_ts=1770165109.628379&cid=C060RS20UMV"
+	want := "https://acme.slack.com/archives/C0123ABCD/p1770165110000001?thread_ts=1770165109.628379&cid=C0123ABCD"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

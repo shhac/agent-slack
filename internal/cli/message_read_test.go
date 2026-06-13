@@ -11,7 +11,7 @@ func TestMessageGetByPermalink(t *testing.T) {
 		simpleMessage("1770165109.628379", "U12345678", "Hello <@U87654321> :rocket:"),
 	))
 
-	out, _, err := f.run(t, "message", "get", "https://acme.slack.com/archives/C060RS20UMV/p1770165109628379")
+	out, _, err := f.run(t, "message", "get", "https://acme.slack.com/archives/C0123ABCD/p1770165109628379")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,10 +20,10 @@ func TestMessageGetByPermalink(t *testing.T) {
 	if msg["content"] != "Hello @U87654321 🚀" {
 		t.Errorf("content = %q", msg["content"])
 	}
-	if msg["ts"] != "1770165109.628379" || msg["channel_id"] != "C060RS20UMV" {
+	if msg["ts"] != "1770165109.628379" || msg["channel_id"] != "C0123ABCD" {
 		t.Errorf("msg = %v", msg)
 	}
-	if payload["permalink"] != "https://acme.slack.com/archives/C060RS20UMV/p1770165109628379" {
+	if payload["permalink"] != "https://acme.slack.com/archives/C0123ABCD/p1770165109628379" {
 		t.Errorf("permalink = %v", payload["permalink"])
 	}
 	if _, hasThread := payload["thread"]; hasThread {

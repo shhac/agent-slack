@@ -15,7 +15,7 @@ func TestNormalizeChannelInput(t *testing.T) {
 	}{
 		{"#general", "", "general"},
 		{"general", "", "general"},
-		{"C060RS20UMV", "C060RS20UMV", ""},
+		{"C0123ABCD", "C0123ABCD", ""},
 		{" #ops ", "", "ops"},
 		{"", "", ""},
 	}
@@ -29,8 +29,8 @@ func TestNormalizeChannelInput(t *testing.T) {
 
 func TestResolveChannelIDPassthrough(t *testing.T) {
 	c := New(Auth{Type: AuthStandard, Token: "x"}) // no server: must not call the API
-	got, err := ResolveChannelID(context.Background(), c, "C060RS20UMV")
-	if err != nil || got != "C060RS20UMV" {
+	got, err := ResolveChannelID(context.Background(), c, "C0123ABCD")
+	if err != nil || got != "C0123ABCD" {
 		t.Errorf("got %q, %v", got, err)
 	}
 }

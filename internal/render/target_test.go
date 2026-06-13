@@ -14,8 +14,8 @@ func TestParseTarget(t *testing.T) {
 	}{
 		{"#channel", "#general", Target{Kind: TargetChannel, Channel: "#general"}},
 		{"bare channel name", "general", Target{Kind: TargetChannel, Channel: "#general"}},
-		{"channel ID", "C060RS20UMV", Target{Kind: TargetChannel, Channel: "C060RS20UMV"}},
-		{"DM channel ID", "D060RS20UMV", Target{Kind: TargetChannel, Channel: "D060RS20UMV"}},
+		{"channel ID", "C0123ABCD", Target{Kind: TargetChannel, Channel: "C0123ABCD"}},
+		{"DM channel ID", "D0123ABCD", Target{Kind: TargetChannel, Channel: "D0123ABCD"}},
 		{"user ID", "U12345ABCDE", Target{Kind: TargetUser, UserID: "U12345ABCDE"}},
 		{"user ID with whitespace", "  U09GDJJKCCW  ", Target{Kind: TargetUser, UserID: "U09GDJJKCCW"}},
 		{"short U-prefix is a channel name", "U1234", Target{Kind: TargetChannel, Channel: "#U1234"}},
@@ -35,14 +35,14 @@ func TestParseTarget(t *testing.T) {
 }
 
 func TestParseTargetURL(t *testing.T) {
-	got, err := ParseTarget("https://stablygroup.slack.com/archives/C060RS20UMV/p1770165109628379")
+	got, err := ParseTarget("https://acme.slack.com/archives/C0123ABCD/p1770165109628379")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Kind != TargetURL || got.Ref == nil {
 		t.Fatalf("got %+v, want url target", got)
 	}
-	if got.Ref.ChannelID != "C060RS20UMV" || got.Ref.MessageTS != "1770165109.628379" {
+	if got.Ref.ChannelID != "C0123ABCD" || got.Ref.MessageTS != "1770165109.628379" {
 		t.Errorf("ref = %+v", got.Ref)
 	}
 }
@@ -72,11 +72,11 @@ func TestParseChannelURL(t *testing.T) {
 		wantChannel string
 		wantOK      bool
 	}{
-		{"channel URL", "https://acme.slack.com/archives/C060RS20UMV", "https://acme.slack.com", "C060RS20UMV", true},
+		{"channel URL", "https://acme.slack.com/archives/C0123ABCD", "https://acme.slack.com", "C0123ABCD", true},
 		{"DM URL host-cased", "https://Acme.Slack.com/archives/D0A1B2C3D4E", "https://acme.slack.com", "D0A1B2C3D4E", true},
-		{"message permalink is not a channel URL", "https://acme.slack.com/archives/C060RS20UMV/p1770165109628379", "", "", false},
-		{"non-slack host", "https://evil.example.com/archives/C060RS20UMV", "", "", false},
-		{"wrong path root", "https://acme.slack.com/messages/C060RS20UMV", "", "", false},
+		{"message permalink is not a channel URL", "https://acme.slack.com/archives/C0123ABCD/p1770165109628379", "", "", false},
+		{"non-slack host", "https://evil.example.com/archives/C0123ABCD", "", "", false},
+		{"wrong path root", "https://acme.slack.com/messages/C0123ABCD", "", "", false},
 		{"not a channel id", "https://acme.slack.com/archives/notanid", "", "", false},
 		{"bare name", "general", "", "", false},
 	}
@@ -100,10 +100,10 @@ func TestParseTargetEmpty(t *testing.T) {
 }
 
 func TestIsChannelIDIsUserID(t *testing.T) {
-	if !IsChannelID("C060RS20UMV") || !IsChannelID("D060RS20UMV") || !IsChannelID("G060RS20UMV") {
+	if !IsChannelID("C0123ABCD") || !IsChannelID("D0123ABCD") || !IsChannelID("G0123ABCD") {
 		t.Error("expected C/D/G IDs to be channel IDs")
 	}
-	if IsChannelID("U060RS20UMV") || IsChannelID("C1234567") || IsChannelID("c060rs20umv") {
+	if IsChannelID("U0123ABCD") || IsChannelID("C1234567") || IsChannelID("c060rs20umv") {
 		t.Error("unexpected channel ID match")
 	}
 	if !IsUserID("U12345ABCDE") {
