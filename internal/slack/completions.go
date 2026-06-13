@@ -76,14 +76,29 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 			add("#"+ch.Name, label, e.FetchedAt, ch.Name, ch.ID)
 		}
 		for name, e := range loadCacheEntries[string](cacheDir, workspaceURL, "channel-names") {
-			add("#"+name, "#"+name, e.FetchedAt, name, e.Value)
+			// Name-index entries carry no topic — show just "#name" rather than
+			// a redundant "#name — #name" (topic'd entries come from the store).
+			add("#"+name, "", e.FetchedAt, name, e.Value)
 		}
 	}
 	if sources&CompleteUsers != 0 {
 		for _, e := range loadCacheEntries[CompactUser](cacheDir, workspaceURL, "users") {
 			u := e.Value
-			desc := firstNonEmpty(u.DisplayName, u.RealName, u.Name)
-			add(u.ID, desc, e.FetchedAt, u.ID, u.Name, u.DisplayName, u.RealName)
+			// Complete to @handle (resolvable everywhere a user is accepted);
+			// the real name and id go in the description.
+			value := u.ID
+			if u.Name != "" {
+				value = "@" + u.Name
+			}
+			desc := firstNonEmpty(u.RealName, u.DisplayName)
+			if u.ID != "" {
+				if desc != "" {
+					desc += " (" + u.ID + ")"
+				} else {
+					desc = u.ID
+				}
+			}
+			add(value, desc, e.FetchedAt, value, "@"+u.Name, u.Name, u.ID, u.DisplayName, u.RealName)
 		}
 	}
 	if sources&CompleteTriggers != 0 {

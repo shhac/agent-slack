@@ -19,6 +19,8 @@ func TestParseTarget(t *testing.T) {
 		{"user ID", "U12345ABCDE", Target{Kind: TargetUser, UserID: "U12345ABCDE"}},
 		{"user ID with whitespace", "  U09GDJJKCCW  ", Target{Kind: TargetUser, UserID: "U09GDJJKCCW"}},
 		{"short U-prefix is a channel name", "U1234", Target{Kind: TargetChannel, Channel: "#U1234"}},
+		{"@handle is a user target", "@alice", Target{Kind: TargetUser, UserID: "@alice"}},
+		{"@U… normalizes to the bare id", "@U12345ABCDE", Target{Kind: TargetUser, UserID: "U12345ABCDE"}},
 	}
 	for _, tc := range cases {
 		got, err := ParseTarget(tc.input)

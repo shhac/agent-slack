@@ -17,13 +17,13 @@ const (
 )
 
 // Target is a parsed CLI <target>: a message permalink, a channel
-// ("#name" or ID), or a user ID (DM target). Name→ID resolution needs the
+// ("#name" or ID), or a user (DM target). Name/handle→ID resolution needs the
 // API and happens in the client layer.
 type Target struct {
 	Kind    TargetKind
 	Ref     *MessageRef // Kind == TargetURL
 	Channel string      // Kind == TargetChannel: "#name" or a C…/D…/G… ID
-	UserID  string      // Kind == TargetUser
+	UserID  string      // Kind == TargetUser: a U… id or an unresolved "@handle"
 	// WorkspaceURL is set when a TargetChannel was given as a channel URL
 	// (https://team.slack.com/archives/C…); it pins the workspace the same way
 	// a permalink does. Empty for bare names/IDs, which use the default.
@@ -46,14 +46,14 @@ func IsUserID(s string) bool {
 	return userIDRe.MatchString(s)
 }
 
-// ParseTarget interprets a CLI <target> argument. Anything that is not a
-// permalink, user ID, or channel ID is treated as a bare channel name and
-// normalized to "#name".
+// ParseTarget interprets a CLI <target> argument. A U… id or an "@handle" is a
+// user (DM) target; a permalink, channel URL, #name, or C…/G…/D… id is a
+// channel; anything else is a bare channel name normalized to "#name".
 func ParseTarget(input string) (Target, error) {
 	trimmed := strings.TrimSpace(input)
 	if trimmed == "" {
 		return Target{}, agenterrors.New("missing target", agenterrors.FixableByAgent).
-			WithHint("pass a Slack permalink, #channel, channel ID, or user ID")
+			WithHint("pass a Slack permalink, #channel, channel ID, @handle, or user ID")
 	}
 
 	if ref, err := ParseMessageURL(trimmed); err == nil {
@@ -64,6 +64,14 @@ func ParseTarget(input string) (Target, error) {
 	}
 
 	if IsUserID(trimmed) {
+		return Target{Kind: TargetUser, UserID: trimmed}, nil
+	}
+	// "@handle" (or "@U…") is a user target; the handle resolves to an id in
+	// the client layer.
+	if rest, ok := strings.CutPrefix(trimmed, "@"); ok && rest != "" {
+		if IsUserID(rest) {
+			return Target{Kind: TargetUser, UserID: rest}, nil
+		}
 		return Target{Kind: TargetUser, UserID: trimmed}, nil
 	}
 	if strings.HasPrefix(trimmed, "#") || IsChannelID(trimmed) {

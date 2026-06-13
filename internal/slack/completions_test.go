@@ -81,7 +81,7 @@ func TestReadCompletionsSourceFiltering(t *testing.T) {
 		"C0DEVS": {FetchedAt: 100, Value: CompactChannel{ID: "C0DEVS", Name: "devs"}},
 	})
 	writeCacheCategory(t, dir, ws, "users", map[string]cacheEntry[CompactUser]{
-		"U0ALICE": {FetchedAt: 100, Value: CompactUser{ID: "U0ALICE", DisplayName: "Alice"}},
+		"U0ALICE": {FetchedAt: 100, Value: CompactUser{ID: "U0ALICE", Name: "alice", RealName: "Alice Anderson"}},
 	})
 	writeCacheCategory(t, dir, ws, "workflow-triggers", map[string]cacheEntry[WorkflowPreview]{
 		"Ft0PING": {FetchedAt: 100, Value: WorkflowPreview{TriggerID: "Ft0PING", Name: "Ping Monitor"}},
@@ -91,14 +91,22 @@ func TestReadCompletionsSourceFiltering(t *testing.T) {
 	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteChannels)); len(got) != 1 || got[0] != "#devs" {
 		t.Errorf("channels-only: %v", got)
 	}
-	// Users-only.
-	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteUsers)); len(got) != 1 || got[0] != "U0ALICE" {
-		t.Errorf("users-only: %v", got)
+	// Users-only: completes to @handle with "Real Name (id)" as the hint, and
+	// matches by handle, id, or name prefix.
+	users := ReadCompletions(dir, ws, "", 10, CompleteUsers)
+	if len(users) != 1 || users[0].Value != "@alice" || users[0].Description != "Alice Anderson (U0ALICE)" {
+		t.Errorf("users-only: %+v", users)
+	}
+	if got := completionValues(ReadCompletions(dir, ws, "@al", 10, CompleteUsers)); len(got) != 1 || got[0] != "@alice" {
+		t.Errorf("@-prefix: %v", got)
+	}
+	if got := completionValues(ReadCompletions(dir, ws, "U0AL", 10, CompleteUsers)); len(got) != 1 || got[0] != "@alice" {
+		t.Errorf("id-prefix should still surface the handle: %v", got)
 	}
 	// Triggers-only, with the workflow name as the description.
-	items := ReadCompletions(dir, ws, "", 10, CompleteTriggers)
-	if len(items) != 1 || items[0].Value != "Ft0PING" || items[0].Description != "Ping Monitor" {
-		t.Errorf("triggers-only: %+v", items)
+	triggers := ReadCompletions(dir, ws, "", 10, CompleteTriggers)
+	if len(triggers) != 1 || triggers[0].Value != "Ft0PING" || triggers[0].Description != "Ping Monitor" {
+		t.Errorf("triggers-only: %+v", triggers)
 	}
 	// Combined draws from every requested source.
 	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteChannels|CompleteUsers|CompleteTriggers)); len(got) != 3 {

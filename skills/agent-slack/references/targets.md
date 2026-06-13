@@ -51,15 +51,20 @@ When the target is a channel (name/ID, or channel URL with no message),
 commands that act on one message (`get`, `edit`, `delete`, `react`, `mark`)
 require `--ts "<seconds>.<micros>"`. `message list` shows recent ts values.
 
-## 4. User ID (DM)
+## 4. User (DM): `U…` id or `@handle`
 
-A `U…` user ID is a DM target: the DM auto-opens and the message goes there.
+A `U…` user id or an `@handle` is a DM target — the DM auto-opens and the
+message goes there. `@handle` resolves to an id wherever a user is accepted
+(message targets, `user get`, `user dm-open`, `channel invite --users`).
 
 ```bash
 agent-slack message send U05BRPTKL6A "hi"          # DM auto-opens
+agent-slack message send @alice "hi"               # same, by handle
 agent-slack user dm-open @alice @bob                # group DM channel id
 ```
 
+Shell completion for a user-accepting argument suggests `@handle` (with the
+real name and id as the hint), so tab-completing fills a resolvable value.
 Some commands reject user targets (e.g. `channel mark`) — they return
 `fixable_by: agent` telling you to use a channel or message URL instead.
 

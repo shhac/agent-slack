@@ -62,6 +62,27 @@ func TestMessageSendDMTarget(t *testing.T) {
 	}
 }
 
+func TestMessageSendHandleTarget(t *testing.T) {
+	f := newCLIFixture(t)
+	// @handle resolves to an id (users.list), then a DM opens.
+	f.server.HandleBody("users.list", map[string]any{
+		"ok": true, "members": []any{map[string]any{"id": "U12345ABCDE", "name": "alice"}},
+	})
+	f.server.HandleBody("conversations.open", map[string]any{"ok": true, "channel": map[string]any{"id": "D999"}})
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.000001", "channel": "D999"})
+
+	out, _, err := f.run(t, "message", "send", "@alice", "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseJSON(t, out)["channel_id"] != "D999" {
+		t.Errorf("@handle target should DM the resolved user: %s", out)
+	}
+	if got := f.server.CallsFor("conversations.open")[0].Params.Get("users"); got != "U12345ABCDE" {
+		t.Errorf("opened DM with %q, want the resolved id", got)
+	}
+}
+
 func TestMessageSendScheduled(t *testing.T) {
 	f := newCLIFixture(t)
 	f.resolvableChannel("C123")
