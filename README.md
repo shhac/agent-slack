@@ -1,22 +1,23 @@
 # agent-slack
 
 Slack CLI for AI agents — a token-efficient, structured-output tool for reading
-and (carefully) writing Slack from an LLM agent. This is a Go port of the
-TypeScript [`agent-slack`](https://github.com/stablyai/agent-slack), carrying
-over the learnings about how to build a Slack CLI that agents can drive safely.
+and (carefully) writing Slack from an LLM agent. It belongs to the `agent-*` CLI
+family (`agent-postmark`, `agent-stripe`, `lin`, …), sharing their conventions,
+output contract, and credential handling.
 
-> **Status:** feature-complete port. The full command surface is implemented
-> and tested against a fixture Slack server (`internal/mockslack`). See
-> [`design-docs/`](design-docs/) for design decisions and deliberate
-> divergences from the TS original.
+The TypeScript [`agent-slack`](https://github.com/stablyai/agent-slack) was part
+of the inspiration — it worked out a lot about driving Slack safely from an
+agent — but this is its own tool with its own design.
+
+> **Status:** feature-complete. The full command surface is implemented and
+> tested against a fixture Slack server (`internal/mockslack`). See
+> [`design-docs/`](design-docs/) for design decisions.
 
 ## Why Go
 
-The TypeScript original is ~22k LOC across 75 files and ships compiled binaries
-anyway. A Go port gives a single static binary with no runtime dependency, fast
-startup (matters for per-call agent invocation), and aligns with the rest of the
-`agent-*` CLI family (`agent-postmark`, `agent-stripe`, `lin`, …) so conventions,
-output contract, and credential handling are shared.
+A single static binary with no runtime dependency, fast startup (matters for
+per-call agent invocation), and alignment with the rest of the `agent-*` CLI
+family so conventions, output contract, and credential handling are shared.
 
 ## Features
 
