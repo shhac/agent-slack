@@ -97,6 +97,9 @@ func channelIDViaSearch(ctx context.Context, c *Client, name string) string {
 // the cache (so completions/resolvers grow from a direct get), and returns the
 // compact projection plus the raw channel object for --full.
 func GetChannelInfo(ctx context.Context, c *Client, channelID string) (CompactChannel, map[string]any, error) {
+	if raw, ok := c.channelInfoCache().get(channelID); ok {
+		return ToCompactChannel(raw), raw, nil
+	}
 	resp, err := c.API(ctx, "conversations.info", map[string]any{"channel": channelID, "include_num_members": true})
 	if err != nil {
 		return CompactChannel{}, nil, err
@@ -107,7 +110,8 @@ func GetChannelInfo(ctx context.Context, c *Client, channelID string) (CompactCh
 			WithHint("check the channel id/name; 'agent-slack channel list' shows conversations")
 	}
 	compact := ToCompactChannel(raw)
-	c.warmChannelCache([]CompactChannel{compact})
+	c.cacheChannelInfo(channelID, raw)            // serve future get / --full from cache
+	c.warmChannelCache([]CompactChannel{compact}) // and feed completions/resolution
 	return compact, raw, nil
 }
 

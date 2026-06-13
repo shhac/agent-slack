@@ -40,6 +40,12 @@ type CacheTTL struct {
 	WorkflowList    time.Duration
 	WorkflowPreview time.Duration
 	WorkflowSchema  time.Duration
+
+	// Serve thresholds: how fresh a cached entity/page must be to be returned
+	// from a `get`/`list` (short), as opposed to the long warm TTLs above that
+	// completions and name resolution tolerate.
+	Get  time.Duration
+	List time.Duration
 }
 
 // DefaultCacheTTL is the built-in per-category freshness: stable profile data
@@ -53,6 +59,8 @@ func DefaultCacheTTL() CacheTTL {
 		WorkflowList:    time.Hour,
 		WorkflowPreview: time.Hour,
 		WorkflowSchema:  time.Hour,
+		Get:             5 * time.Minute,
+		List:            5 * time.Minute,
 	}
 }
 

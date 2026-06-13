@@ -67,6 +67,12 @@ func ListConversations(ctx context.Context, c *Client, opts ConversationsOptions
 	if types == "" {
 		types = defaultConversationTypes
 	}
+	pages := c.conversationsPageCache()
+	pageKey := conversationsPageKey(opts)
+	if page, ok := pages.get(pageKey); ok {
+		return page, nil
+	}
+
 	method := "users.conversations"
 	if opts.All {
 		method = "conversations.list"
@@ -96,6 +102,9 @@ func ListConversations(ctx context.Context, c *Client, opts ConversationsOptions
 		warm = append(warm, ToCompactChannel(ch))
 	}
 	c.warmChannelCache(warm)
+
+	pages.set(pageKey, page)
+	pages.save()
 	return page, nil
 }
 
@@ -120,6 +129,12 @@ func ListUsers(ctx context.Context, c *Client, opts ListUsersOptions) (UsersPage
 		limit = 200
 	}
 	limit = clampInt(limit, 1, 1000)
+
+	pages := c.usersPageCache()
+	pageKey := usersPageKey(opts)
+	if page, ok := pages.get(pageKey); ok {
+		return page, nil
+	}
 
 	var users []CompactUser
 	nextCursor := ""
@@ -163,7 +178,11 @@ func ListUsers(ctx context.Context, c *Client, opts ListUsersOptions) (UsersPage
 		users[i].DMID = dmMap[users[i].ID]
 	}
 	c.warmUserCache(users)
-	return UsersPage{Users: users, NextCursor: nextCursor}, nil
+
+	page := UsersPage{Users: users, NextCursor: nextCursor}
+	pages.set(pageKey, page)
+	pages.save()
+	return page, nil
 }
 
 func fetchDMMap(ctx context.Context, c *Client) (map[string]string, error) {
@@ -186,6 +205,12 @@ func GetUser(ctx context.Context, c *Client, input string) (CompactUser, error) 
 	userID, err := ResolveUserID(ctx, c, input)
 	if err != nil {
 		return CompactUser{}, err
+	}
+	// A profile cached within the short Get window is complete (users.list and
+	// users.info return the same fields), so serve it without users.info.
+	serve := openCache[CompactUser](c.cache, "users", c.currentAuth().WorkspaceURL, cacheTTLOf(c.cache).Get, validUser)
+	if u, ok := serve.get(userID); ok {
+		return u, nil
 	}
 	resp, err := c.API(ctx, "users.info", map[string]any{"user": userID})
 	if err != nil {

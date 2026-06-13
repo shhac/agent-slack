@@ -58,6 +58,25 @@ func (c *Client) cachedChannel(channelID string) (CompactChannel, bool) {
 	return c.channelCache().get(channelID)
 }
 
+// channelInfoCache holds the full raw conversations.info object per channel, on
+// the short Get TTL — distinct from the channels entity store (compact, list-
+// warmed, partial: no member count). `channel get` reads/writes this so it
+// serves a complete record (and --full) from cache; completions/resolution
+// keep using the entity store.
+func (c *Client) channelInfoCache() *cacheSnapshot[map[string]any] {
+	return openCache[map[string]any](c.cache, "channel-info", c.currentAuth().WorkspaceURL,
+		cacheTTLOf(c.cache).Get, func(_ string, raw map[string]any) bool { return getStr(raw, "id") != "" })
+}
+
+func (c *Client) cacheChannelInfo(channelID string, raw map[string]any) {
+	if channelID == "" || getStr(raw, "id") == "" {
+		return
+	}
+	snap := c.channelInfoCache()
+	snap.set(channelID, raw)
+	snap.save()
+}
+
 func (c *Client) cacheChannel(ch CompactChannel) {
 	if !validChannel(ch.ID, ch) {
 		return
