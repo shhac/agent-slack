@@ -121,5 +121,8 @@ capped and prefix-filtered. Suggestions are kind-appropriate: a `<target>`
 (message get/list/send/edit/delete, channel mark, later remind) suggests
 channels and DM users; `workflow list` and `--channel` flags suggest channels;
 `user get`/`dm-open` suggest users; `workflow preview/get/run` suggest cached
-`Ft…` triggers (with the workflow name as the hint). Cache-only — never hits
-the API — so it is empty on a cold cache and fills as you work.
+`Ft…` triggers (with the workflow name as the hint). Channels and users are
+offered in every form — `#name`/id/`name` and `@handle`/id/`handle` — so any
+prefix style matches; a bare tab shows the primary (`#name`/`@handle`).
+Cache-only — never hits the API — so it is empty on a cold cache and fills as
+you work.

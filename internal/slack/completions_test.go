@@ -57,18 +57,25 @@ func TestReadTargetCompletions(t *testing.T) {
 		}
 	}
 
-	// Prefix filters case-insensitively, on name or id, with or without '#'.
-	if got := completionValues(ReadTargetCompletions(dir, ws, "dev", 10)); len(got) != 1 || got[0] != "#devs" {
+	// Prefix matches the value-form: bare "dev" → "devs", "#" prefix → "#general",
+	// id prefix → the id (each entity is offered in all three forms).
+	if got := completionValues(ReadTargetCompletions(dir, ws, "dev", 10)); len(got) != 1 || got[0] != "devs" {
 		t.Errorf("prefix dev: got %v", got)
+	}
+	if got := completionValues(ReadTargetCompletions(dir, ws, "#dev", 10)); len(got) != 1 || got[0] != "#devs" {
+		t.Errorf("prefix #dev: got %v", got)
 	}
 	if got := completionValues(ReadTargetCompletions(dir, ws, "#GEN", 10)); len(got) != 1 || got[0] != "#general" {
 		t.Errorf("prefix #GEN: got %v", got)
+	}
+	if got := completionValues(ReadTargetCompletions(dir, ws, "C0DE", 10)); len(got) != 1 || got[0] != "C0DEVS" {
+		t.Errorf("id prefix: got %v", got)
 	}
 	if got := completionValues(ReadTargetCompletions(dir, ws, "u0al", 10)); len(got) != 1 || got[0] != "U0ALICE" {
 		t.Errorf("prefix u0al: got %v", got)
 	}
 
-	// Cap is honored.
+	// Bare tab (no input) offers only the primary form per entity, capped.
 	if got := ReadTargetCompletions(dir, ws, "", 1); len(got) != 1 || got[0].Value != "#devs" {
 		t.Errorf("cap=1: got %v", got)
 	}
@@ -91,17 +98,20 @@ func TestReadCompletionsSourceFiltering(t *testing.T) {
 	if got := completionValues(ReadCompletions(dir, ws, "", 10, CompleteChannels)); len(got) != 1 || got[0] != "#devs" {
 		t.Errorf("channels-only: %v", got)
 	}
-	// Users-only: completes to @handle with "Real Name (id)" as the hint, and
-	// matches by handle, id, or name prefix.
+	// Users-only: bare tab → primary "@handle" with the real name as the hint;
+	// each form matches its own prefix style.
 	users := ReadCompletions(dir, ws, "", 10, CompleteUsers)
-	if len(users) != 1 || users[0].Value != "@alice" || users[0].Description != "Alice Anderson (U0ALICE)" {
+	if len(users) != 1 || users[0].Value != "@alice" || users[0].Description != "Alice Anderson" {
 		t.Errorf("users-only: %+v", users)
 	}
 	if got := completionValues(ReadCompletions(dir, ws, "@al", 10, CompleteUsers)); len(got) != 1 || got[0] != "@alice" {
-		t.Errorf("@-prefix: %v", got)
+		t.Errorf("@-prefix → @handle: %v", got)
 	}
-	if got := completionValues(ReadCompletions(dir, ws, "U0AL", 10, CompleteUsers)); len(got) != 1 || got[0] != "@alice" {
-		t.Errorf("id-prefix should still surface the handle: %v", got)
+	if got := completionValues(ReadCompletions(dir, ws, "al", 10, CompleteUsers)); len(got) != 1 || got[0] != "alice" {
+		t.Errorf("bare prefix → bare handle: %v", got)
+	}
+	if got := completionValues(ReadCompletions(dir, ws, "U0AL", 10, CompleteUsers)); len(got) != 1 || got[0] != "U0ALICE" {
+		t.Errorf("id prefix → id: %v", got)
 	}
 	// Triggers-only, with the workflow name as the description.
 	triggers := ReadCompletions(dir, ws, "", 10, CompleteTriggers)

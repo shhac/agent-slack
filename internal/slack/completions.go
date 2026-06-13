@@ -37,74 +37,74 @@ func ReadTargetCompletions(cacheDir, workspaceURL, toComplete string, limit int)
 }
 
 // ReadCompletions returns candidates for the selected sources from the
-// per-workspace caches, matching toComplete (case-insensitive prefix on the
-// value or its label), most-recently-cached first, capped at limit. The cache
-// fills as the user works, so this is empty on a cold cache and never blocks.
+// per-workspace caches, most-recently-cached first, capped at limit.
+//
+// Each entity is offered in several value-forms so whatever the user typed has
+// a matching candidate — a channel as `#name`, its id, and the bare `name`; a
+// user as `@handle`, its id, and the bare `handle`. A candidate is kept only if
+// its VALUE prefix-matches what was typed (the shell applies the same filter,
+// so a non-matching value would be hidden anyway), and on a bare tab (no input)
+// only the primary form is offered to avoid three lines per entity.
 func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sources CompletionSource) []CompletionItem {
 	type ranked struct {
 		item    CompletionItem
 		fetched int64
 	}
 	var all []ranked
-	needle := strings.ToLower(strings.TrimPrefix(toComplete, "#"))
+	needle := strings.ToLower(toComplete)
 	seen := map[string]bool{}
 
-	add := func(value, desc string, fetched int64, matchAgainst ...string) {
+	add := func(value, desc string, fetched int64) {
 		if value == "" || seen[value] {
 			return
 		}
-		if needle != "" && !anyHasPrefix(needle, matchAgainst) {
+		if needle != "" && !strings.HasPrefix(strings.ToLower(value), needle) {
 			return
 		}
 		seen[value] = true
 		all = append(all, ranked{CompletionItem{Value: value, Description: desc}, fetched})
 	}
+	// addForms offers an entity's alternate value-forms (primary first). With no
+	// input typed, only the primary form is added.
+	addForms := func(desc string, fetched int64, forms ...string) {
+		if needle == "" {
+			add(forms[0], desc, fetched)
+			return
+		}
+		for _, f := range forms {
+			add(f, desc, fetched)
+		}
+	}
 
 	if sources&CompleteChannels != 0 {
-		// Entity store first (richer metadata: topic), then the name→ID index,
-		// which the common search-resolution path populates even when no full
-		// channel object was ever fetched.
+		// Entity store first (has the topic), then the name→ID index, which the
+		// common search-resolution path populates even when no full channel
+		// object was ever fetched. Forms: #name, id, name.
 		for _, e := range loadCacheEntries[CompactChannel](cacheDir, workspaceURL, "channels") {
 			ch := e.Value
 			if ch.IsIM || ch.Name == "" {
 				continue // DMs have no stable name to complete
 			}
-			label := "#" + ch.Name
-			if ch.Topic != "" {
-				label += " — " + ch.Topic
-			}
-			add("#"+ch.Name, label, e.FetchedAt, ch.Name, ch.ID)
+			addForms(ch.Topic, e.FetchedAt, "#"+ch.Name, ch.ID, ch.Name)
 		}
 		for name, e := range loadCacheEntries[string](cacheDir, workspaceURL, "channel-names") {
-			// Name-index entries carry no topic — show just "#name" rather than
-			// a redundant "#name — #name" (topic'd entries come from the store).
-			add("#"+name, "", e.FetchedAt, name, e.Value)
+			addForms("", e.FetchedAt, "#"+name, e.Value, name) // e.Value is the id
 		}
 	}
 	if sources&CompleteUsers != 0 {
 		for _, e := range loadCacheEntries[CompactUser](cacheDir, workspaceURL, "users") {
 			u := e.Value
-			// Complete to @handle (resolvable everywhere a user is accepted);
-			// the real name and id go in the description.
-			value := u.ID
-			if u.Name != "" {
-				value = "@" + u.Name
-			}
 			desc := firstNonEmpty(u.RealName, u.DisplayName)
-			if u.ID != "" {
-				if desc != "" {
-					desc += " (" + u.ID + ")"
-				} else {
-					desc = u.ID
-				}
+			if u.Name == "" {
+				add(u.ID, desc, e.FetchedAt) // no handle — id only
+				continue
 			}
-			add(value, desc, e.FetchedAt, value, "@"+u.Name, u.Name, u.ID, u.DisplayName, u.RealName)
+			addForms(desc, e.FetchedAt, "@"+u.Name, u.ID, u.Name) // @handle, id, handle
 		}
 	}
 	if sources&CompleteTriggers != 0 {
 		for id, e := range loadCacheEntries[WorkflowPreview](cacheDir, workspaceURL, "workflow-triggers") {
-			p := e.Value
-			add(id, firstNonEmpty(p.Name, p.Workflow.Title), e.FetchedAt, id, p.Name, p.Workflow.Title)
+			add(id, firstNonEmpty(e.Value.Name, e.Value.Workflow.Title), e.FetchedAt)
 		}
 	}
 
@@ -117,13 +117,4 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 		out[i] = r.item
 	}
 	return out
-}
-
-func anyHasPrefix(needle string, candidates []string) bool {
-	for _, c := range candidates {
-		if c != "" && strings.HasPrefix(strings.ToLower(c), needle) {
-			return true
-		}
-	}
-	return false
 }

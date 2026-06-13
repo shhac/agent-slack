@@ -63,10 +63,12 @@ agent-slack message send @alice "hi"               # same, by handle
 agent-slack user dm-open @alice @bob                # group DM channel id
 ```
 
-Shell completion for a user-accepting argument suggests `@handle` (with the
-real name and id as the hint), so tab-completing fills a resolvable value.
-Some commands reject user targets (e.g. `channel mark`) — they return
-`fixable_by: agent` telling you to use a channel or message URL instead.
+Shell completion offers each user as `@handle`, its id, and the bare `handle`
+(and each channel as `#name`, its id, and the bare `name`), so whatever you've
+typed — `@al`, `al`, or a `U…`/`C…` prefix — has a matching candidate that
+fills a resolvable value. A bare tab shows the primary form (`@handle` /
+`#name`). Some commands reject user targets (e.g. `channel mark`) — they
+return `fixable_by: agent` telling you to use a channel or message URL instead.
 
 ## Multi-workspace disambiguation
 
