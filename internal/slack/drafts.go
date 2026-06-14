@@ -134,7 +134,7 @@ func draftBlocks(m OutgoingMessage) []any {
 		return m.Blocks
 	}
 	var out []any
-	for _, b := range render.RichTextBlocksForText(m.RawText) {
+	for _, b := range render.RichTextBlocksForText(m.RawText, render.RichTextOptions{SlackMarkdown: m.SlackMarkdown}) {
 		out = append(out, b)
 	}
 	return out

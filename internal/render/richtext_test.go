@@ -110,7 +110,7 @@ func TestTextToRichTextBlocksInlineFormatting(t *testing.T) {
 		text string
 		want string
 	}{
-		{"mixed angle text and bold", "Use <fix|label> and *bold*",
+		{"mixed angle text and bold", "Use <fix|label> and **bold**",
 			`[{"type":"rich_text_section","elements":[
 				{"type":"text","text":"Use "},
 				{"type":"text","text":"<fix|label>"},
@@ -226,13 +226,53 @@ func TestTextToRichTextBlocksNumberedList(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksBoldListItems(t *testing.T) {
-	blocks := TextToRichTextBlocks("- *Bold item*\n- Normal item", RichTextOptions{})
+	blocks := TextToRichTextBlocks("- **Bold item**\n- Normal item", RichTextOptions{})
 	lists := listElements(t, blocks)
 	if len(lists) != 1 {
 		t.Fatalf("expected 1 list, got %d", len(lists))
 	}
 	jsonEqual(t, "bold list item", lists[0].Elements[0],
 		`{"type":"rich_text_section","elements":[{"type":"text","text":"Bold item","style":{"bold":true}}]}`)
+}
+
+// TestTextToRichTextBlocksSlackDialect pins the --slack-markdown opt-out: with
+// SlackMarkdown set, single-delimiter Slack mrkdwn is parsed (and standard
+// Markdown markers are taken literally).
+func TestTextToRichTextBlocksSlackDialect(t *testing.T) {
+	blocks := TextToRichTextBlocks("a *bold* and _italic_ and ~struck~",
+		RichTextOptions{IncludeInlineFormatting: true, SlackMarkdown: true})
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	jsonEqual(t, "slack dialect", blocks[0].Elements, `[{"type":"rich_text_section","elements":[
+		{"type":"text","text":"a "},
+		{"type":"text","text":"bold","style":{"bold":true}},
+		{"type":"text","text":" and "},
+		{"type":"text","text":"italic","style":{"italic":true}},
+		{"type":"text","text":" and "},
+		{"type":"text","text":"struck","style":{"strike":true}},
+		{"type":"text","text":"\n"}
+	]}]`)
+}
+
+// TestTextToRichTextBlocksMarkdownDialect pins the default: standard Markdown.
+func TestTextToRichTextBlocksMarkdownDialect(t *testing.T) {
+	blocks := TextToRichTextBlocks("a **bold** and _italic_ and ~~struck~~ and __under__",
+		RichTextOptions{IncludeInlineFormatting: true})
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	jsonEqual(t, "markdown dialect", blocks[0].Elements, `[{"type":"rich_text_section","elements":[
+		{"type":"text","text":"a "},
+		{"type":"text","text":"bold","style":{"bold":true}},
+		{"type":"text","text":" and "},
+		{"type":"text","text":"italic","style":{"italic":true}},
+		{"type":"text","text":" and "},
+		{"type":"text","text":"struck","style":{"strike":true}},
+		{"type":"text","text":" and "},
+		{"type":"text","text":"under","style":{"underline":true}},
+		{"type":"text","text":"\n"}
+	]}]`)
 }
 
 func TestTextToRichTextBlocksEmojiAndChannelInItems(t *testing.T) {

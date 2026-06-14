@@ -21,21 +21,34 @@ type RichTextOptions struct {
 	// list/code/quote structure forces the rich_text path, and plain text is
 	// left to Slack's own mrkdwn handling.
 	IncludeInlineFormatting bool
+	// SlackMarkdown interprets the text as Slack mrkdwn (*bold*, _italic_,
+	// ~strike~, <url|label>) instead of the default standard Markdown
+	// (**bold**, _italic_, ~~strike~~, [label](url), __underline__).
+	SlackMarkdown bool
+}
+
+// inlineParser picks the inline scanner for the dialect.
+func inlineParser(opts RichTextOptions) func(string) []InlineElement {
+	if opts.SlackMarkdown {
+		return ParseInlineElements
+	}
+	return ParseMarkdownInline
 }
 
 // RichTextBlocksForText converts text to rich_text blocks, always returning at
 // least one block — unlike TextToRichTextBlocks, which returns nil when a plain
 // `text` field would do. For contexts like drafts that require `blocks` and
 // have no `text` fallback.
-func RichTextBlocksForText(text string) []RichTextBlock {
-	if blocks := TextToRichTextBlocks(text, RichTextOptions{IncludeInlineFormatting: true}); len(blocks) > 0 {
+func RichTextBlocksForText(text string, opts RichTextOptions) []RichTextBlock {
+	opts.IncludeInlineFormatting = true
+	if blocks := TextToRichTextBlocks(text, opts); len(blocks) > 0 {
 		return blocks
 	}
 	return []RichTextBlock{{
 		Type: "rich_text",
 		Elements: []RichTextElement{{
 			Type:     "rich_text_section",
-			Elements: inlineToAny(ParseInlineElements(text)),
+			Elements: inlineToAny(inlineParser(opts)(text)),
 		}},
 	}}
 }
@@ -46,6 +59,7 @@ func RichTextBlocksForText(text string) []RichTextBlock {
 // formatting). Returns nil when plain text suffices.
 func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
 	lines := strings.Split(text, "\n")
+	inline := inlineParser(opts)
 	var elements []RichTextElement
 	hasLists := false
 	hasFormatting := false
@@ -58,17 +72,17 @@ func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
 			idx = collectCodeBlock(lines, idx, &elements)
 			hasFormatting = true
 		case blockquoteRe.MatchString(line):
-			idx = collectBlockquote(lines, idx, &elements)
+			idx = collectBlockquote(lines, idx, inline, &elements)
 			hasFormatting = true
 		case bulletLineRe.MatchString(line):
 			hasLists = true
-			idx = collectList(lines, idx, "bullet", bulletLineRe, &elements)
+			idx = collectList(lines, idx, "bullet", bulletLineRe, inline, &elements)
 		case orderedLineRe.MatchString(line):
 			hasLists = true
-			idx = collectList(lines, idx, "ordered", orderedLineRe, &elements)
+			idx = collectList(lines, idx, "ordered", orderedLineRe, inline, &elements)
 		default:
 			var formatted bool
-			idx, formatted = collectPlainText(lines, idx, &elements)
+			idx, formatted = collectPlainText(lines, idx, inline, &elements)
 			if formatted {
 				hasFormatting = true
 			}
@@ -119,7 +133,7 @@ func collectCodeBlock(lines []string, startIdx int, elements *[]RichTextElement)
 
 // collectBlockquote consumes consecutive "> " lines starting at startIdx and
 // appends a rich_text_quote element. Returns the index past the quote.
-func collectBlockquote(lines []string, startIdx int, elements *[]RichTextElement) int {
+func collectBlockquote(lines []string, startIdx int, inline func(string) []InlineElement, elements *[]RichTextElement) int {
 	idx := startIdx
 	var quoteLines []string
 	for idx < len(lines) {
@@ -132,7 +146,7 @@ func collectBlockquote(lines []string, startIdx int, elements *[]RichTextElement
 	}
 	*elements = append(*elements, RichTextElement{
 		Type:     "rich_text_quote",
-		Elements: inlineToAny(ParseInlineElements(strings.Join(quoteLines, "\n"))),
+		Elements: inlineToAny(inline(strings.Join(quoteLines, "\n"))),
 	})
 	return idx
 }
@@ -141,7 +155,7 @@ func collectBlockquote(lines []string, startIdx int, elements *[]RichTextElement
 // startIdx and, when they aren't all blank, appends a rich_text_section. The
 // bool reports whether the run carried rich inline formatting. Returns the
 // next index.
-func collectPlainText(lines []string, startIdx int, elements *[]RichTextElement) (int, bool) {
+func collectPlainText(lines []string, startIdx int, inline func(string) []InlineElement, elements *[]RichTextElement) (int, bool) {
 	idx := startIdx
 	var textLines []string
 	for idx < len(lines) {
@@ -160,15 +174,15 @@ func collectPlainText(lines []string, startIdx int, elements *[]RichTextElement)
 	if !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}
-	inline := ParseInlineElements(content)
+	parsed := inline(content)
 	*elements = append(*elements, RichTextElement{
 		Type:     "rich_text_section",
-		Elements: inlineToAny(inline),
+		Elements: inlineToAny(parsed),
 	})
-	return idx, hasRichInlineFormatting(inline)
+	return idx, hasRichInlineFormatting(parsed)
 }
 
-func collectList(lines []string, startIdx int, style string, pattern *regexp.Regexp, elements *[]RichTextElement) int {
+func collectList(lines []string, startIdx int, style string, pattern *regexp.Regexp, inline func(string) []InlineElement, elements *[]RichTextElement) int {
 	idx := startIdx
 
 	// Base indent comes from the first item; anything ≥ 2 spaces deeper is a
@@ -208,7 +222,7 @@ func collectList(lines []string, startIdx int, style string, pattern *regexp.Reg
 		currentIndent = indent
 		currentItems = append(currentItems, RichTextElement{
 			Type:     "rich_text_section",
-			Elements: inlineToAny(ParseInlineElements(m[2])),
+			Elements: inlineToAny(inline(m[2])),
 		})
 		idx++
 	}

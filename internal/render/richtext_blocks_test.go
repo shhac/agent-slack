@@ -11,7 +11,7 @@ func TestRichTextBlocksForText(t *testing.T) {
 	if got := TextToRichTextBlocks("hello world", RichTextOptions{}); got != nil {
 		t.Fatalf("precondition: plain text should yield nil blocks, got %v", got)
 	}
-	plain := RichTextBlocksForText("hello world")
+	plain := RichTextBlocksForText("hello world", RichTextOptions{})
 	if len(plain) != 1 || plain[0].Type != "rich_text" {
 		t.Errorf("plain text blocks = %+v", plain)
 	}
@@ -21,12 +21,12 @@ func TestRichTextBlocksForText(t *testing.T) {
 	}
 
 	// Inline formatting (a mention) round-trips through the IncludeInlineFormatting path.
-	if raw, _ := json.Marshal(RichTextBlocksForText("hi <@U12345678>")); !strings.Contains(string(raw), "U12345678") {
+	if raw, _ := json.Marshal(RichTextBlocksForText("hi <@U12345678>", RichTextOptions{})); !strings.Contains(string(raw), "U12345678") {
 		t.Errorf("inline content lost: %s", raw)
 	}
 
 	// Structured text → delegates to TextToRichTextBlocks (non-empty).
-	if got := RichTextBlocksForText("- one\n- two"); len(got) == 0 {
+	if got := RichTextBlocksForText("- one\n- two", RichTextOptions{}); len(got) == 0 {
 		t.Error("structured text should produce blocks")
 	}
 }

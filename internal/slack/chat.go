@@ -10,6 +10,9 @@ type OutgoingMessage struct {
 	ThreadTS       string
 	ReplyBroadcast bool
 	Blocks         []any
+	// SlackMarkdown selects the dialect when RawText is converted to draft
+	// rich_text blocks: Slack mrkdwn when true, standard Markdown otherwise.
+	SlackMarkdown bool
 }
 
 func (m OutgoingMessage) params() map[string]any {
