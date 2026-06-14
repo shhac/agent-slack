@@ -182,16 +182,7 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 			}
 			// Best effort: the message is sent; a stale draft is harmless.
 			_ = slack.DeleteDraft(ctx, cc.Client, d.ID)
-			payload := map[string]any{"ok": true, "channel_id": result.ChannelID}
-			if result.TS != "" {
-				payload["ts"] = result.TS
-				if cc.WorkspaceURL != "" {
-					payload["permalink"] = render.BuildMessageURL(render.MessageURLParts{
-						WorkspaceURL: cc.WorkspaceURL, ChannelID: result.ChannelID, MessageTS: result.TS,
-					})
-				}
-			}
-			return printSingle(globals, payload)
+			return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
 		},
 	}
 	parent.AddCommand(cmd)

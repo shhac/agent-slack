@@ -212,7 +212,17 @@ func scheduledPayload(req sendRequest, r slack.ScheduleResult) map[string]any {
 }
 
 func postedPayload(req sendRequest, r slack.PostResult, workspaceURL string) map[string]any {
-	payload := basePayload(req, r.ChannelID)
+	return postedMessagePayload(r, workspaceURL, req.threadTS)
+}
+
+// postedMessagePayload is the ok/channel_id/ts/permalink shape every "we posted
+// a message" result shares (send and draft send). threadTS, when set, is added
+// and woven into the permalink.
+func postedMessagePayload(r slack.PostResult, workspaceURL, threadTS string) map[string]any {
+	payload := map[string]any{"ok": true, "channel_id": r.ChannelID}
+	if threadTS != "" {
+		payload["thread_ts"] = threadTS
+	}
 	if r.TS != "" {
 		payload["ts"] = r.TS
 		if workspaceURL != "" {
@@ -220,7 +230,7 @@ func postedPayload(req sendRequest, r slack.PostResult, workspaceURL string) map
 				WorkspaceURL: workspaceURL,
 				ChannelID:    r.ChannelID,
 				MessageTS:    r.TS,
-				ThreadTS:     req.threadTS,
+				ThreadTS:     threadTS,
 			})
 		}
 	}

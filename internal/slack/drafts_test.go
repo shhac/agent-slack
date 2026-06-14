@@ -89,6 +89,66 @@ func TestSaveDraftUsesProvidedBlocks(t *testing.T) {
 	}
 }
 
+func TestUpdateDraft(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("drafts.update", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C1"}}}})
+	c := browserClient(t, server)
+
+	if _, err := UpdateDraft(context.Background(), c, "Dr0A", OutgoingMessage{ChannelID: "C1", RawText: "new text"}); err != nil {
+		t.Fatal(err)
+	}
+	call := server.CallsFor("drafts.update")[0]
+	if call.Params.Get("draft_id") != "Dr0A" {
+		t.Errorf("draft_id = %q", call.Params.Get("draft_id"))
+	}
+	if call.Params.Get("client_last_updated_ts") == "" {
+		t.Error("update needs a fresh client_last_updated_ts")
+	}
+	if call.Params.Get("is_from_composer") != "false" || call.Params.Has("date_scheduled") {
+		t.Errorf("editing a plain draft must not schedule it: %v", call.Params)
+	}
+	if !strings.Contains(call.Params.Get("blocks"), "new text") {
+		t.Errorf("blocks should carry the new text: %s", call.Params.Get("blocks"))
+	}
+}
+
+func TestListDraftsPlainOnly(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		map[string]any{"id": "Dr0PLAIN", "date_scheduled": float64(0), "destinations": []any{map[string]any{"channel_id": "C1"}}},
+		map[string]any{"id": "Dr0SCHED", "date_scheduled": float64(100), "destinations": []any{map[string]any{"channel_id": "C1"}}},
+		map[string]any{"id": "Dr0DEL", "date_scheduled": float64(0), "is_deleted": true, "destinations": []any{map[string]any{"channel_id": "C1"}}},
+		map[string]any{"id": "Dr0SENT", "date_scheduled": float64(0), "is_sent": true, "destinations": []any{map[string]any{"channel_id": "C1"}}},
+	}})
+	c := browserClient(t, server)
+
+	drafts, err := ListDrafts(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(drafts) != 1 || drafts[0].ID != "Dr0PLAIN" {
+		t.Errorf("ListDrafts should return only active plain drafts: %+v", drafts)
+	}
+}
+
+func TestPlainDraftForChannel(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		map[string]any{"id": "Dr0A", "date_scheduled": float64(0), "destinations": []any{map[string]any{"channel_id": "C1"}}},
+	}})
+	c := browserClient(t, server)
+
+	d, ok, err := PlainDraftForChannel(context.Background(), c, "C1")
+	if err != nil || !ok || d.ID != "Dr0A" {
+		t.Errorf("match: d=%+v ok=%v err=%v", d, ok, err)
+	}
+	_, ok, err = PlainDraftForChannel(context.Background(), c, "C2")
+	if err != nil || ok {
+		t.Errorf("no draft for C2 should be ok=false, nil err: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestListScheduledMessagesBrowserFilters(t *testing.T) {
 	server := mockslack.New()
 	server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{

@@ -125,8 +125,12 @@ func TestDraftSend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parseJSON(t, out)["ts"] != "1.0001" {
+	sent := parseJSON(t, out)
+	if sent["ts"] != "1.0001" {
 		t.Errorf("out = %s", out)
+	}
+	if perma, _ := sent["permalink"].(string); !strings.Contains(perma, "/archives/C12345678/p") {
+		t.Errorf("send should surface a permalink: %v", sent["permalink"])
 	}
 	// Posts the draft's content, then removes the draft.
 	if !strings.Contains(f.server.CallsFor("chat.postMessage")[0].Params.Get("blocks"), "ready to go") {
