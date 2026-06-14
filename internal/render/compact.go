@@ -155,6 +155,9 @@ type CompactOptions struct {
 	// DownloadedPaths maps file ID → download outcome; files without an
 	// entry are omitted entirely.
 	DownloadedPaths map[string]DownloadResult
+	// SlackMarkdown keeps the native Slack mrkdwn in the rendered content
+	// instead of converting to standard Markdown.
+	SlackMarkdown bool
 }
 
 // ToCompactMessage shapes a parsed message into the compact output form.
@@ -164,7 +167,7 @@ func ToCompactMessage(msg MessageSummary, opts CompactOptions) CompactMessage {
 		maxBodyChars = DefaultMaxBodyChars
 	}
 
-	content := TruncateBody(renderContent(msg.Text, msg.Blocks, msg.Attachments), maxBodyChars)
+	content := TruncateBody(renderContent(msg.Text, msg.Blocks, msg.Attachments, opts.SlackMarkdown), maxBodyChars)
 
 	var files []CompactFile
 	for _, f := range msg.Files {

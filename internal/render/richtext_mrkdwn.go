@@ -123,6 +123,18 @@ func richTextElementToMrkdwn(elAny any) string {
 			return "<#" + channelID + ">"
 		}
 		return ""
+
+	case "usergroup":
+		if id := str(el["usergroup_id"]); id != "" {
+			return "<!subteam^" + id + ">"
+		}
+		return ""
+
+	case "broadcast":
+		if r := str(el["range"]); r != "" {
+			return "<!" + r + ">"
+		}
+		return ""
 	}
 
 	return ""

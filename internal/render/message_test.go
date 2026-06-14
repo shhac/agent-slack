@@ -23,7 +23,7 @@ func TestRenderPrefersBlocks(t *testing.T) {
 		]
 	}`)
 	got := RenderMessageContent(msg)
-	want := "*Hi*\n[View](https://example.com)"
+	want := "**Hi**\n[View](https://example.com)"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
@@ -45,6 +45,27 @@ func TestRenderUnderlineRichText(t *testing.T) {
 	got := RenderMessageContent(msg)
 	if got != "plain __under__" {
 		t.Errorf("got %q, want %q", got, "plain __under__")
+	}
+}
+
+func TestRenderRichTextUsergroupAndBroadcast(t *testing.T) {
+	// These element types used to render to "" (silent drop); now they emit the
+	// raw Slack token rather than vanishing.
+	msg := mustJSON(t, `{
+		"blocks": [
+			{"type": "rich_text", "elements": [
+				{"type": "rich_text_section", "elements": [
+					{"type": "text", "text": "ping "},
+					{"type": "usergroup", "usergroup_id": "S12345678"},
+					{"type": "text", "text": " and "},
+					{"type": "broadcast", "range": "here"}
+				]}
+			]}
+		]
+	}`)
+	got := RenderMessageContent(msg)
+	if got != "ping <!subteam^S12345678> and @here" {
+		t.Errorf("got %q", got)
 	}
 }
 
@@ -79,7 +100,7 @@ func TestRenderSectionFieldsAndButtonURLs(t *testing.T) {
 		]
 	}`)
 	got := RenderMessageContent(msg)
-	for _, want := range []string{"*Total Tests:*\n1", "*Triggered By:*\nSCHEDULED", "View: https://example.com/run/1"} {
+	for _, want := range []string{"**Total Tests:**\n1", "**Triggered By:**\nSCHEDULED", "View: https://example.com/run/1"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in %q", want, got)
 		}
@@ -317,7 +338,7 @@ func TestRenderRichTextElements(t *testing.T) {
 	for _, want := range []string{
 		// Bare <#C456> survives: the mrkdwn pass only rewrites labeled
 		// channel tokens, matching the TS behaviour.
-		"*bold* and `code` for @U123 in <#C456>[site](https://example.com)",
+		"**bold** and `code` for @U123 in <#C456>[site](https://example.com)",
 		"1. first\n2. second",
 		"> quoted",
 		"```x := 1```",

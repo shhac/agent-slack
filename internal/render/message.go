@@ -3,14 +3,20 @@ package render
 import "strings"
 
 // RenderMessageContent collapses a raw Slack message (decoded JSON) to one
-// Markdown string. Priority: blocks (rich_text and Block Kit) + attachments,
-// then legacy text.
+// standard-Markdown string. Priority: blocks (rich_text and Block Kit) +
+// attachments, then legacy text.
 func RenderMessageContent(msg any) string {
-	m, _ := asRecord(msg)
-	return renderContent(str(m["text"]), asSlice(m["blocks"]), asSlice(m["attachments"]))
+	return RenderMessageContentDialect(msg, false)
 }
 
-func renderContent(text string, blocks, attachments []any) string {
+// RenderMessageContentDialect is RenderMessageContent with an explicit dialect:
+// slackMarkdown true keeps the native Slack mrkdwn instead of standard Markdown.
+func RenderMessageContentDialect(msg any, slackMarkdown bool) string {
+	m, _ := asRecord(msg)
+	return renderContent(str(m["text"]), asSlice(m["blocks"]), asSlice(m["attachments"]), slackMarkdown)
+}
+
+func renderContent(text string, blocks, attachments []any, slackMarkdown bool) string {
 	st := &renderState{seen: map[uintptr]bool{}}
 	blockMd := strings.TrimSpace(mrkdwnFromBlocks(blocks))
 	attMd := strings.TrimSpace(mrkdwnFromAttachments(attachments, st))
@@ -25,11 +31,11 @@ func renderContent(text string, blocks, attachments []any) string {
 		combined = attMd
 	}
 	if combined != "" {
-		return strings.TrimSpace(MrkdwnToMarkdown(combined))
+		return strings.TrimSpace(MrkdwnToMarkdown(combined, slackMarkdown))
 	}
 
 	if t := strings.TrimSpace(text); t != "" {
-		return strings.TrimSpace(MrkdwnToMarkdown(t))
+		return strings.TrimSpace(MrkdwnToMarkdown(t, slackMarkdown))
 	}
 	return ""
 }
