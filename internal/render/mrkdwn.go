@@ -2,7 +2,6 @@ package render
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -23,7 +22,6 @@ var (
 	mrkdwnAngleRe  = regexp.MustCompile(`<[^>\n]+>`)
 	mrkdwnBoldRe   = regexp.MustCompile(`\*([^*\n]+)\*`)
 	mrkdwnStrikeRe = regexp.MustCompile(`~([^~\n]+)~`)
-	mrkdwnStashRe  = regexp.MustCompile("\x00(\\d+)\x00")
 
 	mrkdwnEntityReplacer = strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&")
 )
@@ -56,24 +54,8 @@ func MrkdwnToMarkdown(text string, slackMarkdown bool) string {
 // doubled Markdown form, masking code/fence/angle spans so their delimiters are
 // preserved verbatim.
 func convertEmphasisToMarkdown(text string) string {
-	var stash []string
-	mask := func(re *regexp.Regexp, s string) string {
-		return re.ReplaceAllStringFunc(s, func(m string) string {
-			stash = append(stash, m)
-			return "\x00" + strconv.Itoa(len(stash)-1) + "\x00"
-		})
-	}
-	out := mask(mrkdwnFenceRe, text)
-	out = mask(mrkdwnCodeRe, out)
-	out = mask(mrkdwnAngleRe, out)
-
-	out = mrkdwnBoldRe.ReplaceAllString(out, "**$1**")
-	out = mrkdwnStrikeRe.ReplaceAllString(out, "~~$1~~")
-
-	return mrkdwnStashRe.ReplaceAllStringFunc(out, func(m string) string {
-		if idx, err := strconv.Atoi(m[1 : len(m)-1]); err == nil && idx < len(stash) {
-			return stash[idx]
-		}
-		return m
-	})
+	masked, restore := Protect(text, mrkdwnFenceRe, mrkdwnCodeRe, mrkdwnAngleRe)
+	masked = mrkdwnBoldRe.ReplaceAllString(masked, "**$1**")
+	masked = mrkdwnStrikeRe.ReplaceAllString(masked, "~~$1~~")
+	return restore(masked)
 }

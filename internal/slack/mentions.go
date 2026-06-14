@@ -3,8 +3,9 @@ package slack
 import (
 	"context"
 	"regexp"
-	"strconv"
 	"strings"
+
+	"github.com/shhac/agent-slack/internal/render"
 )
 
 var (
@@ -17,7 +18,6 @@ var (
 	// inside code stays literal.
 	mentionFenceRe = regexp.MustCompile("(?s)```.*?```")
 	mentionCodeRe  = regexp.MustCompile("`[^`\n]+`")
-	mentionStashRe = regexp.MustCompile("\x00(\\d+)\x00")
 )
 
 // ResolveMentions rewrites bare @handle / @group tokens into Slack mention
@@ -27,7 +27,7 @@ var (
 // handles stay literal. Best-effort: a resolution error leaves the token as-is.
 // A name is tried as a user first, then as a usergroup.
 func ResolveMentions(ctx context.Context, c *Client, text string) string {
-	masked, stash := maskCodeSpans(text)
+	masked, restore := render.Protect(text, mentionFenceRe, mentionCodeRe)
 
 	matches := mentionCandidateRe.FindAllStringSubmatch(masked, -1)
 	if len(matches) == 0 {
@@ -64,34 +64,9 @@ func ResolveMentions(ctx context.Context, c *Client, text string) string {
 		}
 		return match
 	})
-	return unmaskCodeSpans(resolved, stash)
+	return restore(resolved)
 }
 
 func isBroadcastName(lower string) bool {
 	return lower == "here" || lower == "channel" || lower == "everyone"
-}
-
-// maskCodeSpans replaces fenced and inline code with NUL sentinels so mention
-// resolution skips their contents, returning the masked text and the stash to
-// restore afterwards.
-func maskCodeSpans(text string) (string, []string) {
-	var stash []string
-	mask := func(re *regexp.Regexp, s string) string {
-		return re.ReplaceAllStringFunc(s, func(m string) string {
-			stash = append(stash, m)
-			return "\x00" + strconv.Itoa(len(stash)-1) + "\x00"
-		})
-	}
-	out := mask(mentionFenceRe, text)
-	out = mask(mentionCodeRe, out)
-	return out, stash
-}
-
-func unmaskCodeSpans(text string, stash []string) string {
-	return mentionStashRe.ReplaceAllStringFunc(text, func(m string) string {
-		if idx, err := strconv.Atoi(m[1 : len(m)-1]); err == nil && idx < len(stash) {
-			return stash[idx]
-		}
-		return m
-	})
 }

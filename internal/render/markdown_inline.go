@@ -93,34 +93,43 @@ func parseMarkdownInto(text string, base InlineStyle) []InlineElement {
 	return elements
 }
 
+type emphasisToken struct {
+	delim string
+	style InlineStyle
+}
+
+// Longest-run-first per delimiter byte. Italic accepts * or _; bold is **;
+// underline is __ (our extension); *** / ___ combine; ~~ is strike.
+var (
+	asteriskTokens = []emphasisToken{
+		{"***", InlineStyle{Bold: true, Italic: true}},
+		{"**", InlineStyle{Bold: true}},
+		{"*", InlineStyle{Italic: true}},
+	}
+	underscoreTokens = []emphasisToken{
+		{"___", InlineStyle{Underline: true, Italic: true}},
+		{"__", InlineStyle{Underline: true}},
+		{"_", InlineStyle{Italic: true}},
+	}
+	tildeTokens = []emphasisToken{{"~~", InlineStyle{Strike: true}}}
+)
+
 // scanMarkdownEmphasis matches an emphasis run (**, *, ***, __, _, ___, ~~) at i
 // and its nearest valid closing run, returning the inner content (to be parsed
 // recursively) and the style it applies. Underscore runs require a non-word
 // boundary on both sides so snake_case identifiers aren't italicised.
 func scanMarkdownEmphasis(text string, i int) (content string, style InlineStyle, end int, ok bool) {
-	type token struct {
-		delim string
-		style InlineStyle
-	}
-	var tokens []token
+	var tokens []emphasisToken
 	switch text[i] {
 	case '*':
-		tokens = []token{
-			{"***", InlineStyle{Bold: true, Italic: true}},
-			{"**", InlineStyle{Bold: true}},
-			{"*", InlineStyle{Italic: true}},
-		}
+		tokens = asteriskTokens
 	case '_':
 		if !boundaryBefore(text, i) {
 			return "", InlineStyle{}, 0, false
 		}
-		tokens = []token{
-			{"___", InlineStyle{Underline: true, Italic: true}},
-			{"__", InlineStyle{Underline: true}},
-			{"_", InlineStyle{Italic: true}},
-		}
+		tokens = underscoreTokens
 	case '~':
-		tokens = []token{{"~~", InlineStyle{Strike: true}}}
+		tokens = tildeTokens
 	default:
 		return "", InlineStyle{}, 0, false
 	}
@@ -131,32 +140,38 @@ func scanMarkdownEmphasis(text string, i int) (content string, style InlineStyle
 			continue
 		}
 		n := len(t.delim)
-		from := i + n
-		for {
+		for from := i + n; ; {
 			rel := strings.Index(text[from:], t.delim)
 			if rel < 0 {
 				break
 			}
 			j := from + rel
-			if j == i+n { // empty content
-				from = j + n
-				continue
+			if validEmphasisCloser(text, i+n, j, n, underscore) {
+				return text[i+n : j], t.style, j + n, true
 			}
-			if text[j-1] == '\\' { // escaped delimiter, not a closer
-				from = j + n
-				continue
-			}
-			if underscore {
-				after := j + n
-				if after < len(text) && isWordByte(text[after]) {
-					from = j + n
-					continue
-				}
-			}
-			return text[i+n : j], t.style, j + n, true
+			from = j + n
 		}
 	}
 	return "", InlineStyle{}, 0, false
+}
+
+// validEmphasisCloser reports whether the delimiter run at j closes an emphasis
+// span whose content starts at contentStart. A closer is invalid when the
+// content is empty, the delimiter is backslash-escaped, or (for underscore runs)
+// it is immediately followed by a word character (so file_name_here isn't split).
+func validEmphasisCloser(text string, contentStart, j, n int, underscore bool) bool {
+	if j == contentStart { // empty content
+		return false
+	}
+	if text[j-1] == '\\' { // escaped delimiter, not a closer
+		return false
+	}
+	if underscore {
+		if after := j + n; after < len(text) && isWordByte(text[after]) {
+			return false
+		}
+	}
+	return true
 }
 
 // scanMarkdownLink matches [label](url). A bare [text](url) where label == url
