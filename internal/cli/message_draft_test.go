@@ -195,6 +195,25 @@ func TestDraftSendScheduleFallsBackToRequestedTime(t *testing.T) {
 	}
 }
 
+func TestDraftCreateResolvesHandleAndMarkdown(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{
+		map[string]any{"id": "U0ALICEAA", "name": "alice"}}})
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	if _, _, err := f.run(t, "message", "draft", "create", "C12345678", "hi @alice in **bold**"); err != nil {
+		t.Fatal(err)
+	}
+	blocks := f.server.CallsFor("drafts.create")[0].Params.Get("blocks")
+	if !strings.Contains(blocks, `"user_id":"U0ALICEAA"`) {
+		t.Errorf("draft should carry the resolved @alice mention: %s", blocks)
+	}
+	if !strings.Contains(blocks, `"bold":true`) {
+		t.Errorf("draft should carry Markdown bold: %s", blocks)
+	}
+}
+
 func TestDraftCreateAlreadyExists(t *testing.T) {
 	f := newBrowserCLIFixture(t)
 	f.server.HandleBody("drafts.create", map[string]any{"ok": false, "error": "attached_draft_exists"})

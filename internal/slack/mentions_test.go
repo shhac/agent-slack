@@ -29,6 +29,41 @@ func TestResolveUsergroupID(t *testing.T) {
 	}
 }
 
+func TestResolveUsergroupIDNotFoundNotCached(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("usergroups.list", map[string]any{"ok": true, "usergroups": []any{
+		map[string]any{"id": "S0YEET01", "handle": "yeeters"},
+	}})
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+
+	for i := 0; i < 2; i++ {
+		if id, err := ResolveUsergroupID(context.Background(), c, "ghost"); err != nil || id != "" {
+			t.Fatalf("ghost lookup %d: id=%q err=%v", i, id, err)
+		}
+	}
+	// A not-found must NOT be cached against the TTL (a group created later must
+	// resolve), so the second lookup re-fetches.
+	if n := len(server.CallsFor("usergroups.list")); n != 2 {
+		t.Errorf("not-found should re-fetch: usergroups.list called %d times, want 2", n)
+	}
+}
+
+func TestResolveMentionsUserBeatsUsergroup(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{
+		map[string]any{"id": "U0DUP0001", "name": "dup"},
+	}})
+	server.HandleBody("usergroups.list", map[string]any{"ok": true, "usergroups": []any{
+		map[string]any{"id": "S0DUP0001", "handle": "dup"},
+	}})
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+
+	// A handle that is both a user and a usergroup resolves to the user.
+	if got := ResolveMentions(context.Background(), c, "ping @dup"); got != "ping <@U0DUP0001>" {
+		t.Errorf("user should win: got %q", got)
+	}
+}
+
 func TestResolveMentions(t *testing.T) {
 	server := mockslack.New()
 	server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{

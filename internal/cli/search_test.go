@@ -35,6 +35,34 @@ func TestSearchMessages(t *testing.T) {
 	}
 }
 
+func TestSearchDialect(t *testing.T) {
+	run := func(slackMarkdown bool) string {
+		f := newCLIFixture(t)
+		f.server.HandleBody("search.messages", mockslack.SearchMessages(
+			mockslack.SearchMatch("C12345678", "1770165109.628379",
+				"https://acme.slack.com/archives/C12345678/p1770165109628379"),
+		))
+		f.server.HandleBody("conversations.history", historyWith(
+			simpleMessage("1770165109.628379", "U12345678", "a *bold* hit"),
+		))
+		args := []string{"search", "messages", "bold"}
+		if slackMarkdown {
+			args = append(args, "--slack-markdown")
+		}
+		out, _, err := f.run(t, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parseNDJSON(t, out)[0]["content"].(string)
+	}
+	if got := run(false); got != "a **bold** hit" {
+		t.Errorf("default content = %q, want standard Markdown", got)
+	}
+	if got := run(true); got != "a *bold* hit" {
+		t.Errorf("--slack-markdown content = %q, want native Slack mrkdwn", got)
+	}
+}
+
 func TestSearchQueryBuilding(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("search.messages", map[string]any{
