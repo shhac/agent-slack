@@ -142,6 +142,10 @@ func scanMarkdownEmphasis(text string, i int) (content string, style InlineStyle
 				from = j + n
 				continue
 			}
+			if text[j-1] == '\\' { // escaped delimiter, not a closer
+				from = j + n
+				continue
+			}
 			if underscore {
 				after := j + n
 				if after < len(text) && isWordByte(text[after]) {
