@@ -29,6 +29,25 @@ func TestRenderPrefersBlocks(t *testing.T) {
 	}
 }
 
+func TestRenderUnderlineRichText(t *testing.T) {
+	// Underline has no Slack mrkdwn syntax; the reverse renderer represents it as
+	// our __underline__ Markdown extension.
+	msg := mustJSON(t, `{
+		"blocks": [
+			{"type": "rich_text", "elements": [
+				{"type": "rich_text_section", "elements": [
+					{"type": "text", "text": "plain "},
+					{"type": "text", "text": "under", "style": {"underline": true}}
+				]}
+			]}
+		]
+	}`)
+	got := RenderMessageContent(msg)
+	if got != "plain __under__" {
+		t.Errorf("got %q, want %q", got, "plain __under__")
+	}
+}
+
 func TestRenderFallsBackToAttachments(t *testing.T) {
 	msg := mustJSON(t, `{
 		"text": "",

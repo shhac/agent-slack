@@ -90,6 +90,9 @@ func richTextElementToMrkdwn(elAny any) string {
 		if truthy(style["strike"]) {
 			text = "~" + text + "~"
 		}
+		if truthy(style["underline"]) {
+			text = "__" + text + "__"
+		}
 		return text
 
 	case "link":

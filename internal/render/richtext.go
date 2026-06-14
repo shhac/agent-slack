@@ -5,12 +5,14 @@ import (
 	"strings"
 )
 
-// InlineStyle marks rich_text text-element formatting.
+// InlineStyle marks rich_text text-element formatting. Underline has no native
+// Slack mrkdwn syntax; our Markdown dialect represents it as __underline__.
 type InlineStyle struct {
-	Bold   bool `json:"bold,omitempty"`
-	Italic bool `json:"italic,omitempty"`
-	Strike bool `json:"strike,omitempty"`
-	Code   bool `json:"code,omitempty"`
+	Bold      bool `json:"bold,omitempty"`
+	Italic    bool `json:"italic,omitempty"`
+	Strike    bool `json:"strike,omitempty"`
+	Underline bool `json:"underline,omitempty"`
+	Code      bool `json:"code,omitempty"`
 }
 
 // InlineElement is one rich_text inline element. Type selects which of the
