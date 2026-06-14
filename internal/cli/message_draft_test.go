@@ -143,6 +143,21 @@ func TestDraftSend(t *testing.T) {
 	}
 }
 
+func TestDraftCreateSlackMarkdown(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	// --slack-markdown: single *bold* is bold, and **double** stays literal.
+	if _, _, err := f.run(t, "message", "draft", "create", "C12345678", "a *bold* and **lit**", "--slack-markdown"); err != nil {
+		t.Fatal(err)
+	}
+	blocks := f.server.CallsFor("drafts.create")[0].Params.Get("blocks")
+	if !strings.Contains(blocks, `"bold":true`) || !strings.Contains(blocks, "bold") {
+		t.Errorf("slack-markdown draft should bold single-*: %s", blocks)
+	}
+}
+
 func TestDraftSendSchedulePromotes(t *testing.T) {
 	f := newBrowserCLIFixture(t)
 	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{

@@ -37,6 +37,29 @@ func TestMessageEditWithYes(t *testing.T) {
 	}
 }
 
+func TestMessageEditDialectAndMentions(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{
+		map[string]any{"id": "U0ALICEAA", "name": "alice"}}})
+	f.server.HandleBody("chat.update", map[string]any{"ok": true})
+
+	_, _, err := f.run(t, "message", "edit",
+		"https://acme.slack.com/archives/C1A2B3C4D/p1770165109628379",
+		"hi @alice in **bold**", "--yes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := f.server.CallsFor("chat.update")[0]
+	// Markdown formatting → rich_text blocks with the resolved mention.
+	if blocks := call.Params.Get("blocks"); !strings.Contains(blocks, `"bold":true`) || !strings.Contains(blocks, `"user_id":"U0ALICEAA"`) {
+		t.Errorf("edit blocks missing bold/mention: %s", blocks)
+	}
+	// The text fallback is de-marked plain, with the mention promoted.
+	if got := call.Params.Get("text"); got != "hi <@U0ALICEAA> in bold" {
+		t.Errorf("edit text fallback = %q", got)
+	}
+}
+
 func TestMessageDeleteWithYes(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("chat.delete", map[string]any{"ok": true})

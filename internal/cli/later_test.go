@@ -46,6 +46,35 @@ func TestLaterList(t *testing.T) {
 	}
 }
 
+func TestLaterListDialect(t *testing.T) {
+	run := func(slackMarkdown bool) string {
+		f := newCLIFixture(t)
+		f.server.HandleBody("saved.list", map[string]any{"ok": true,
+			"counts": map[string]any{"uncompleted_count": float64(1), "total_count": float64(1)},
+			"saved_items": []any{map[string]any{"item_id": "C12345678", "item_type": "message",
+				"ts": "1770165109.000001", "state": "in_progress"}}})
+		f.server.HandleBody("conversations.info", map[string]any{"ok": true,
+			"channel": map[string]any{"id": "C12345678", "name": "general"}})
+		f.server.HandleBody("conversations.history", historyWith(
+			simpleMessage("1770165109.000001", "U1", "a *bold* save")))
+		args := []string{"later", "list"}
+		if slackMarkdown {
+			args = append(args, "--slack-markdown")
+		}
+		out, _, err := f.run(t, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parseNDJSON(t, out)[0]["message"].(map[string]any)["content"].(string)
+	}
+	if got := run(false); got != "a **bold** save" {
+		t.Errorf("default = %q, want standard Markdown", got)
+	}
+	if got := run(true); got != "a *bold* save" {
+		t.Errorf("--slack-markdown = %q, want native mrkdwn", got)
+	}
+}
+
 func TestLaterCompleteUsesMultipartMark(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("saved.update", map[string]any{"ok": true})
