@@ -96,6 +96,10 @@ func TestTextToRichTextBlocksNil(t *testing.T) {
 		{"inline-only without option", "Visit <https://example.com|Example>", RichTextOptions{}},
 		{"non-url angle text", "Use <fix>", RichTextOptions{IncludeInlineFormatting: true}},
 		{"non-url labeled angle text", "Use <fix|label>", RichTextOptions{IncludeInlineFormatting: true}},
+		// A mention/channel alone renders in the text field, so it does not force
+		// blocks even with IncludeInlineFormatting (only styling/links do).
+		{"channel mention only", "See <#C12345678|general>", RichTextOptions{IncludeInlineFormatting: true}},
+		{"user mention only", "ping <@U12345678>", RichTextOptions{IncludeInlineFormatting: true}},
 	}
 	for _, tc := range cases {
 		if got := TextToRichTextBlocks(tc.text, tc.opts); got != nil {
@@ -128,12 +132,6 @@ func TestTextToRichTextBlocksInlineFormatting(t *testing.T) {
 			`[{"type":"rich_text_section","elements":[
 				{"type":"text","text":"Email "},
 				{"type":"link","url":"mailto:bob@example.com","text":"Bob"},
-				{"type":"text","text":"\n"}
-			]}]`},
-		{"channel mention", "See <#C12345678|general>",
-			`[{"type":"rich_text_section","elements":[
-				{"type":"text","text":"See "},
-				{"type":"channel","channel_id":"C12345678"},
 				{"type":"text","text":"\n"}
 			]}]`},
 	}

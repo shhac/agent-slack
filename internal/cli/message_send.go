@@ -25,6 +25,7 @@ type sendFlags struct {
 	scheduleIn     string
 	attach         []string
 	replyBroadcast bool
+	slackMarkdown  bool
 }
 
 func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
@@ -72,6 +73,7 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringVar(&flags.blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
 	cmd.Flags().StringVar(&flags.schedule, "schedule", "", "Schedule at an ISO 8601 time with timezone, or a unix timestamp")
 	cmd.Flags().StringVar(&flags.scheduleIn, "schedule-in", "", "Schedule after a duration (30m, 2d, tomorrow 9am, monday 9am)")
+	cmd.Flags().BoolVar(&flags.slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn (*bold*, <url|label>) instead of standard Markdown")
 	parent.AddCommand(cmd)
 }
 
@@ -84,6 +86,7 @@ type sendRequest struct {
 	replyBroadcast bool
 	attachPaths    []string
 	postAt         int64
+	slackMarkdown  bool
 }
 
 func (req sendRequest) outgoing() slack.OutgoingMessage {
@@ -94,6 +97,7 @@ func (req sendRequest) outgoing() slack.OutgoingMessage {
 		ThreadTS:       req.threadTS,
 		ReplyBroadcast: req.replyBroadcast,
 		Blocks:         req.blocks,
+		SlackMarkdown:  req.slackMarkdown,
 	}
 }
 
@@ -128,6 +132,13 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 		}
 	}
 
+	// Standard Markdown formatting must live in rich_text blocks (the mrkdwn
+	// text field would show literal **bold**); Slack mrkdwn renders in the text
+	// field, so it only needs blocks for list/code/quote structure.
+	rtOpts := render.RichTextOptions{
+		SlackMarkdown:           flags.slackMarkdown,
+		IncludeInlineFormatting: !flags.slackMarkdown,
+	}
 	var blocks []any
 	if flags.blocksPath != "" {
 		blocks, err = loadBlocksFromPath(stdin, flags.blocksPath)
@@ -135,19 +146,27 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 			return sendRequest{}, err
 		}
 	} else if text != "" {
-		for _, b := range render.TextToRichTextBlocks(text, render.RichTextOptions{}) {
+		for _, b := range render.TextToRichTextBlocks(text, rtOpts) {
 			blocks = append(blocks, b)
 		}
 	}
 
+	// In Markdown mode the rendered content is in blocks, so the text/notification
+	// fallback is the marker-flattened plain text rather than raw **markdown**.
+	outboundText := text
+	if !flags.slackMarkdown {
+		outboundText = render.PlainTextFromMarkdown(text)
+	}
+
 	return sendRequest{
-		text:           render.FormatOutboundText(text),
+		text:           render.FormatOutboundText(outboundText),
 		rawText:        text,
 		blocks:         blocks,
 		threadTS:       threadTS,
 		replyBroadcast: flags.replyBroadcast,
 		attachPaths:    attachPaths,
 		postAt:         postAt,
+		slackMarkdown:  flags.slackMarkdown,
 	}, nil
 }
 

@@ -33,6 +33,7 @@ func registerMessageDraft(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 	var blocksPath string
+	var slackMarkdown bool
 	cmd := &cobra.Command{
 		Use:               "create <target> [text]",
 		Short:             "Save a draft for the user to review, edit, and send",
@@ -40,7 +41,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, target, err := buildDraftRequest(cmd, globals, args, blocksPath)
+			req, target, err := buildDraftRequest(cmd, globals, args, blocksPath, slackMarkdown)
 			if err != nil {
 				return err
 			}
@@ -61,6 +62,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
+	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
 	parent.AddCommand(cmd)
 }
 
@@ -111,6 +113,7 @@ func registerDraftGet(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 	var blocksPath string
+	var slackMarkdown bool
 	cmd := &cobra.Command{
 		Use:               "edit <target> [text]",
 		Short:             "Replace the plain draft for a target",
@@ -118,7 +121,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, _, err := buildDraftRequest(cmd, globals, args, blocksPath)
+			req, _, err := buildDraftRequest(cmd, globals, args, blocksPath, slackMarkdown)
 			if err != nil {
 				return err
 			}
@@ -135,6 +138,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
+	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
 	parent.AddCommand(cmd)
 }
 
@@ -218,7 +222,7 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 
 // buildDraftRequest parses the target and validates the text/--blocks into a
 // sendRequest (reusing the send build path, minus scheduling/attachments).
-func buildDraftRequest(cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string) (sendRequest, render.Target, error) {
+func buildDraftRequest(cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string, slackMarkdown bool) (sendRequest, render.Target, error) {
 	text := ""
 	if len(args) > 1 {
 		text = args[1]
@@ -227,7 +231,7 @@ func buildDraftRequest(cmd *cobra.Command, globals *GlobalFlags, args []string, 
 	if err != nil {
 		return sendRequest{}, render.Target{}, err
 	}
-	req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath}, time.Now())
+	req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown}, time.Now())
 	return req, target, err
 }
 

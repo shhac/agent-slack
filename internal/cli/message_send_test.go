@@ -48,6 +48,44 @@ func TestMessageSendListBecomesRichText(t *testing.T) {
 	}
 }
 
+func TestMessageSendMarkdownBoldBecomesBlocks(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C123")
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.000001", "channel": "C123"})
+
+	if _, _, err := f.run(t, "message", "send", "#general", "this is **bold** now"); err != nil {
+		t.Fatal(err)
+	}
+	call := f.server.CallsFor("chat.postMessage")[0]
+	// Standard Markdown formatting must live in rich_text blocks, since the text
+	// field would show literal asterisks.
+	if blocks := call.Params.Get("blocks"); !strings.Contains(blocks, `"bold":true`) {
+		t.Errorf("expected bold rich_text block, got %q", blocks)
+	}
+	// The notification/text fallback is de-marked plain, not raw markdown.
+	if got := call.Params.Get("text"); got != "this is bold now" {
+		t.Errorf("text fallback = %q, want de-marked plain", got)
+	}
+}
+
+func TestMessageSendSlackMarkdownKeepsTextField(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C123")
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.000001", "channel": "C123"})
+
+	if _, _, err := f.run(t, "message", "send", "#general", "this is *bold* now", "--slack-markdown"); err != nil {
+		t.Fatal(err)
+	}
+	call := f.server.CallsFor("chat.postMessage")[0]
+	// Slack mrkdwn renders in the text field, so inline formatting needs no blocks.
+	if call.Params.Has("blocks") {
+		t.Error("slack-markdown inline formatting should not force blocks")
+	}
+	if got := call.Params.Get("text"); got != "this is *bold* now" {
+		t.Errorf("text = %q, want the Slack mrkdwn verbatim", got)
+	}
+}
+
 func TestMessageSendDMTarget(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("conversations.open", map[string]any{"ok": true, "channel": map[string]any{"id": "D999"}})

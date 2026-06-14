@@ -67,3 +67,18 @@ func TestParseMarkdownInline(t *testing.T) {
 		jsonEqual(t, tc.name, ParseMarkdownInline(tc.input), tc.want)
 	}
 }
+
+func TestPlainTextFromMarkdown(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"**bold** and _italic_ and `code`", "bold and italic and code"},
+		{"see [the docs](https://x.com)", "see the docs"},
+		{"ping @here and <@U12345678>", "ping <!here> and <@U12345678>"},
+		{"line one\n- **item**", "line one\n- item"},
+		{"~123 and file_name_here", "~123 and file_name_here"},
+	}
+	for _, tc := range cases {
+		if got := PlainTextFromMarkdown(tc.in); got != tc.want {
+			t.Errorf("PlainTextFromMarkdown(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

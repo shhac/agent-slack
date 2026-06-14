@@ -12,6 +12,7 @@ import (
 func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 	var ts string
 	var yes bool
+	var slackMarkdown bool
 	cmd := &cobra.Command{
 		Use:               "edit <target> <text>",
 		Short:             "Edit a message (destructive: requires --yes)",
@@ -26,12 +27,17 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			rtOpts := render.RichTextOptions{SlackMarkdown: slackMarkdown, IncludeInlineFormatting: !slackMarkdown}
+			outboundText := args[1]
+			if !slackMarkdown {
+				outboundText = render.PlainTextFromMarkdown(args[1])
+			}
 			params := map[string]any{
 				"channel": ref.ChannelID,
 				"ts":      ref.MessageTS,
-				"text":    render.FormatOutboundText(args[1]),
+				"text":    render.FormatOutboundText(outboundText),
 			}
-			if blocks := render.TextToRichTextBlocks(args[1], render.RichTextOptions{}); blocks != nil {
+			if blocks := render.TextToRichTextBlocks(args[1], rtOpts); blocks != nil {
 				params["blocks"] = toAnySlice(blocks)
 			}
 			if _, err := cc.Client.API(ctx, "chat.update", params); err != nil {
@@ -42,6 +48,7 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 	}
 	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel name/ID)")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm the edit")
+	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
 	parent.AddCommand(cmd)
 }
 

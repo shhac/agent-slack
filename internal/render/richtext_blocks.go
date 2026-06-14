@@ -95,9 +95,16 @@ func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
 	return []RichTextBlock{{Type: "rich_text", Elements: elements}}
 }
 
+// hasRichInlineFormatting reports whether elements carry styling or a link —
+// formatting the plain `text` field can't reproduce, so the rich_text path is
+// required. Mentions, channels, broadcasts and emoji render fine in the text
+// field, so they do not force blocks on their own.
 func hasRichInlineFormatting(elements []InlineElement) bool {
 	for _, el := range elements {
-		if el.Type != "text" || el.Style != nil {
+		if el.Type == "link" {
+			return true
+		}
+		if el.Type == "text" && el.Style != nil {
 			return true
 		}
 	}

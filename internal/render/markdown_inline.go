@@ -205,6 +205,42 @@ func mergeStyle(a, b InlineStyle) InlineStyle {
 	}
 }
 
+// PlainTextFromMarkdown flattens Markdown inline formatting to plain text,
+// keeping Slack tokens (mentions/emoji) so they still resolve. It feeds the
+// notification `text` fallback when the rendered content lives in blocks, so a
+// push notification reads "bold message", not "**bold** message".
+func PlainTextFromMarkdown(text string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(text, "\n") {
+		if b.Len() > 0 {
+			b.WriteByte('\n')
+		}
+		for _, el := range ParseMarkdownInline(line) {
+			switch el.Type {
+			case "text":
+				b.WriteString(el.Text)
+			case "link":
+				if el.Text != "" {
+					b.WriteString(el.Text)
+				} else {
+					b.WriteString(el.URL)
+				}
+			case "emoji":
+				b.WriteString(":" + el.Name + ":")
+			case "user":
+				b.WriteString("<@" + el.UserID + ">")
+			case "channel":
+				b.WriteString("<#" + el.ChannelID + ">")
+			case "usergroup":
+				b.WriteString("<!subteam^" + el.UsergroupID + ">")
+			case "broadcast":
+				b.WriteString("<!" + el.Range + ">")
+			}
+		}
+	}
+	return b.String()
+}
+
 func isMarkdownEscapable(b byte) bool {
 	switch b {
 	case '\\', '*', '_', '~', '`', '[', ']', '(', ')', '<', '>', '@', ':':
