@@ -21,6 +21,7 @@ const (
 	CompleteChannels CompletionSource = 1 << iota
 	CompleteUsers
 	CompleteTriggers
+	CompleteScheduled
 )
 
 // loadCacheEntries reads one category file for a workspace directly (ignoring
@@ -113,6 +114,11 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 	if sources&CompleteTriggers != 0 {
 		for id, e := range loadCacheEntries[WorkflowPreview](cacheDir, workspaceURL, "workflow-triggers") {
 			add(id, firstNonEmpty(e.Value.Name, e.Value.Workflow.Title), e.FetchedAt)
+		}
+	}
+	if sources&CompleteScheduled != 0 {
+		for id, e := range loadCacheEntries[CompactScheduled](cacheDir, workspaceURL, "scheduled") {
+			add(id, e.Value.Text, e.FetchedAt)
 		}
 	}
 

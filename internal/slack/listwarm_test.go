@@ -105,6 +105,33 @@ func TestGetChannelInfoWarmsCache(t *testing.T) {
 	}
 }
 
+func TestListScheduledWarmsCompletionCache(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("chat.scheduledMessages.list", map[string]any{
+		"ok": true,
+		"scheduled_messages": []any{
+			map[string]any{"id": "Q0AAAA1111", "channel_id": "C0AAAA1111", "post_at": float64(1800000000), "text": "stand-up reminder"},
+		},
+	})
+	dir := t.TempDir()
+	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	c := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
+
+	if _, err := ListScheduledMessages(context.Background(), c, ScheduledListOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The scheduled id is now a completion candidate — no API call, just a cache read.
+	items := ReadCompletions(dir, "https://acme.slack.com", "Q0", 10, CompleteScheduled)
+	if len(items) != 1 || items[0].Value != "Q0AAAA1111" || items[0].Description != "stand-up reminder" {
+		t.Errorf("scheduled completions = %+v", items)
+	}
+	// The command itself must never READ this cache (it always lists fresh).
+	if got := ReadCompletions(dir, "https://acme.slack.com", "", 10, CompleteChannels|CompleteUsers); len(got) != 0 {
+		t.Errorf("scheduled warm must not leak into channel/user completions: %+v", got)
+	}
+}
+
 func TestListChannelMembers(t *testing.T) {
 	server := mockslack.New()
 	server.HandleBody("conversations.members", map[string]any{

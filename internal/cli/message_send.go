@@ -203,7 +203,17 @@ func basePayload(req sendRequest, channelID string) map[string]any {
 }
 
 func scheduledPayload(req sendRequest, r slack.ScheduleResult) map[string]any {
-	payload := basePayload(req, r.ChannelID)
+	return scheduleResultPayload(r, req.threadTS)
+}
+
+// scheduleResultPayload is the {ok, channel_id, post_at, scheduled_message_id}
+// shape every "we scheduled a message" result shares (message send and draft
+// promote). threadTS, when set, is added.
+func scheduleResultPayload(r slack.ScheduleResult, threadTS string) map[string]any {
+	payload := map[string]any{"ok": true, "channel_id": r.ChannelID}
+	if threadTS != "" {
+		payload["thread_ts"] = threadTS
+	}
 	payload["post_at"] = r.PostAt
 	if r.ScheduledMessageID != "" {
 		payload["scheduled_message_id"] = r.ScheduledMessageID

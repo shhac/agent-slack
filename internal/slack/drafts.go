@@ -84,9 +84,10 @@ func SaveDraft(ctx context.Context, c *Client, m OutgoingMessage, postAt int64) 
 	return createDraft(ctx, c, "drafts.create", params)
 }
 
-// UpdateDraft replaces a plain draft's content. Browser auth only.
-func UpdateDraft(ctx context.Context, c *Client, draftID string, m OutgoingMessage) (Draft, error) {
-	params := draftContent(m, 0)
+// UpdateDraft replaces a draft's content; postAt 0 keeps it a plain draft,
+// postAt > 0 promotes it to a scheduled message in place. Browser auth only.
+func UpdateDraft(ctx context.Context, c *Client, draftID string, m OutgoingMessage, postAt int64) (Draft, error) {
+	params := draftContent(m, postAt)
 	params["draft_id"] = draftID
 	params["client_last_updated_ts"] = draftClientTS()
 	return createDraft(ctx, c, "drafts.update", params)

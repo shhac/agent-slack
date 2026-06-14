@@ -50,6 +50,12 @@ func triggerArgCompletion(globals *GlobalFlags) compFunc {
 	return cacheCompletion(globals, slack.CompleteTriggers, true)
 }
 
+// scheduledArgCompletion completes a scheduled-message id from the cache (warmed
+// by `scheduled list`).
+func scheduledArgCompletion(globals *GlobalFlags) compFunc {
+	return cacheCompletion(globals, slack.CompleteScheduled, true)
+}
+
 // userArgsCompletion completes a user on every positional (dm-open takes many).
 func userArgsCompletion(globals *GlobalFlags) compFunc {
 	return cacheCompletion(globals, slack.CompleteUsers, false)

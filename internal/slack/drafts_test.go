@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shhac/agent-slack/internal/mockslack"
 )
@@ -95,7 +96,7 @@ func TestUpdateDraft(t *testing.T) {
 		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C1"}}}})
 	c := browserClient(t, server)
 
-	if _, err := UpdateDraft(context.Background(), c, "Dr0A", OutgoingMessage{ChannelID: "C1", RawText: "new text"}); err != nil {
+	if _, err := UpdateDraft(context.Background(), c, "Dr0A", OutgoingMessage{ChannelID: "C1", RawText: "new text"}, 0); err != nil {
 		t.Fatal(err)
 	}
 	call := server.CallsFor("drafts.update")[0]
@@ -110,6 +111,36 @@ func TestUpdateDraft(t *testing.T) {
 	}
 	if !strings.Contains(call.Params.Get("blocks"), "new text") {
 		t.Errorf("blocks should carry the new text: %s", call.Params.Get("blocks"))
+	}
+}
+
+func TestUpdateDraftScheduled(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("drafts.update", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "date_scheduled": float64(777),
+		"destinations": []any{map[string]any{"channel_id": "C1"}}}})
+	c := browserClient(t, server)
+
+	// Promotion: postAt > 0 flips a plain draft to a scheduled message in place.
+	res, err := UpdateDraft(context.Background(), c, "Dr0A", OutgoingMessage{ChannelID: "C1", RawText: "promote me"}, 777)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ID != "Dr0A" || res.PostAt != 777 {
+		t.Errorf("promoted draft = %+v", res)
+	}
+	call := server.CallsFor("drafts.update")[0]
+	if call.Params.Get("is_from_composer") != "true" {
+		t.Errorf("promotion must set is_from_composer=true: %v", call.Params)
+	}
+	if call.Params.Get("date_scheduled") != "777" {
+		t.Errorf("date_scheduled = %q", call.Params.Get("date_scheduled"))
+	}
+	if call.Params.Get("client_last_updated_ts") == "" {
+		t.Error("update needs a fresh client_last_updated_ts")
+	}
+	if !strings.Contains(call.Params.Get("blocks"), "promote me") {
+		t.Errorf("blocks should carry the content: %s", call.Params.Get("blocks"))
 	}
 }
 
@@ -146,6 +177,31 @@ func TestPlainDraftForChannel(t *testing.T) {
 	_, ok, err = PlainDraftForChannel(context.Background(), c, "C2")
 	if err != nil || ok {
 		t.Errorf("no draft for C2 should be ok=false, nil err: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestListScheduledWarmsCompletionCacheBrowser(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		map[string]any{"id": "Dr0SCHED", "date_scheduled": float64(1800000000),
+			"destinations": []any{map[string]any{"channel_id": "C1"}},
+			"blocks":       []any{richTextBlock("browser-scheduled note")}},
+	}})
+	dir := t.TempDir()
+	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	cache := NewCache(dir, CacheNormal, DefaultCacheTTL(), func() time.Time { return now })
+	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-test", XOXD: "d", WorkspaceURL: ts.URL},
+		WithCache(cache))
+
+	if _, err := ListScheduledMessages(context.Background(), c, ScheduledListOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// Drafts are browser-only, so this scheduled-draft path is the real-world warm.
+	items := ReadCompletions(dir, ts.URL, "Dr0", 10, CompleteScheduled)
+	if len(items) != 1 || items[0].Value != "Dr0SCHED" || items[0].Description != "browser-scheduled note" {
+		t.Errorf("browser scheduled completions = %+v", items)
 	}
 }
 

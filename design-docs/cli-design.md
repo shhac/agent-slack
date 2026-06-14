@@ -119,19 +119,26 @@ model (`attached_draft_exists`, no `drafts.send`, `client_last_updated_ts`).
     `{id, channel_id, text}`.
   - `get <target>` / `edit <target> [text]` / `delete <target>` / `send <target>`
     — operate on the single plain draft for the target. `send` posts it
-    (`chat.postMessage`) then deletes it. Missing draft → `fixable_by: agent`
-    hint to `create`. `delete`/`edit` never touch a scheduled draft (they filter
-    to plain), so scheduled messages are managed only via `scheduled`.
+    (`chat.postMessage`) then deletes it; `send --schedule/--schedule-in`
+    instead **promotes** the draft to a scheduled message in place (one
+    `drafts.update` with `date_scheduled` + `is_from_composer:true`, same id, no
+    post/delete — it then lives under `scheduled`). Missing draft →
+    `fixable_by: agent` hint to `create`. `delete`/`edit` never touch a
+    scheduled draft (they filter to plain), so scheduled messages are managed
+    only via `scheduled`.
 - **Scheduled messages → id-addressed** (many per target). `scheduled list` /
   `scheduled cancel <id>` (browser cancel needs no `--channel`; bot/user tokens
   do). Bot/user tokens use `chat.scheduleMessage` / `chat.scheduledMessages.list`
   / `chat.deleteScheduledMessage` unchanged; the draft group is browser-only
   (drafts are a client feature → `fixable_by: human` on a bot/user token).
-- **Liveness over caching (decision):** `draft`/`scheduled` `list`/`get` always
-  hit the API fresh — this is the instant-messaging edge where staleness is
-  wrong, so draft/scheduled data is never cached. Completions therefore offer
-  draft/scheduled **ids** nowhere (they are ephemeral); only the `<target>`
-  argument completes, reusing the stable channel/user cache.
+- **Liveness over caching, but write-warm for completion (decision):**
+  `draft`/`scheduled` `list`/`get` always hit the API fresh and never *read* a
+  cache — this is the instant-messaging edge where a stale read is wrong. But
+  `scheduled list` *writes* the ids it just fetched into a `scheduled` cache
+  category (write-only warm), so `scheduled cancel <id>` can offer id
+  completions. The split is what keeps liveness intact: the command path is
+  always live; only the completion path (a pure cache-file read, no API/creds)
+  consumes the warmed ids, which age out at the category TTL.
 
 ## File downloads
 
@@ -163,8 +170,9 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
 - **Categories + default TTL**: `users` ID→profile (24h); `handles`
   @handle/email→ID, `channel-names` name→ID, `channels` ID→meta,
   `workflow-list` channelID→annotated workflows, `workflow-triggers`
-  Ft→preview, `workflow-schemas` Wf→schema (1h each). Stable data lasts a day;
-  volatile name/membership mappings an hour.
+  Ft→preview, `workflow-schemas` Wf→schema, `scheduled` id→compact
+  scheduled-message (write-only, completion-only) (1h each). Stable data lasts
+  a day; volatile name/membership mappings an hour.
 - **`workflow list` validates + warms** (decision): the listing endpoints
   (`bookmarks.list`/`workflows.featured.list`) carry no liveness info, so a
   deleted-but-bookmarked trigger used to list fine and only fail on `preview`.

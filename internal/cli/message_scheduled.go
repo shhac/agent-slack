@@ -56,9 +56,10 @@ func registerMessageScheduled(parent *cobra.Command, globals *GlobalFlags) {
 	var cancelChannel string
 	var yes bool
 	cancelCmd := &cobra.Command{
-		Use:   "cancel <scheduled-message-id>",
-		Short: "Cancel a pending scheduled message (destructive: requires --yes)",
-		Args:  cobra.ExactArgs(1),
+		Use:               "cancel <scheduled-message-id>",
+		Short:             "Cancel a pending scheduled message (destructive: requires --yes)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: scheduledArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cc, channelID, err := resolveScheduledChannel(ctx, globals, cancelChannel)

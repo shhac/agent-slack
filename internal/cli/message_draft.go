@@ -127,7 +127,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			req.channelID = d.ChannelID
-			updated, err := slack.UpdateDraft(ctx, cc.Client, d.ID, req.outgoing())
+			updated, err := slack.UpdateDraft(ctx, cc.Client, d.ID, req.outgoing(), 0)
 			if err != nil {
 				return err
 			}
@@ -165,18 +165,42 @@ func registerDraftDelete(parent *cobra.Command, globals *GlobalFlags) {
 }
 
 func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
+	var schedule, scheduleIn string
 	cmd := &cobra.Command{
 		Use:               "send <target>",
-		Short:             "Send the plain draft for a target now (posts it, then removes the draft)",
+		Short:             "Send the plain draft for a target now, or --schedule/--schedule-in to promote it to a scheduled message",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			postAt, err := slack.ResolveSchedulePostAt(schedule, scheduleIn, time.Now())
+			if err != nil {
+				return err
+			}
 			cc, d, err := resolveTargetDraft(ctx, globals, args[0])
 			if err != nil {
 				return err
 			}
-			result, err := slack.PostMessage(ctx, cc.Client, slack.OutgoingMessage{ChannelID: d.ChannelID, Blocks: d.Blocks})
+			msg := slack.OutgoingMessage{ChannelID: d.ChannelID, Blocks: d.Blocks}
+			if postAt != 0 {
+				// Promote the plain draft to a scheduled message in place (same id);
+				// no separate post/delete — Slack delivers it at post_at.
+				promoted, err := slack.UpdateDraft(ctx, cc.Client, d.ID, msg, postAt)
+				if err != nil {
+					return err
+				}
+				// Prefer the time Slack echoes; fall back to the requested time when
+				// the update response omits date_scheduled.
+				scheduledAt := promoted.PostAt
+				if scheduledAt == 0 {
+					scheduledAt = postAt
+				}
+				payload := scheduleResultPayload(
+					slack.ScheduleResult{ChannelID: promoted.ChannelID, ScheduledMessageID: promoted.ID, PostAt: scheduledAt}, "")
+				payload["note"] = "promoted the draft to a scheduled message — manage it under 'message scheduled'"
+				return printSingle(globals, payload)
+			}
+			result, err := slack.PostMessage(ctx, cc.Client, msg)
 			if err != nil {
 				return err
 			}
@@ -185,6 +209,8 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 			return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
 		},
 	}
+	cmd.Flags().StringVar(&schedule, "schedule", "", "Promote to a scheduled message at an ISO 8601 time with timezone, or a unix timestamp")
+	cmd.Flags().StringVar(&scheduleIn, "schedule-in", "", "Promote to a scheduled message after a duration (30m, 2d, tomorrow 9am, monday 9am)")
 	parent.AddCommand(cmd)
 }
 

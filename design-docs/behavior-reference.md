@@ -115,6 +115,13 @@ Cardinality (verified against the API):
 There is no `drafts.send`: "send a draft now" composes `chat.postMessage`
 (browser-allowed) with the draft's blocks, then `drafts.delete`.
 
+**Promotion (plain draft → scheduled).** A single `drafts.update` that adds
+`date_scheduled` + `is_from_composer: true` flips a plain draft to a scheduled
+message in place (verified): same `draft_id`, it moves from the plain `list` to
+the scheduled `list`, with no separate post/delete. This backs
+`message draft send --schedule/--schedule-in`. (The reverse — a *detached*
+draft, `is_from_composer: false`, cannot be scheduled: `scheduled_draft_cannot_be_attached`.)
+
 Human-in-the-loop is the `--yes` gate on destructive mutations (see
 `cli-design.md`).
 

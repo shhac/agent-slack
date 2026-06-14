@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // draftObj builds a drafts.list entry. postAt 0 → plain draft.
@@ -138,6 +140,58 @@ func TestDraftSend(t *testing.T) {
 	}
 	if len(f.server.CallsFor("drafts.delete")) != 1 {
 		t.Error("send should delete the draft after posting")
+	}
+}
+
+func TestDraftSendSchedulePromotes(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		draftObj("Dr0A", "C12345678", "later, please", 0)}})
+	f.server.HandleBody("drafts.update", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "date_scheduled": float64(1800000000),
+		"destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	out, _, err := f.run(t, "message", "draft", "send", "C12345678", "--schedule-in", "2h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := parseJSON(t, out)
+	// post_at comes from the API's echoed date_scheduled, not the requested time.
+	if got["scheduled_message_id"] != "Dr0A" || got["post_at"].(float64) != 1800000000 {
+		t.Errorf("promotion payload = %v", got)
+	}
+	// Promotion edits the draft in place — it must NOT post or delete it.
+	if len(f.server.CallsFor("chat.postMessage")) != 0 || len(f.server.CallsFor("drafts.delete")) != 0 {
+		t.Error("scheduling a draft must promote in place, not post-and-delete")
+	}
+	call := f.server.CallsFor("drafts.update")[0]
+	if call.Params.Get("draft_id") != "Dr0A" || call.Params.Get("date_scheduled") == "" {
+		t.Errorf("update should schedule the draft: %v", call.Params)
+	}
+	if call.Params.Get("is_from_composer") != "true" {
+		t.Errorf("a promoted draft must be is_from_composer=true: %v", call.Params)
+	}
+}
+
+func TestDraftSendScheduleFallsBackToRequestedTime(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		draftObj("Dr0A", "C12345678", "later", 0)}})
+	// The update echo omits date_scheduled — the CLI must report the requested time.
+	f.server.HandleBody("drafts.update", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	when := time.Now().Add(48 * time.Hour).Unix()
+	out, _, err := f.run(t, "message", "draft", "send", "C12345678", "--schedule", strconv.FormatInt(when, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := parseJSON(t, out)
+	if int64(got["post_at"].(float64)) != when {
+		t.Errorf("omitted date_scheduled should fall back to the requested time: got %v want %d", got["post_at"], when)
+	}
+	if got["scheduled_message_id"] != "Dr0A" {
+		t.Errorf("payload = %v", got)
 	}
 }
 

@@ -17,6 +17,17 @@ type ScheduledListOptions struct {
 }
 
 func ListScheduledMessages(ctx context.Context, c *Client, opts ScheduledListOptions) (ScheduledPage, error) {
+	page, err := listScheduledPage(ctx, c, opts)
+	if err != nil {
+		return ScheduledPage{}, err
+	}
+	// Write-only warm: this list always came fresh from the API; the cache exists
+	// solely so shell completion can later suggest these ids (never read here).
+	c.warmScheduledCache(page.ScheduledMessages)
+	return page, nil
+}
+
+func listScheduledPage(ctx context.Context, c *Client, opts ScheduledListOptions) (ScheduledPage, error) {
 	// Browser (xoxc) tokens can't call chat.scheduledMessages.list; scheduled
 	// messages live as scheduled drafts.
 	if c.currentAuth().Type == AuthBrowser {
