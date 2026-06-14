@@ -185,6 +185,26 @@ func TestMessageDraftBrowser(t *testing.T) {
 	if call.Params.Get("is_from_composer") != "false" || call.Params.Has("date_scheduled") {
 		t.Errorf("a plain draft is not scheduled: %v", call.Params)
 	}
+	if !strings.Contains(call.Params.Get("blocks"), "hand-off text") {
+		t.Errorf("draft must carry the text as rich_text: %s", call.Params.Get("blocks"))
+	}
+}
+
+func TestMessageDraftBlocksFile(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{"id": "Dr0BK"}})
+	blocksFile := filepath.Join(t.TempDir(), "blocks.json")
+	if err := os.WriteFile(blocksFile, []byte(`[{"type":"section","text":{"type":"mrkdwn","text":"from block kit"}}]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// --blocks passes the supplied Block Kit through verbatim (no text arg).
+	if _, _, err := f.run(t, "message", "draft", "C12345678", "--blocks", blocksFile); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.server.CallsFor("drafts.create")[0].Params.Get("blocks"); !strings.Contains(got, "from block kit") {
+		t.Errorf("--blocks should pass through: %s", got)
+	}
 }
 
 func TestMessageDraftRequiresBrowserAuth(t *testing.T) {

@@ -3,6 +3,7 @@ package slack
 import (
 	"context"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/shhac/agent-slack/internal/mockslack"
@@ -42,8 +43,11 @@ func TestSaveDraftScheduled(t *testing.T) {
 	if call.Params.Get("date_scheduled") != "123456" {
 		t.Errorf("date_scheduled = %q", call.Params.Get("date_scheduled"))
 	}
-	if call.Params.Get("blocks") == "" {
-		t.Error("a plain-text draft must still carry rich_text blocks built from the raw text")
+	blocks := call.Params.Get("blocks")
+	if !strings.Contains(blocks, "rich_text") || !strings.Contains(blocks, "hello") {
+		// Drafts have no plain-text field, so the raw text must survive into the
+		// rich_text blocks — a mangling/escaping bug here corrupts the message.
+		t.Errorf("draft blocks must carry the raw text as rich_text: %s", blocks)
 	}
 	if !call.Params.Has("file_ids") {
 		t.Error("drafts.create requires file_ids")
@@ -65,6 +69,23 @@ func TestSaveDraftPlain(t *testing.T) {
 	}
 	if call.Params.Has("date_scheduled") {
 		t.Error("a plain draft must not set date_scheduled")
+	}
+}
+
+func TestSaveDraftUsesProvidedBlocks(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{"id": "Dr0B"}})
+	c := browserClient(t, server)
+
+	// When the message already has blocks (--blocks or structured text), they
+	// pass through verbatim rather than being re-derived from raw text.
+	m := OutgoingMessage{ChannelID: "C1", RawText: "ignored", Blocks: []any{richTextBlock("kept verbatim")}}
+	if _, err := SaveDraft(context.Background(), c, m, 0); err != nil {
+		t.Fatal(err)
+	}
+	blocks := server.CallsFor("drafts.create")[0].Params.Get("blocks")
+	if !strings.Contains(blocks, "kept verbatim") || strings.Contains(blocks, "ignored") {
+		t.Errorf("provided blocks should pass through unchanged: %s", blocks)
 	}
 }
 

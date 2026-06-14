@@ -83,7 +83,7 @@ func registerMessageScheduled(parent *cobra.Command, globals *GlobalFlags) {
 			})
 		},
 	}
-	cancelCmd.Flags().StringVar(&cancelChannel, "channel", "", "Channel/DM the message was scheduled for (required)")
+	cancelCmd.Flags().StringVar(&cancelChannel, "channel", "", "Channel/DM the message was scheduled for (required for bot/user tokens; not needed on browser auth)")
 	registerFlagCompletion(cancelCmd, "channel", globals, slack.CompleteChannels|slack.CompleteUsers)
 	cancelCmd.Flags().BoolVar(&yes, "yes", false, "Confirm the cancellation")
 	scheduledCmd.AddCommand(cancelCmd)
