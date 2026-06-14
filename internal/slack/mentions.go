@@ -3,6 +3,7 @@ package slack
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -11,6 +12,12 @@ var (
 	// char (so <@U…> tokens and emails like a@b never match), then @ + handle.
 	mentionCandidateRe = regexp.MustCompile(`(^|[^A-Za-z0-9_<])@([A-Za-z][A-Za-z0-9._-]*)`)
 	bareUserIDRe       = regexp.MustCompile(`^[UWB][A-Z0-9]{6,}$`)
+
+	// Code spans / fenced blocks are masked during resolution so an @handle
+	// inside code stays literal.
+	mentionFenceRe = regexp.MustCompile("(?s)```.*?```")
+	mentionCodeRe  = regexp.MustCompile("`[^`\n]+`")
+	mentionStashRe = regexp.MustCompile("\x00(\\d+)\x00")
 )
 
 // ResolveMentions rewrites bare @handle / @group tokens into Slack mention
@@ -20,7 +27,9 @@ var (
 // handles stay literal. Best-effort: a resolution error leaves the token as-is.
 // A name is tried as a user first, then as a usergroup.
 func ResolveMentions(ctx context.Context, c *Client, text string) string {
-	matches := mentionCandidateRe.FindAllStringSubmatch(text, -1)
+	masked, stash := maskCodeSpans(text)
+
+	matches := mentionCandidateRe.FindAllStringSubmatch(masked, -1)
 	if len(matches) == 0 {
 		return text
 	}
@@ -47,7 +56,7 @@ func ResolveMentions(ctx context.Context, c *Client, text string) string {
 		return text
 	}
 
-	return mentionCandidateRe.ReplaceAllStringFunc(text, func(match string) string {
+	resolved := mentionCandidateRe.ReplaceAllStringFunc(masked, func(match string) string {
 		at := strings.IndexByte(match, '@')
 		prefix, handle := match[:at], match[at+1:]
 		if token, ok := repl[strings.ToLower(handle)]; ok {
@@ -55,8 +64,34 @@ func ResolveMentions(ctx context.Context, c *Client, text string) string {
 		}
 		return match
 	})
+	return unmaskCodeSpans(resolved, stash)
 }
 
 func isBroadcastName(lower string) bool {
 	return lower == "here" || lower == "channel" || lower == "everyone"
+}
+
+// maskCodeSpans replaces fenced and inline code with NUL sentinels so mention
+// resolution skips their contents, returning the masked text and the stash to
+// restore afterwards.
+func maskCodeSpans(text string) (string, []string) {
+	var stash []string
+	mask := func(re *regexp.Regexp, s string) string {
+		return re.ReplaceAllStringFunc(s, func(m string) string {
+			stash = append(stash, m)
+			return "\x00" + strconv.Itoa(len(stash)-1) + "\x00"
+		})
+	}
+	out := mask(mentionFenceRe, text)
+	out = mask(mentionCodeRe, out)
+	return out, stash
+}
+
+func unmaskCodeSpans(text string, stash []string) string {
+	return mentionStashRe.ReplaceAllStringFunc(text, func(m string) string {
+		if idx, err := strconv.Atoi(m[1 : len(m)-1]); err == nil && idx < len(stash) {
+			return stash[idx]
+		}
+		return m
+	})
 }

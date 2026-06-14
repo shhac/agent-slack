@@ -47,6 +47,21 @@ func TestResolveMentions(t *testing.T) {
 	}
 }
 
+func TestResolveMentionsSkipsCode(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{
+		map[string]any{"id": "U0ALICEAA", "name": "alice"},
+	}})
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+
+	// @alice resolves in prose but stays literal inside `code` and ``` fences.
+	in := "ping @alice but `not @alice here` and\n```\nrun @alice\n```\n"
+	want := "ping <@U0ALICEAA> but `not @alice here` and\n```\nrun @alice\n```\n"
+	if got := ResolveMentions(context.Background(), c, in); got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+}
+
 func TestResolveMentionsNoCandidates(t *testing.T) {
 	server := mockslack.New()
 	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
