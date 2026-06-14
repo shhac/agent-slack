@@ -44,11 +44,12 @@ type LaterResult struct {
 
 // LaterOptions controls FetchLaterItems.
 type LaterOptions struct {
-	State        string // in_progress (default) | archived | completed | all
-	Limit        int    // default 20
-	MaxBodyChars int    // 0 → 4000, negative → unlimited
-	CountsOnly   bool
-	Cursor       string
+	State         string // in_progress (default) | archived | completed | all
+	Limit         int    // default 20
+	MaxBodyChars  int    // 0 → 4000, negative → unlimited
+	SlackMarkdown bool
+	CountsOnly    bool
+	Cursor        string
 }
 
 // normalizeLaterOptions fills LaterOptions defaults: state in_progress,
@@ -116,14 +117,14 @@ func FetchLaterItems(ctx context.Context, c *Client, opts LaterOptions) (LaterRe
 	}
 
 	for _, item := range filtered {
-		result.Items = append(result.Items, hydrateLaterItem(ctx, c, item, opts.MaxBodyChars))
+		result.Items = append(result.Items, hydrateLaterItem(ctx, c, item, opts.MaxBodyChars, opts.SlackMarkdown))
 	}
 	return result, nil
 }
 
 // hydrateLaterItem shapes one raw saved.list item and decorates it with its
 // channel name and rendered message content (both best-effort).
-func hydrateLaterItem(ctx context.Context, c *Client, item map[string]any, maxBodyChars int) LaterItem {
+func hydrateLaterItem(ctx context.Context, c *Client, item map[string]any, maxBodyChars int, slackMarkdown bool) LaterItem {
 	channelID := getStr(item, "item_id")
 	ts := getStr(item, "ts")
 	out := LaterItem{
@@ -143,7 +144,7 @@ func hydrateLaterItem(ctx context.Context, c *Client, item map[string]any, maxBo
 		out.ChannelName = ""
 	}
 	if ts != "" {
-		out.Message = fetchLaterMessage(ctx, c, channelID, ts, maxBodyChars)
+		out.Message = fetchLaterMessage(ctx, c, channelID, ts, maxBodyChars, slackMarkdown)
 	}
 	return out
 }
@@ -164,7 +165,7 @@ func filterLaterItems(items []map[string]any, state string) []map[string]any {
 
 // fetchLaterMessage hydrates the saved message body; best effort — the
 // message may have been deleted.
-func fetchLaterMessage(ctx context.Context, c *Client, channelID, ts string, maxBodyChars int) *LaterMessage {
+func fetchLaterMessage(ctx context.Context, c *Client, channelID, ts string, maxBodyChars int, slackMarkdown bool) *LaterMessage {
 	history, err := c.API(ctx, "conversations.history", map[string]any{
 		"channel":   channelID,
 		"latest":    ts,
@@ -178,7 +179,7 @@ func fetchLaterMessage(ctx context.Context, c *Client, channelID, ts string, max
 	if msg == nil {
 		return nil
 	}
-	inline := toInlineMessage(msg, maxBodyChars)
+	inline := toInlineMessage(msg, maxBodyChars, slackMarkdown)
 	return &LaterMessage{
 		Author:     inline.Author,
 		Content:    inline.Content,
@@ -195,10 +196,10 @@ type inlineMessage struct {
 	ReplyCount int
 }
 
-func toInlineMessage(m map[string]any, maxBodyChars int) inlineMessage {
+func toInlineMessage(m map[string]any, maxBodyChars int, slackMarkdown bool) inlineMessage {
 	return inlineMessage{
 		Author:     render.AuthorRef(getStr(m, "user"), getStr(m, "bot_id")),
-		Content:    render.TruncateBody(render.RenderMessageContent(m), maxBodyChars),
+		Content:    render.TruncateBody(render.RenderMessageContentDialect(m, slackMarkdown), maxBodyChars),
 		ThreadTS:   getStr(m, "thread_ts"),
 		ReplyCount: int(getNum(m, "reply_count")),
 	}

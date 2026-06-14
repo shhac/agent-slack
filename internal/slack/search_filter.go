@@ -18,7 +18,7 @@ func searchHit(ctx context.Context, c *Client, opts SearchOptions, summary rende
 			downloaded[id] = res
 		}
 	}
-	compact := render.ToCompactMessage(summary, render.CompactOptions{MaxBodyChars: opts.MaxContentChars, DownloadedPaths: downloaded})
+	compact := render.ToCompactMessage(summary, render.CompactOptions{MaxBodyChars: opts.MaxContentChars, DownloadedPaths: downloaded, SlackMarkdown: opts.SlackMarkdown})
 	if !PassesContentTypeFilter(compact, opts.ContentType) {
 		return SearchMessageItem{}, false
 	}

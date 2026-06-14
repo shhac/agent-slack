@@ -39,6 +39,7 @@ type readFlags struct {
 	includeReactions bool
 	resolveUsers     bool
 	refreshUsers     bool
+	slackMarkdown    bool
 }
 
 func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
@@ -48,6 +49,7 @@ func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
 	cmd.Flags().BoolVar(&f.includeReactions, "include-reactions", false, "Include reactions and reacting users")
 	cmd.Flags().BoolVar(&f.resolveUsers, "resolve-users", false, "Resolve referenced user IDs to profiles")
 	cmd.Flags().BoolVar(&f.refreshUsers, "refresh-users", false, "Refresh the user cache before resolving (implies --resolve-users)")
+	cmd.Flags().BoolVar(&f.slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 }
 
 func (f *readFlags) shouldResolveUsers() bool { return f.resolveUsers || f.refreshUsers }

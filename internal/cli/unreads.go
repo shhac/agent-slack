@@ -7,7 +7,7 @@ import (
 )
 
 func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
-	var countsOnly, includeSystem bool
+	var countsOnly, includeSystem, slackMarkdown bool
 	var maxMessages, maxBodyChars int
 	cmd := &cobra.Command{
 		Use:   "unreads",
@@ -23,6 +23,7 @@ func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 				MaxMessagesPerChannel: maxMessages,
 				MaxBodyChars:          maxBodyChars,
 				SkipSystemMessages:    !includeSystem,
+				SlackMarkdown:         slackMarkdown,
 			})
 			if err != nil {
 				return err
@@ -38,5 +39,6 @@ func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().IntVar(&maxMessages, "max-messages", 10, "Max unread messages per channel")
 	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", 4000, "Max content chars per message (-1 = unlimited)")
 	cmd.Flags().BoolVar(&includeSystem, "include-system", false, "Include system messages (joins, topic changes, …)")
+	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 	parent.AddCommand(cmd)
 }

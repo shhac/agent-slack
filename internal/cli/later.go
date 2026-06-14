@@ -47,7 +47,7 @@ func registerLater(parent *cobra.Command, globals *GlobalFlags) {
 func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 	var state, cursor string
 	var limit, maxBodyChars int
-	var countsOnly bool
+	var countsOnly, slackMarkdown bool
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List saved-for-later messages",
@@ -62,11 +62,12 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			result, err := slack.FetchLaterItems(cmd.Context(), cc.Client, slack.LaterOptions{
-				State:        parsedState,
-				Limit:        limit,
-				MaxBodyChars: maxBodyChars,
-				CountsOnly:   countsOnly,
-				Cursor:       cursor,
+				State:         parsedState,
+				Limit:         limit,
+				MaxBodyChars:  maxBodyChars,
+				SlackMarkdown: slackMarkdown,
+				CountsOnly:    countsOnly,
+				Cursor:        cursor,
 			})
 			if err != nil {
 				return err
@@ -81,6 +82,7 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", 4000, "Max content chars per item (-1 = unlimited)")
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only counts per state, no content")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
+	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 	parent.AddCommand(cmd)
 }
 

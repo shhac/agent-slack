@@ -41,6 +41,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 				MaxBodyChars:     flags.maxBodyChars,
 				IncludeReactions: flags.includeReactions,
 				DownloadedPaths:  downloads,
+				SlackMarkdown:    flags.slackMarkdown,
 			})
 			payload := map[string]any{
 				"message": compact,
@@ -231,6 +232,7 @@ func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext,
 			MaxBodyChars:     flags.maxBodyChars,
 			IncludeReactions: flags.includeReactions,
 			DownloadedPaths:  downloads,
+			SlackMarkdown:    flags.slackMarkdown,
 		})
 		if threadMode {
 			// Redundant in thread output: every row shares the meta line's

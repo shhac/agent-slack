@@ -31,6 +31,34 @@ func TestMessageGetByPermalink(t *testing.T) {
 	}
 }
 
+func TestMessageGetDialect(t *testing.T) {
+	link := "https://acme.slack.com/archives/C0123ABCD/p1770165109628379"
+
+	// Default: Slack mrkdwn is converted to standard Markdown.
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.history", historyWith(
+		simpleMessage("1770165109.628379", "U12345678", "this is *bold* and ~gone~")))
+	out, _, err := f.run(t, "message", "get", link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parseJSON(t, out)["message"].(map[string]any)["content"]; got != "this is **bold** and ~~gone~~" {
+		t.Errorf("default content = %q, want standard Markdown", got)
+	}
+
+	// --slack-markdown opts out: native Slack mrkdwn is preserved.
+	f2 := newCLIFixture(t)
+	f2.server.HandleBody("conversations.history", historyWith(
+		simpleMessage("1770165109.628379", "U12345678", "this is *bold* and ~gone~")))
+	out2, _, err := f2.run(t, "message", "get", link, "--slack-markdown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parseJSON(t, out2)["message"].(map[string]any)["content"]; got != "this is *bold* and ~gone~" {
+		t.Errorf("--slack-markdown content = %q, want native Slack mrkdwn", got)
+	}
+}
+
 func TestMessageGetThreadSummary(t *testing.T) {
 	f := newCLIFixture(t)
 	msg := simpleMessage("1770165109.628379", "U12345678", "root")

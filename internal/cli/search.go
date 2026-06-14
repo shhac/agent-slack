@@ -23,7 +23,7 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 	var channels []string
 	var user, after, before, contentType string
 	var limit, maxContentChars int
-	var download, resolveUsers, refreshUsers bool
+	var download, resolveUsers, refreshUsers, slackMarkdown bool
 
 	cmd := &cobra.Command{
 		Use:   name + " <query>",
@@ -61,6 +61,7 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 				RefreshUsers:    refreshUsers,
 				DownloadsDir:    downloadsDir(),
 				Warn:            globals.stderr,
+				SlackMarkdown:   slackMarkdown,
 			})
 			if err != nil {
 				return err
@@ -91,5 +92,6 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 	cmd.Flags().BoolVar(&download, "download", kind != slack.SearchMessages, "Download matched files and report local paths")
 	cmd.Flags().BoolVar(&resolveUsers, "resolve-users", false, "Resolve referenced user IDs to profiles")
 	cmd.Flags().BoolVar(&refreshUsers, "refresh-users", false, "Refresh the user cache before resolving")
+	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 	parent.AddCommand(cmd)
 }

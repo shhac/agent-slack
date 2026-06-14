@@ -45,6 +45,7 @@ type SearchOptions struct {
 	RefreshUsers    bool
 	DownloadsDir    string
 	Warn            io.Writer
+	SlackMarkdown   bool
 }
 
 // SearchMessageItem is a compact message hit; thread_ts is dropped (the

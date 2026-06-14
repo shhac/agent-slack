@@ -43,6 +43,7 @@ type UnreadsOptions struct {
 	MaxMessagesPerChannel int // default 10
 	MaxBodyChars          int // 0 → 4000, negative → unlimited
 	SkipSystemMessages    bool
+	SlackMarkdown         bool
 }
 
 var systemSubtypes = map[string]bool{
@@ -116,6 +117,7 @@ func FetchUnreads(ctx context.Context, c *Client, opts UnreadsOptions) (UnreadsR
 				maxMessages:     maxMessages,
 				maxBodyChars:    maxBodyChars,
 				skipSystem:      opts.SkipSystemMessages,
+				slackMarkdown:   opts.SlackMarkdown,
 			})
 		}()
 	}
@@ -141,6 +143,7 @@ type hydrateOptions struct {
 	maxMessages     int
 	maxBodyChars    int
 	skipSystem      bool
+	slackMarkdown   bool
 }
 
 func hydrateUnreadChannel(ctx context.Context, c *Client, raw map[string]any, channelType string, opts hydrateOptions) UnreadChannel {
@@ -215,7 +218,7 @@ func fetchUnreadMessages(ctx context.Context, c *Client, channelID, lastRead str
 	}
 
 	for _, m := range kept {
-		inline := toInlineMessage(m, opts.maxBodyChars)
+		inline := toInlineMessage(m, opts.maxBodyChars, opts.slackMarkdown)
 		msgs = append(msgs, UnreadMessage{
 			TS:         getStr(m, "ts"),
 			Author:     inline.Author,
