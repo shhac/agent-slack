@@ -24,6 +24,7 @@ func registerMessage(parent *cobra.Command, globals *GlobalFlags) {
 	registerMessageGet(messageCmd, globals)
 	registerMessageList(messageCmd, globals)
 	registerMessageSend(messageCmd, globals)
+	registerMessageDraft(messageCmd, globals)
 	registerMessageEdit(messageCmd, globals)
 	registerMessageDelete(messageCmd, globals)
 	registerMessageReact(messageCmd, globals)

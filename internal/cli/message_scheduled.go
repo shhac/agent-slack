@@ -61,14 +61,16 @@ func registerMessageScheduled(parent *cobra.Command, globals *GlobalFlags) {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			if cancelChannel == "" {
-				return agenterrors.New("--channel is required", agenterrors.FixableByAgent)
-			}
-			if err := requireYes(yes, fmt.Sprintf("would cancel scheduled message %s in %s", args[0], cancelChannel)); err != nil {
-				return err
-			}
 			cc, channelID, err := resolveScheduledChannel(ctx, globals, cancelChannel)
 			if err != nil {
+				return err
+			}
+			// Browser auth cancels a draft by its globally-unique id; a bot/user
+			// token needs the channel for chat.deleteScheduledMessage.
+			if cc.AuthType != slack.AuthBrowser && cancelChannel == "" {
+				return agenterrors.New("--channel is required", agenterrors.FixableByAgent)
+			}
+			if err := requireYes(yes, fmt.Sprintf("would cancel scheduled message %s", args[0])); err != nil {
 				return err
 			}
 			if err := slack.CancelScheduledMessage(ctx, cc.Client, channelID, args[0]); err != nil {

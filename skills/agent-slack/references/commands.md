@@ -29,14 +29,22 @@ without `--yes`; instead it returns a description of what *would* happen
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve-users`, `--refresh-users`, `--no-download` | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, + the resolve/reaction flags from `get` | |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>` | |
+| `message draft <target> [text]` | `--blocks <path\|->` | |
 | `message edit <target> <text>` | `--ts` | `--yes` |
 | `message delete <target>` | `--ts` | `--yes` |
 | `message react add\|remove <target> <emoji>` | `--ts` | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | |
-| `message scheduled cancel <id>` | `--channel` (required) | `--yes` |
+| `message scheduled cancel <id>` | `--channel` (required for bot/user tokens) | `--yes` |
 
 `message list` reaction filters (`--with-reaction`/`--without-reaction`) only
 apply to channel-history mode and require `--oldest` to bound the scan.
+
+`message draft` saves a draft (browser auth only) for the user to open, edit,
+and send — a hand-off, not a send. On browser (desktop-imported) auth,
+scheduled messages **are** drafts: `message send --schedule*` creates a
+scheduled draft, `scheduled list` lists them, and `scheduled cancel <id>`
+deletes one by its id (no `--channel` needed). Bot/user tokens use the
+`chat.scheduleMessage` API instead and require `--channel` to cancel.
 
 ## channel
 

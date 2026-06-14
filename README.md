@@ -84,7 +84,7 @@ agent-slack message usage                  # per-domain detail pages
 | Domain     | Commands |
 |------------|----------|
 | `auth`     | `list` (`ls`), `test`, `add`, `set-default`, `remove`, `import-desktop`, `import-browser <name>`, `parse-curl` |
-| `message`  | `get`, `list`, `send`, `edit`*, `delete`*, `react add/remove`, `scheduled list/cancel`* |
+| `message`  | `get`, `list`, `send`, `draft`, `edit`*, `delete`*, `react add/remove`, `scheduled list/cancel`* |
 | `channel`  | `list`, `new`*, `invite`*, `mark` |
 | `user`     | `list`, `get`, `dm-open` |
 | `search`   | `all`, `messages`, `files` |

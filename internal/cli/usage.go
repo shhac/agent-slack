@@ -94,11 +94,16 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        bullet/numbered lists → rich_text. --attach <path> (repeatable),
        --blocks <file|-> raw Block Kit, --schedule <iso8601-with-tz|unix>,
        --schedule-in <30m|2d|tomorrow 9am>. Output includes ts + permalink.
+DRAFT  message draft <target> [text] [--blocks <file|->]
+       Saves a draft for the user to open, edit, and send — a hand-off, not a
+       send. Browser auth only (drafts are a client feature).
 EDIT   message edit <target> <text> --yes     (destructive)
 DELETE message delete <target> --yes          (destructive)
 REACT  message react add|remove <target> <emoji>   (:rocket:, rocket, or 🚀)
 SCHED  message scheduled list [--channel …] [--cursor …]
-       message scheduled cancel <id> --channel <…> --yes   (destructive)`,
+       message scheduled cancel <id> [--channel <…>] --yes   (destructive)
+       Browser auth: scheduled messages are drafts (cancel by id, no
+       --channel). Bot/user tokens: --channel required to cancel.`,
 
 	"channel": `agent-slack channel — conversations.
 

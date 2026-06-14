@@ -40,6 +40,26 @@ func newCLIFixture(t *testing.T) *cliFixture {
 	return &cliFixture{env: env, server: server, url: ts.URL}
 }
 
+// newBrowserCLIFixture is newCLIFixture with browser (xoxc) auth, whose
+// workspace URL is the mock server so the browser transport hits it. Use for
+// client-only paths (drafts, scheduling on browser auth).
+func newBrowserCLIFixture(t *testing.T) *cliFixture {
+	t.Helper()
+	env := newTestEnv(t)
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	if _, err := env.store.Upsert(credential.Workspace{
+		URL:  ts.URL,
+		Name: "Acme",
+		Auth: credential.Auth{Type: credential.AuthBrowser, XOXC: "xoxc-test", XOXD: "xoxd-test"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	return &cliFixture{env: env, server: server, url: ts.URL}
+}
+
 func (f *cliFixture) run(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	full := append([]string{"--base-url", f.url}, args...)

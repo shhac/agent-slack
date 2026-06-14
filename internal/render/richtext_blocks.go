@@ -23,6 +23,23 @@ type RichTextOptions struct {
 	IncludeInlineFormatting bool
 }
 
+// RichTextBlocksForText converts text to rich_text blocks, always returning at
+// least one block — unlike TextToRichTextBlocks, which returns nil when a plain
+// `text` field would do. For contexts like drafts that require `blocks` and
+// have no `text` fallback.
+func RichTextBlocksForText(text string) []RichTextBlock {
+	if blocks := TextToRichTextBlocks(text, RichTextOptions{IncludeInlineFormatting: true}); len(blocks) > 0 {
+		return blocks
+	}
+	return []RichTextBlock{{
+		Type: "rich_text",
+		Elements: []RichTextElement{{
+			Type:     "rich_text_section",
+			Elements: inlineToAny(ParseInlineElements(text)),
+		}},
+	}}
+}
+
 // TextToRichTextBlocks converts user-authored text to rich_text blocks when
 // it contains structure Slack's plain `text` field would lose: bullet or
 // numbered lists, code fences, blockquotes (and optionally inline

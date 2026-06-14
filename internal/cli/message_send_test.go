@@ -167,3 +167,71 @@ func TestMessageSendAttachMissingFile(t *testing.T) {
 		t.Errorf("stderr = %s", stderr)
 	}
 }
+
+func TestMessageDraftBrowser(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0DRAFT", "destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	out, _, err := f.run(t, "message", "draft", "C12345678", "hand-off text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, out)
+	if payload["draft_id"] != "Dr0DRAFT" || payload["ok"] != true {
+		t.Errorf("out = %s", out)
+	}
+	call := f.server.CallsFor("drafts.create")[0]
+	if call.Params.Get("is_from_composer") != "false" || call.Params.Has("date_scheduled") {
+		t.Errorf("a plain draft is not scheduled: %v", call.Params)
+	}
+}
+
+func TestMessageDraftRequiresBrowserAuth(t *testing.T) {
+	f := newCLIFixture(t) // standard (bot) auth
+	_, stderr, err := f.run(t, "message", "draft", "C12345678", "hi")
+	if err == nil {
+		t.Fatal("expected error: drafts need browser auth")
+	}
+	if errPayload(t, stderr)["fixable_by"] != "human" {
+		t.Errorf("stderr = %s", stderr)
+	}
+}
+
+func TestMessageScheduledCancelBrowserNoChannel(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.delete", map[string]any{"ok": true})
+
+	// Browser auth cancels by the globally-unique draft id; no --channel needed.
+	out, _, err := f.run(t, "message", "scheduled", "cancel", "Dr0X", "--yes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseJSON(t, out)["ok"] != true {
+		t.Errorf("out = %s", out)
+	}
+	if f.server.CallsFor("drafts.delete")[0].Params.Get("draft_id") != "Dr0X" {
+		t.Error("cancel should delete the draft by id")
+	}
+}
+
+func TestMessageSendScheduledBrowserCreatesDraft(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0SCHED", "date_scheduled": float64(9999999999),
+		"destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	out, _, err := f.run(t, "message", "send", "C12345678", "later", "--schedule-in", "2d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseJSON(t, out)["scheduled_message_id"] != "Dr0SCHED" {
+		t.Errorf("out = %s", out)
+	}
+	if len(f.server.CallsFor("chat.scheduleMessage")) != 0 {
+		t.Error("browser scheduled send must not call chat.scheduleMessage")
+	}
+	if f.server.CallsFor("drafts.create")[0].Params.Get("is_from_composer") != "true" {
+		t.Error("scheduled draft must be a composer draft")
+	}
+}

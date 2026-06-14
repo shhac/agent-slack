@@ -5,7 +5,8 @@ import "context"
 // OutgoingMessage is one chat.postMessage / chat.scheduleMessage payload.
 type OutgoingMessage struct {
 	ChannelID      string
-	Text           string
+	Text           string // escaped for the mrkdwn `text` field
+	RawText        string // original text, for building draft rich_text blocks
 	ThreadTS       string
 	ReplyBroadcast bool
 	Blocks         []any
@@ -52,6 +53,16 @@ type ScheduleResult struct {
 }
 
 func ScheduleMessage(ctx context.Context, c *Client, m OutgoingMessage, postAt int64) (ScheduleResult, error) {
+	// Browser (xoxc) tokens can't call chat.scheduleMessage; the desktop client
+	// schedules by creating a scheduled draft. Drafts require rich_text blocks.
+	if c.currentAuth().Type == AuthBrowser {
+		d, err := SaveDraft(ctx, c, m, postAt)
+		if err != nil {
+			return ScheduleResult{}, err
+		}
+		return ScheduleResult{ChannelID: d.ChannelID, ScheduledMessageID: d.ID, PostAt: d.PostAt}, nil
+	}
+
 	params := m.params()
 	params["post_at"] = postAt
 	resp, err := c.API(ctx, "chat.scheduleMessage", params)

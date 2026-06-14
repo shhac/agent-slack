@@ -75,9 +75,58 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(cmd)
 }
 
+// registerMessageDraft saves a draft (browser auth) the user can open, review,
+// and send — a hand-off rather than a send. Shares the send build path.
+func registerMessageDraft(parent *cobra.Command, globals *GlobalFlags) {
+	var blocksPath string
+	cmd := &cobra.Command{
+		Use:               "draft <target> [text]",
+		Short:             "Save a draft for the user to review and send (browser auth; a hand-off, not a send)",
+		Args:              cobra.RangeArgs(1, 2),
+		ValidArgsFunction: targetCompletion(globals),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			text := ""
+			if len(args) > 1 {
+				text = args[1]
+			}
+			target, err := render.ParseTarget(args[0])
+			if err != nil {
+				return err
+			}
+			req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath}, time.Now())
+			if err != nil {
+				return err
+			}
+			cc, channelID, err := resolveTargetClient(ctx, globals, target, "")
+			if err != nil {
+				return err
+			}
+			if cc.AuthType != slack.AuthBrowser {
+				return agenterrors.New("message draft requires browser auth (xoxc/xoxd); drafts are a client feature, not available with a bot/user token", agenterrors.FixableByHuman).
+					WithHint("import browser credentials with 'agent-slack auth import-desktop'")
+			}
+			req.channelID = channelID
+			d, err := slack.SaveDraft(ctx, cc.Client, req.outgoing(), 0)
+			if err != nil {
+				return err
+			}
+			return printSingle(globals, map[string]any{
+				"ok":         true,
+				"draft_id":   d.ID,
+				"channel_id": d.ChannelID,
+				"note":       "saved as a draft — open Slack to review, edit, and send",
+			})
+		},
+	}
+	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
+	parent.AddCommand(cmd)
+}
+
 type sendRequest struct {
 	channelID      string
 	text           string
+	rawText        string // original, pre-escape text — for draft rich_text blocks
 	blocks         []any
 	threadTS       string
 	replyBroadcast bool
@@ -89,6 +138,7 @@ func (req sendRequest) outgoing() slack.OutgoingMessage {
 	return slack.OutgoingMessage{
 		ChannelID:      req.channelID,
 		Text:           req.text,
+		RawText:        req.rawText,
 		ThreadTS:       req.threadTS,
 		ReplyBroadcast: req.replyBroadcast,
 		Blocks:         req.blocks,
@@ -140,6 +190,7 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 
 	return sendRequest{
 		text:           render.FormatOutboundText(text),
+		rawText:        text,
 		blocks:         blocks,
 		threadTS:       threadTS,
 		replyBroadcast: flags.replyBroadcast,
