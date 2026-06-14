@@ -108,31 +108,31 @@ func richTextElementToMrkdwn(elAny any) string {
 
 	case "emoji":
 		if name := str(el["name"]); name != "" {
-			return ":" + name + ":"
+			return slackToken("emoji", name)
 		}
 		return ""
 
 	case "user":
 		if userID := str(el["user_id"]); userID != "" {
-			return "<@" + userID + ">"
+			return slackToken("user", userID)
 		}
 		return ""
 
 	case "channel":
 		if channelID := str(el["channel_id"]); channelID != "" {
-			return "<#" + channelID + ">"
+			return slackToken("channel", channelID)
 		}
 		return ""
 
 	case "usergroup":
 		if id := str(el["usergroup_id"]); id != "" {
-			return "<!subteam^" + id + ">"
+			return slackToken("usergroup", id)
 		}
 		return ""
 
 	case "broadcast":
 		if r := str(el["range"]); r != "" {
-			return "<!" + r + ">"
+			return slackToken("broadcast", r)
 		}
 		return ""
 	}

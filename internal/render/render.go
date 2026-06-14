@@ -9,6 +9,25 @@ package render
 // These helpers mirror the loose lookups the TS code did on `unknown` values:
 // missing keys and wrong types collapse to zero values instead of erroring.
 
+// slackToken serializes a Slack inline token from its kind and value — the one
+// place the <@…>/<#…>/<!subteam^…>/<!…>/:emoji: wire format is written, shared
+// by both element→text flatteners. Returns "" for an unknown kind.
+func slackToken(kind, value string) string {
+	switch kind {
+	case "emoji":
+		return ":" + value + ":"
+	case "user":
+		return "<@" + value + ">"
+	case "channel":
+		return "<#" + value + ">"
+	case "usergroup":
+		return "<!subteam^" + value + ">"
+	case "broadcast":
+		return "<!" + value + ">"
+	}
+	return ""
+}
+
 func asRecord(v any) (map[string]any, bool) {
 	m, ok := v.(map[string]any)
 	return m, ok

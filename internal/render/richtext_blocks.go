@@ -35,6 +35,24 @@ func inlineParser(opts RichTextOptions) func(string) []InlineElement {
 	return ParseMarkdownInline
 }
 
+// RenderOutbound converts user text in the given dialect into the outbound
+// pieces a send/edit needs: rich_text blocks (nil when a plain text field
+// suffices) and the message `text` fallback. In Markdown mode the formatting
+// lives in the blocks, so the fallback is flattened to plain (no literal
+// **markers**); in Slack-mrkdwn mode the text field renders natively. This is
+// the one place the dialect→(blocks,text) rule lives, shared by send and edit.
+func RenderOutbound(text string, slackMarkdown bool) ([]RichTextBlock, string) {
+	blocks := TextToRichTextBlocks(text, RichTextOptions{
+		SlackMarkdown:           slackMarkdown,
+		IncludeInlineFormatting: !slackMarkdown,
+	})
+	fallback := text
+	if !slackMarkdown {
+		fallback = PlainTextFromMarkdown(text)
+	}
+	return blocks, fallback
+}
+
 // RichTextBlocksForText converts text to rich_text blocks, always returning at
 // least one block — unlike TextToRichTextBlocks, which returns nil when a plain
 // `text` field would do. For contexts like drafts that require `blocks` and

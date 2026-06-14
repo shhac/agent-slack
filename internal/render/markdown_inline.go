@@ -241,15 +241,15 @@ func PlainTextFromMarkdown(text string) string {
 					b.WriteString(el.URL)
 				}
 			case "emoji":
-				b.WriteString(":" + el.Name + ":")
+				b.WriteString(slackToken("emoji", el.Name))
 			case "user":
-				b.WriteString("<@" + el.UserID + ">")
+				b.WriteString(slackToken("user", el.UserID))
 			case "channel":
-				b.WriteString("<#" + el.ChannelID + ">")
+				b.WriteString(slackToken("channel", el.ChannelID))
 			case "usergroup":
-				b.WriteString("<!subteam^" + el.UsergroupID + ">")
+				b.WriteString(slackToken("usergroup", el.UsergroupID))
 			case "broadcast":
-				b.WriteString("<!" + el.Range + ">")
+				b.WriteString(slackToken("broadcast", el.Range))
 			}
 		}
 	}

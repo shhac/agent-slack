@@ -135,30 +135,17 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 		}
 	}
 
-	// Standard Markdown formatting must live in rich_text blocks (the mrkdwn
-	// text field would show literal **bold**); Slack mrkdwn renders in the text
-	// field, so it only needs blocks for list/code/quote structure.
-	rtOpts := render.RichTextOptions{
-		SlackMarkdown:           flags.slackMarkdown,
-		IncludeInlineFormatting: !flags.slackMarkdown,
-	}
+	rtBlocks, outboundText := render.RenderOutbound(text, flags.slackMarkdown)
 	var blocks []any
 	if flags.blocksPath != "" {
 		blocks, err = loadBlocksFromPath(stdin, flags.blocksPath)
 		if err != nil {
 			return sendRequest{}, err
 		}
-	} else if text != "" {
-		for _, b := range render.TextToRichTextBlocks(text, rtOpts) {
+	} else {
+		for _, b := range rtBlocks {
 			blocks = append(blocks, b)
 		}
-	}
-
-	// In Markdown mode the rendered content is in blocks, so the text/notification
-	// fallback is the marker-flattened plain text rather than raw **markdown**.
-	outboundText := text
-	if !flags.slackMarkdown {
-		outboundText = render.PlainTextFromMarkdown(text)
 	}
 
 	return sendRequest{

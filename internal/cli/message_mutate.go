@@ -29,18 +29,14 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			text := slack.ResolveMentions(ctx, cc.Client, args[1])
-			rtOpts := render.RichTextOptions{SlackMarkdown: slackMarkdown, IncludeInlineFormatting: !slackMarkdown}
-			outboundText := text
-			if !slackMarkdown {
-				outboundText = render.PlainTextFromMarkdown(text)
-			}
+			rtBlocks, outboundText := render.RenderOutbound(text, slackMarkdown)
 			params := map[string]any{
 				"channel": ref.ChannelID,
 				"ts":      ref.MessageTS,
 				"text":    render.FormatOutboundText(outboundText),
 			}
-			if blocks := render.TextToRichTextBlocks(text, rtOpts); blocks != nil {
-				params["blocks"] = toAnySlice(blocks)
+			if rtBlocks != nil {
+				params["blocks"] = toAnySlice(rtBlocks)
 			}
 			if _, err := cc.Client.API(ctx, "chat.update", params); err != nil {
 				return err

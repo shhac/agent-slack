@@ -1,9 +1,6 @@
 package slack
 
-import (
-	"context"
-	"strings"
-)
+import "context"
 
 // ResolveUsergroupID maps a usergroup handle (@marketing, marketing) to its
 // subteam id (S…). On a cache miss it fetches the full usergroups.list once and
@@ -24,7 +21,7 @@ func ResolveUsergroupID(ctx context.Context, c *Client, input string) (string, e
 	}
 	byHandle := map[string]string{}
 	for _, g := range recItems(getArr(resp, "usergroups")) {
-		handle := strings.ToLower(getStr(g, "handle"))
+		handle := handleCacheKey(getStr(g, "handle"))
 		id := getStr(g, "id")
 		if handle != "" && id != "" {
 			byHandle[handle] = id
