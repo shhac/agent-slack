@@ -68,6 +68,23 @@ func TestMessageSendMarkdownBoldBecomesBlocks(t *testing.T) {
 	}
 }
 
+func TestMessageSendResolvesHandleMention(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C123")
+	f.server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{
+		map[string]any{"id": "U0ALICEAA", "name": "alice"},
+	}})
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.0", "channel": "C123"})
+
+	if _, _, err := f.run(t, "message", "send", "#general", "hi @alice"); err != nil {
+		t.Fatal(err)
+	}
+	// @alice resolved to a real user mention token in the text field.
+	if got := f.server.CallsFor("chat.postMessage")[0].Params.Get("text"); got != "hi <@U0ALICEAA>" {
+		t.Errorf("text = %q, want resolved mention", got)
+	}
+}
+
 func TestMessageSendSlackMarkdownKeepsTextField(t *testing.T) {
 	f := newCLIFixture(t)
 	f.resolvableChannel("C123")

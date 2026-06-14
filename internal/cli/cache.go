@@ -23,6 +23,7 @@ func ttlFields(t *slack.CacheTTL) map[string]*time.Duration {
 		"channels":         &t.Channels,
 		"channel-names":    &t.ChannelNames,
 		"handles":          &t.Handles,
+		"usergroups":       &t.Usergroups,
 		"workflow-list":    &t.WorkflowList,
 		"workflow-preview": &t.WorkflowPreview,
 		"workflow-schema":  &t.WorkflowSchema,

@@ -48,11 +48,14 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 			if target.Kind == render.TargetURL {
 				warnTruncatedURL(globals, target.Ref)
 			}
-			send, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, *flags, time.Now())
+			cc, channelID, err := resolveTargetClient(ctx, globals, target, "")
 			if err != nil {
 				return err
 			}
-			cc, channelID, err := resolveTargetClient(ctx, globals, target, "")
+			// Resolve @name / @group handles to mention tokens before the text is
+			// formatted, so both the blocks and the text field carry real mentions.
+			text = slack.ResolveMentions(ctx, cc.Client, text)
+			send, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, *flags, time.Now())
 			if err != nil {
 				return err
 			}

@@ -41,15 +41,10 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, target, err := buildDraftRequest(cmd, globals, args, blocksPath, slackMarkdown)
+			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown)
 			if err != nil {
 				return err
 			}
-			cc, channelID, err := resolveDraftClient(ctx, globals, target)
-			if err != nil {
-				return err
-			}
-			req.channelID = channelID
 			d, err := slack.SaveDraft(ctx, cc.Client, req.outgoing(), 0)
 			if err != nil {
 				if slack.ErrorCode(err) == "attached_draft_exists" {
@@ -121,13 +116,17 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, _, err := buildDraftRequest(cmd, globals, args, blocksPath, slackMarkdown)
+			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown)
 			if err != nil {
 				return err
 			}
-			cc, d, err := resolveTargetDraft(ctx, globals, args[0])
+			d, ok, err := slack.PlainDraftForChannel(ctx, cc.Client, req.channelID)
 			if err != nil {
 				return err
+			}
+			if !ok {
+				return agenterrors.Newf(agenterrors.FixableByAgent, "no draft for %s", args[0]).
+					WithHint("create one with 'message draft create " + args[0] + " …'; scheduled messages are under 'message scheduled list'")
 			}
 			req.channelID = d.ChannelID
 			updated, err := slack.UpdateDraft(ctx, cc.Client, d.ID, req.outgoing(), 0)
@@ -222,17 +221,26 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 
 // buildDraftRequest parses the target and validates the text/--blocks into a
 // sendRequest (reusing the send build path, minus scheduling/attachments).
-func buildDraftRequest(cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string, slackMarkdown bool) (sendRequest, render.Target, error) {
+func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string, slackMarkdown bool) (sendRequest, *clientContext, error) {
+	target, err := render.ParseTarget(args[0])
+	if err != nil {
+		return sendRequest{}, nil, err
+	}
+	cc, channelID, err := resolveDraftClient(ctx, globals, target)
+	if err != nil {
+		return sendRequest{}, nil, err
+	}
 	text := ""
 	if len(args) > 1 {
 		text = args[1]
 	}
-	target, err := render.ParseTarget(args[0])
-	if err != nil {
-		return sendRequest{}, render.Target{}, err
-	}
+	text = slack.ResolveMentions(ctx, cc.Client, text)
 	req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown}, time.Now())
-	return req, target, err
+	if err != nil {
+		return sendRequest{}, nil, err
+	}
+	req.channelID = channelID
+	return req, cc, nil
 }
 
 // resolveDraftClient resolves a target to a browser-auth client + channel id.

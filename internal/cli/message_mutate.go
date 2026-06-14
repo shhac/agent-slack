@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/render"
+	"github.com/shhac/agent-slack/internal/slack"
 )
 
 func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
@@ -27,17 +28,18 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			text := slack.ResolveMentions(ctx, cc.Client, args[1])
 			rtOpts := render.RichTextOptions{SlackMarkdown: slackMarkdown, IncludeInlineFormatting: !slackMarkdown}
-			outboundText := args[1]
+			outboundText := text
 			if !slackMarkdown {
-				outboundText = render.PlainTextFromMarkdown(args[1])
+				outboundText = render.PlainTextFromMarkdown(text)
 			}
 			params := map[string]any{
 				"channel": ref.ChannelID,
 				"ts":      ref.MessageTS,
 				"text":    render.FormatOutboundText(outboundText),
 			}
-			if blocks := render.TextToRichTextBlocks(args[1], rtOpts); blocks != nil {
+			if blocks := render.TextToRichTextBlocks(text, rtOpts); blocks != nil {
 				params["blocks"] = toAnySlice(blocks)
 			}
 			if _, err := cc.Client.API(ctx, "chat.update", params); err != nil {
