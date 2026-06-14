@@ -29,7 +29,10 @@ without `--yes`; instead it returns a description of what *would* happen
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve-users`, `--refresh-users`, `--no-download` | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, + the resolve/reaction flags from `get` | |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>` | |
-| `message draft <target> [text]` | `--blocks <path\|->` | |
+| `message draft create <target> [text]` | `--blocks <path\|->` | |
+| `message draft list` | | |
+| `message draft get\|edit\|send <target>` | `edit`: `--blocks` | |
+| `message draft delete <target>` | | `--yes` |
 | `message edit <target> <text>` | `--ts` | `--yes` |
 | `message delete <target>` | `--ts` | `--yes` |
 | `message react add\|remove <target> <emoji>` | `--ts` | |
@@ -39,12 +42,19 @@ without `--yes`; instead it returns a description of what *would* happen
 `message list` reaction filters (`--with-reaction`/`--without-reaction`) only
 apply to channel-history mode and require `--oldest` to bound the scan.
 
-`message draft` saves a draft (browser auth only) for the user to open, edit,
-and send — a hand-off, not a send. On browser (desktop-imported) auth,
-scheduled messages **are** drafts: `message send --schedule*` creates a
-scheduled draft, `scheduled list` lists them, and `scheduled cancel <id>`
-deletes one by its id (no `--channel` needed). Bot/user tokens use the
-`chat.scheduleMessage` API instead and require `--channel` to cancel.
+`message draft` (browser auth only) is the LLM→human hand-off: save a draft for
+the user to open, review, edit, and send. Plain drafts are **one per target**,
+so the group is target-addressed: `create`, `list`, `get`, `edit`, `delete`,
+and `send <target>` (posts the draft now, then removes it). `create` on a
+target that already has a draft errors with a hint to `edit`/`delete`; `list`
+and `delete` only touch plain drafts (scheduled ones live under `scheduled`).
+
+On browser (desktop-imported) auth, **scheduled messages are also drafts**:
+`message send --schedule*` creates a scheduled draft, `scheduled list` lists
+them, and `scheduled cancel <id>` deletes one by its id (no `--channel` needed)
+— and you can have many scheduled messages per target. Bot/user tokens use the
+`chat.scheduleMessage` API instead, require `--channel` to cancel, and can't use
+the `draft` group (drafts are a client feature).
 
 ## channel
 

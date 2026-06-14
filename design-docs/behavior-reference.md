@@ -78,12 +78,45 @@ The `chrome`/`brave`/`firefox` import paths instead read the same
 `localConfig_v2/v3` from the browser's live `localStorage` via AppleScript /
 profile parsing.
 
-## No draft editor
+## Drafts and scheduled messages (`drafts.*`, client API)
 
-agent-slack has no browser draft editor: it is LLM-first and an agent never
-drives a browser UI. There is no localhost draft server, embedded HTML/JS, or
-`message draft` command. Human-in-the-loop is the `--yes` gate on destructive
-mutations (see `cli-design.md`).
+Drafts are a **client-only** concept: `chat.scheduleMessage` and
+`chat.scheduledMessages.list` reject browser (`xoxc`) tokens with
+`not_allowed_token_type`, so on browser auth the desktop client stores a
+scheduled message as a **scheduled draft** via the `drafts.*` methods. We do the
+same. (No browser draft *editor* — LLM-first; the draft is a data hand-off, not
+a UI.)
+
+Methods (all accept `xoxc`):
+
+- `drafts.create` — params: `client_msg_id` (UUID), `blocks` (rich_text — a
+  draft has no plain-text field), `destinations` (`[{channel_id}]`), `file_ids`
+  (required, may be `[]`), `is_from_composer`. A **scheduled** draft adds
+  `date_scheduled` (unix) and must set `is_from_composer: true`; a **plain**
+  draft sets `is_from_composer: false`.
+- `drafts.list` — returns every draft (filter on `date_scheduled`, `is_deleted`,
+  `is_sent`).
+- `drafts.info` — single draft by `draft_id`.
+- `drafts.update` — edit; same fields as create plus `client_last_updated_ts`.
+- `drafts.delete` — soft-delete (sets `is_deleted`); needs `client_last_updated_ts`.
+
+`client_last_updated_ts` is the client's **current wall-clock** at edit time
+(last-writer-wins) — a fresh "now" value wins; the draft's stored
+`last_updated_ts` is *not* what the server compares against.
+
+Cardinality (verified against the API):
+
+- **Plain (unscheduled) drafts: at most one per target.** A second
+  `drafts.create` to a target that already has a plain draft fails with
+  `attached_draft_exists`. So a plain draft is target-addressed.
+- **Scheduled drafts: many per target.** Multiple `date_scheduled` drafts to the
+  same channel coexist, so scheduled messages are id-addressed.
+
+There is no `drafts.send`: "send a draft now" composes `chat.postMessage`
+(browser-allowed) with the draft's blocks, then `drafts.delete`.
+
+Human-in-the-loop is the `--yes` gate on destructive mutations (see
+`cli-design.md`).
 
 ## Deliberate divergences
 

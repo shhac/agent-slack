@@ -173,7 +173,7 @@ func TestMessageDraftBrowser(t *testing.T) {
 	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
 		"id": "Dr0DRAFT", "destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
 
-	out, _, err := f.run(t, "message", "draft", "C12345678", "hand-off text")
+	out, _, err := f.run(t, "message", "draft", "create", "C12345678", "hand-off text")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestMessageDraftBlocksFile(t *testing.T) {
 	}
 
 	// --blocks passes the supplied Block Kit through verbatim (no text arg).
-	if _, _, err := f.run(t, "message", "draft", "C12345678", "--blocks", blocksFile); err != nil {
+	if _, _, err := f.run(t, "message", "draft", "create", "C12345678", "--blocks", blocksFile); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.server.CallsFor("drafts.create")[0].Params.Get("blocks"); !strings.Contains(got, "from block kit") {
@@ -209,7 +209,7 @@ func TestMessageDraftBlocksFile(t *testing.T) {
 
 func TestMessageDraftRequiresBrowserAuth(t *testing.T) {
 	f := newCLIFixture(t) // standard (bot) auth
-	_, stderr, err := f.run(t, "message", "draft", "C12345678", "hi")
+	_, stderr, err := f.run(t, "message", "draft", "create", "C12345678", "hi")
 	if err == nil {
 		t.Fatal("expected error: drafts need browser auth")
 	}

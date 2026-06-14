@@ -20,11 +20,15 @@ func ListScheduledMessages(ctx context.Context, c *Client, opts ScheduledListOpt
 	// Browser (xoxc) tokens can't call chat.scheduledMessages.list; scheduled
 	// messages live as scheduled drafts.
 	if c.currentAuth().Type == AuthBrowser {
-		drafts, err := listScheduledDrafts(ctx, c, opts.ChannelID)
+		drafts, err := listDrafts(ctx, c, true, opts.ChannelID)
 		if err != nil {
 			return ScheduledPage{}, err
 		}
-		return ScheduledPage{ScheduledMessages: drafts}, nil
+		items := make([]map[string]any, len(drafts))
+		for i, d := range drafts {
+			items[i] = map[string]any{"id": d.ID, "channel_id": d.ChannelID, "post_at": d.PostAt, "text": d.Text}
+		}
+		return ScheduledPage{ScheduledMessages: items}, nil
 	}
 
 	params := map[string]any{}
@@ -57,7 +61,7 @@ func CancelScheduledMessage(ctx context.Context, c *Client, channelID, scheduled
 	// Browser auth: the scheduled message is a draft, cancelled by deleting it
 	// (the draft id is globally unique, so channelID is unused here).
 	if c.currentAuth().Type == AuthBrowser {
-		return deleteDraft(ctx, c, scheduledMessageID)
+		return DeleteDraft(ctx, c, scheduledMessageID)
 	}
 	_, err := c.API(ctx, "chat.deleteScheduledMessage", map[string]any{
 		"channel":              channelID,

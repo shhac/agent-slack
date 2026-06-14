@@ -104,6 +104,35 @@ This supersedes the broader "all writes gated" wording in
   `message get`.
 - All confirmations are JSON.
 
+## Drafts and scheduled messages
+
+**Decision: drafts and scheduled messages are the same `drafts.*` store (browser
+auth), addressed by their cardinality.** See `behavior-reference.md` for the API
+model (`attached_draft_exists`, no `drafts.send`, `client_last_updated_ts`).
+
+- **Plain drafts → target-addressed** (one per target, enforced by Slack).
+  `message draft` is a command group:
+  - `create <target> [text] [--blocks]` — the LLM→human hand-off ("I've written
+    it; review and send"). A pre-existing draft for the target maps
+    `attached_draft_exists` → `fixable_by: agent` with a hint to `edit`/`delete`.
+  - `list` — plain drafts only (`date_scheduled == 0`, not deleted/sent):
+    `{id, channel_id, text}`.
+  - `get <target>` / `edit <target> [text]` / `delete <target>` / `send <target>`
+    — operate on the single plain draft for the target. `send` posts it
+    (`chat.postMessage`) then deletes it. Missing draft → `fixable_by: agent`
+    hint to `create`. `delete`/`edit` never touch a scheduled draft (they filter
+    to plain), so scheduled messages are managed only via `scheduled`.
+- **Scheduled messages → id-addressed** (many per target). `scheduled list` /
+  `scheduled cancel <id>` (browser cancel needs no `--channel`; bot/user tokens
+  do). Bot/user tokens use `chat.scheduleMessage` / `chat.scheduledMessages.list`
+  / `chat.deleteScheduledMessage` unchanged; the draft group is browser-only
+  (drafts are a client feature → `fixable_by: human` on a bot/user token).
+- **Liveness over caching (decision):** `draft`/`scheduled` `list`/`get` always
+  hit the API fresh — this is the instant-messaging edge where staleness is
+  wrong, so draft/scheduled data is never cached. Completions therefore offer
+  draft/scheduled **ids** nowhere (they are ephemeral); only the `<target>`
+  argument completes, reusing the stable channel/user cache.
+
 ## File downloads
 
 **Decision: `message get` downloads automatically; everything else is

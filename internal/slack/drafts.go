@@ -11,89 +11,90 @@ import (
 )
 
 // Drafts are a client-only (xoxc) concept. The browser/desktop client stores a
-// "scheduled message" as a draft with date_scheduled set, listed/created/
-// deleted via the drafts.* methods — chat.scheduleMessage and
-// chat.scheduledMessages.list reject client tokens (not_allowed_token_type).
-// These functions back the scheduled-message commands on browser auth and the
-// `message draft` command.
+// "scheduled message" as a draft with date_scheduled set, and a plain draft is
+// the LLM→human hand-off. chat.scheduleMessage / chat.scheduledMessages.list
+// reject client tokens (not_allowed_token_type), so the drafts.* methods back
+// scheduling and the `message draft` group on browser auth. Plain drafts are
+// one-per-target (a second create returns attached_draft_exists); scheduled
+// drafts are many-per-target.
 
-// DraftInput describes a draft to create.
-type DraftInput struct {
-	ChannelID string
-	Blocks    []any // rich_text blocks (required — drafts have no text field)
-	PostAt    int64 // 0 = a plain draft; > 0 = scheduled for that unix time
+// Draft is the compact projection of one Slack draft.
+type Draft struct {
+	ID        string `json:"id"`
+	ChannelID string `json:"channel_id"`
+	PostAt    int64  `json:"post_at,omitempty"` // 0 = a plain (unscheduled) draft
+	Text      string `json:"text,omitempty"`
+	Blocks    []any  `json:"-"` // raw rich_text, kept for edit/send
 }
 
-// DraftResult is the created draft.
-type DraftResult struct {
-	ID        string
-	ChannelID string
-	PostAt    int64
-}
-
-// SaveDraft creates a draft from an outgoing message: PostAt 0 is a plain draft
-// (the `message draft` hand-off), PostAt > 0 is a scheduled message. Browser
-// (xoxc) auth only — drafts are a client feature.
-func SaveDraft(ctx context.Context, c *Client, m OutgoingMessage, postAt int64) (DraftResult, error) {
-	return createDraft(ctx, c, DraftInput{ChannelID: m.ChannelID, Blocks: draftBlocks(m), PostAt: postAt})
-}
-
-// createDraft creates a draft. A scheduled draft (PostAt > 0) must be a
-// composer draft; a plain draft is the `message draft` hand-off.
-func createDraft(ctx context.Context, c *Client, in DraftInput) (DraftResult, error) {
-	params := map[string]any{
-		"client_msg_id":    newClientMsgID(),
-		"blocks":           in.Blocks,
-		"destinations":     []any{map[string]any{"channel_id": in.ChannelID}},
-		"file_ids":         []any{},
-		"is_from_composer": in.PostAt > 0,
+func toDraft(d map[string]any) Draft {
+	return Draft{
+		ID:        getStr(d, "id"),
+		ChannelID: draftChannelID(d),
+		PostAt:    int64(getNum(d, "date_scheduled")),
+		Text:      render.RenderMessageContent(d),
+		Blocks:    getArr(d, "blocks"),
 	}
-	if in.PostAt > 0 {
-		params["date_scheduled"] = in.PostAt
-	}
-	resp, err := c.API(ctx, "drafts.create", params)
-	if err != nil {
-		return DraftResult{}, err
-	}
-	draft := getRec(resp, "draft")
-	return DraftResult{
-		ID:        getStr(draft, "id"),
-		ChannelID: draftChannelID(draft),
-		PostAt:    int64(getNum(draft, "date_scheduled")),
-	}, nil
 }
 
-// listScheduledDrafts returns the scheduled (and not deleted/sent) drafts,
-// shaped like the chat.scheduledMessages.list items the standard path emits:
-// id, channel_id, post_at, text. channelID "" means all channels.
-func listScheduledDrafts(ctx context.Context, c *Client, channelID string) ([]map[string]any, error) {
+// listDrafts returns active (not deleted/sent) drafts. scheduled selects
+// scheduled (date_scheduled>0) vs plain drafts; channelID "" matches all.
+func listDrafts(ctx context.Context, c *Client, scheduled bool, channelID string) ([]Draft, error) {
 	resp, err := c.API(ctx, "drafts.list", map[string]any{})
 	if err != nil {
 		return nil, err
 	}
-	var out []map[string]any
+	var out []Draft
 	for _, d := range recItems(getArr(resp, "drafts")) {
-		if getNum(d, "date_scheduled") <= 0 || getBool(d, "is_deleted") || getBool(d, "is_sent") {
+		if getBool(d, "is_deleted") || getBool(d, "is_sent") {
 			continue
 		}
-		ch := draftChannelID(d)
-		if channelID != "" && ch != channelID {
+		if (getNum(d, "date_scheduled") > 0) != scheduled {
 			continue
 		}
-		out = append(out, map[string]any{
-			"id":         getStr(d, "id"),
-			"channel_id": ch,
-			"post_at":    int64(getNum(d, "date_scheduled")),
-			"text":       render.RenderMessageContent(d),
-		})
+		if channelID != "" && draftChannelID(d) != channelID {
+			continue
+		}
+		out = append(out, toDraft(d))
 	}
 	return out, nil
 }
 
-// deleteDraft soft-deletes a draft. client_last_updated_ts is the client's
-// current wall-clock — a fresh value always wins the last-writer-wins check
-// (the stored last_updated_ts is not what the server compares against).
-func deleteDraft(ctx context.Context, c *Client, draftID string) error {
+// ListDrafts returns the plain (unscheduled) drafts — the `message draft list`
+// hand-offs. Scheduled messages are listed by ListScheduledMessages.
+func ListDrafts(ctx context.Context, c *Client) ([]Draft, error) {
+	return listDrafts(ctx, c, false, "")
+}
+
+// PlainDraftForChannel returns the single plain draft for a channel (plain
+// drafts are one-per-target), or ok=false when there is none.
+func PlainDraftForChannel(ctx context.Context, c *Client, channelID string) (Draft, bool, error) {
+	drafts, err := listDrafts(ctx, c, false, channelID)
+	if err != nil || len(drafts) == 0 {
+		return Draft{}, false, err
+	}
+	return drafts[0], true, nil
+}
+
+// SaveDraft creates a draft from an outgoing message: PostAt 0 is a plain draft,
+// PostAt > 0 is a scheduled message. Browser auth only.
+func SaveDraft(ctx context.Context, c *Client, m OutgoingMessage, postAt int64) (Draft, error) {
+	params := draftContent(m, postAt)
+	params["client_msg_id"] = newClientMsgID()
+	return createDraft(ctx, c, "drafts.create", params)
+}
+
+// UpdateDraft replaces a plain draft's content. Browser auth only.
+func UpdateDraft(ctx context.Context, c *Client, draftID string, m OutgoingMessage) (Draft, error) {
+	params := draftContent(m, 0)
+	params["draft_id"] = draftID
+	params["client_last_updated_ts"] = draftClientTS()
+	return createDraft(ctx, c, "drafts.update", params)
+}
+
+// DeleteDraft soft-deletes a draft by id. client_last_updated_ts is the client's
+// current wall-clock — a fresh value always wins the last-writer-wins check.
+func DeleteDraft(ctx context.Context, c *Client, draftID string) error {
 	_, err := c.API(ctx, "drafts.delete", map[string]any{
 		"draft_id":               draftID,
 		"client_last_updated_ts": draftClientTS(),
@@ -101,10 +102,32 @@ func deleteDraft(ctx context.Context, c *Client, draftID string) error {
 	return err
 }
 
-// draftBlocks returns the rich_text blocks to store for a draft: the message's
-// own blocks when present (structured text or --blocks), otherwise a rich_text
-// block built from the raw text (a draft has no plain-text field, so plain
-// text must still become blocks).
+// draftContent is the shared create/update body. postAt > 0 makes a scheduled
+// (composer) draft; a plain draft has no schedule and is not composer-attached.
+func draftContent(m OutgoingMessage, postAt int64) map[string]any {
+	params := map[string]any{
+		"blocks":           draftBlocks(m),
+		"destinations":     []any{map[string]any{"channel_id": m.ChannelID}},
+		"file_ids":         []any{},
+		"is_from_composer": postAt > 0,
+	}
+	if postAt > 0 {
+		params["date_scheduled"] = postAt
+	}
+	return params
+}
+
+func createDraft(ctx context.Context, c *Client, method string, params map[string]any) (Draft, error) {
+	resp, err := c.API(ctx, method, params)
+	if err != nil {
+		return Draft{}, err
+	}
+	return toDraft(getRec(resp, "draft")), nil
+}
+
+// draftBlocks returns the rich_text blocks to store: the message's own blocks
+// when present (structured text or --blocks), otherwise a rich_text block built
+// from the raw text (a draft has no plain-text field).
 func draftBlocks(m OutgoingMessage) []any {
 	if len(m.Blocks) > 0 {
 		return m.Blocks
