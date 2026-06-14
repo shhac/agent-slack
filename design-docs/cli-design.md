@@ -104,6 +104,43 @@ This supersedes the broader "all writes gated" wording in
   `message get`.
 - All confirmations are JSON.
 
+## Message formatting dialect
+
+**Decision: standard Markdown is the default dialect both ways; `--slack-markdown`
+opts into Slack mrkdwn, independently per direction.**
+
+- **Outbound** (`message send`/`edit`, `draft create`/`edit`): text is parsed as
+  standard Markdown (`**bold**`, `*italic*`/`_italic_`, `~~strike~~`, `` `code` ``,
+  `[label](url)`, lists, `>` quotes, ``` fences``), plus the extension
+  `__underline__` (Slack rich_text supports `style.underline` but has no mrkdwn
+  for it). `\` escapes a literal marker. The parser nests (inner runs inherit the
+  outer style) and keeps single `~`, intraword `_`, and unclosed runs literal so a
+  stray delimiter never cascades. Markdown formatting is emitted as **rich_text
+  blocks** (the mrkdwn `text` field would show literal `**`), and the `text`
+  notification fallback is the marker-stripped plain text. Pure plain text and
+  mention-only text still send block-free.
+- **Inbound** (`message get`/`list`, `search`, `unreads`, `later`): the rich_text
+  → mrkdwn intermediate is converted to standard Markdown in one pass
+  (`MrkdwnToMarkdown`): emphasis `*x*`→`**x**`, `~x~`→`~~x~~`, links/mentions/emoji
+  already normalized; code/fence/angle spans are masked so their delimiters are
+  preserved.
+- **`--slack-markdown`** is a per-command flag (each invocation is one direction,
+  so per-command flags give independent in/out control). Outbound: interpret text
+  as Slack mrkdwn (current single-delimiter scanner). Inbound: return the native
+  Slack mrkdwn intermediate unchanged. **Mention resolution always runs** — the
+  flag only governs the formatting dialect. `--blocks` and the `api` command
+  bypass conversion entirely.
+
+**Mention resolution (decision): `@name`/`@group` resolve at send time.** Before
+the text is formatted, `ResolveMentions` rewrites bare `@handle`/`@group` tokens to
+`<@U…>` / `<!subteam^S…>` so both the blocks and the `text` field carry real
+mentions. Users resolve via the existing handle cache; usergroups via a new
+`usergroups` cache (handle→`S…`, 24h, warmed in one `usergroups.list` call). IDs
+(`@U…`) and broadcasts (`@here`) are left for the outbound formatter; a bare name
+is tried as a user first then a usergroup; unresolved handles stay literal. The
+resolver needs a client, so the CLI resolves the target client *before* building
+the (pure) request.
+
 ## Drafts and scheduled messages
 
 **Decision: drafts and scheduled messages are the same `drafts.*` store (browser
@@ -167,9 +204,9 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
   human-debuggable. (`modernc.org/sqlite` stays in the binary for cookie DBs
   only.) The subdir groups a workspace's caches and makes per-workspace purge
   one rmdir.
-- **Categories + default TTL**: `users` ID→profile (24h); `handles`
-  @handle/email→ID, `channel-names` name→ID, `channels` ID→meta,
-  `workflow-list` channelID→annotated workflows, `workflow-triggers`
+- **Categories + default TTL**: `users` ID→profile, `usergroups` handle→`S…`
+  (24h each); `handles` @handle/email→ID, `channel-names` name→ID, `channels`
+  ID→meta, `workflow-list` channelID→annotated workflows, `workflow-triggers`
   Ft→preview, `workflow-schemas` Wf→schema, `scheduled` id→compact
   scheduled-message (write-only, completion-only) (1h each). Stable data lasts
   a day; volatile name/membership mappings an hour.

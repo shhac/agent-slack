@@ -93,11 +93,19 @@ agent-slack message delete "<permalink>" --yes
 agent-slack channel mark "<permalink>"                       # mark read up to here
 ```
 
-Outbound text is auto-formatted: `@U…` becomes a real mention, `& < >` are
-escaped, bullet/numbered lists become rich text. Destructive commands need
-`--yes` (`message edit|delete`, `message scheduled cancel`,
-`channel new|invite`); without it they return a description of what would
-happen — show it to the user before retrying with `--yes`.
+**Formatting (standard Markdown).** Write message text as ordinary Markdown —
+`**bold**`, `*italic*` or `_italic_`, `~~strike~~`, `` `code` ``, ```` ```fences``` ````,
+`[label](url)`, `- bullets`, `1. numbers`, `> quotes`. Two things to know:
+`__text__` means **underline** (our extension, not bold), and `\*` escapes a
+literal marker. Mentions auto-resolve: `@here`/`@channel`, `@U…` ids, and bare
+`@name` / `@group` handles all become real mentions. Pass `--slack-markdown` to
+send/read in Slack's native mrkdwn dialect instead (`*bold*`, `<url|label>`).
+Reading messages (`get`/`list`/`search`/`unreads`/`later`) returns Markdown too.
+See [references/formatting.md](references/formatting.md) for the full table.
+
+Destructive commands need `--yes` (`message edit|delete`, `message scheduled
+cancel`, `channel new|invite`); without it they return a description of what
+would happen — show it to the user before retrying with `--yes`.
 
 ## Channels, users, workflows
 

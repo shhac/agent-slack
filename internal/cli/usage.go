@@ -90,10 +90,15 @@ LIST   message list <target>
        Files are metadata-only unless --download.
 SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        Targets: #channel, C…, U… (DM auto-opens), or a permalink (replies in
-       that thread). Text is auto-formatted: @U… → mention, & < > escaped,
-       bullet/numbered lists → rich_text. --attach <path> (repeatable),
-       --blocks <file|-> raw Block Kit, --schedule <iso8601-with-tz|unix>,
-       --schedule-in <30m|2d|tomorrow 9am>. Output includes ts + permalink.
+       that thread). Text is standard Markdown: **bold**, *italic*/_italic_,
+       ~~strike~~, __underline__ (extension), inline + fenced code, [label](url),
+       - bullets, 1. numbers, > quotes; backslash escapes a literal marker.
+       Mentions: @here/@channel, @U… ids, and @name / @group handles all resolve.
+       --slack-markdown interprets text as Slack mrkdwn (*bold*, <url|label>).
+       --attach <path> (repeatable), --blocks <file|-> raw Block Kit,
+       --schedule <iso8601-with-tz|unix>, --schedule-in <30m|2d|tomorrow 9am>.
+       Output includes ts + permalink. Reads (get/list/search/unreads/later)
+       return Markdown too; --slack-markdown keeps native Slack mrkdwn.
 DRAFT  message draft create <target> [text] [--blocks <file|->]
        message draft list | get <target> | edit <target> [text] | send <target>
        message draft delete <target> --yes   (destructive)
