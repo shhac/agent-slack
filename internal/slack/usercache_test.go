@@ -17,7 +17,7 @@ func TestWarmUserCacheFillsHandleIndex(t *testing.T) {
 	server := mockslack.New() // no users.list handler: a fall-through scan would error
 	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
 
-	c.warmUserCache([]CompactUser{{ID: "U0ALICEAA", Name: "alice"}, {ID: "U0BOBBBBB", Name: "bob"}})
+	c.warmUserCache([]CompactUser{{ID: "U0ALICEAA", Name: "alice"}, {ID: "U0BOBBBBB", Name: "bob"}}, false)
 
 	id, err := ResolveUserID(context.Background(), c, "@alice")
 	if err != nil || id != "U0ALICEAA" {
