@@ -38,9 +38,9 @@ global persistent flags.
 | `message react add/remove <target> <emoji>` | `--ts` | | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | | NDJSON |
 | `message scheduled cancel <id>` | `--channel` | `--yes` | destroys a pending send |
-| `message draft create <target> [text]` | `--blocks`, `--slack-markdown`, `--forward <permalink>` | | browser-only; one plain draft per target |
-| `message draft list` | | | NDJSON; plain drafts only (`date_scheduled == 0`) |
-| `message draft get/edit/delete/send <target>` | `edit`: `--forward <permalink>`; `send`: `--schedule`, `--schedule-in` | | operate on the single plain draft for the target; `send` posts+deletes, or promotes to scheduled |
+| `message draft create <target> [text]` | `--blocks`, `--slack-markdown`, `--forward <permalink>`, `--attach` | | browser-only; many drafts per target — returns the new draft id |
+| `message draft list` | | | NDJSON; unscheduled drafts (`date_scheduled == 0`), each with `id` + `file_ids` |
+| `message draft get/edit/delete/send <target\|id>` | `edit`: `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | | address by draft id, or by target when it has exactly one (else error with the ids); `send` posts (files via `files.share`), or promotes to scheduled |
 | `usergroup list` | `--include-disabled` | | NDJSON, compact projection |
 | `usergroup get <usergroup…>` | | | id `S…` or `@handle`; one→object, several→NDJSON |
 | `usergroup members <usergroup>` | `--resolve-users`, `--refresh-users`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
@@ -161,25 +161,28 @@ is a heading — and all-digit refs like `#5` are ignored.
 ## Drafts and scheduled messages
 
 **Decision: drafts and scheduled messages are the same `drafts.*` store (browser
-auth), addressed by their cardinality.** See `behavior-reference.md` for the API
-model (`attached_draft_exists`, no `drafts.send`, `client_last_updated_ts`).
+auth), all addressed by id.** See `behavior-reference.md` for the API model
+(the `is_from_composer` slot semantics, no `drafts.send`, `client_last_updated_ts`).
 
-- **Plain drafts → target-addressed** (one per target, enforced by Slack).
-  `message draft` is a command group:
-  - `create <target> [text] [--blocks]` — the LLM→human hand-off ("I've written
-    it; review and send"). A pre-existing draft for the target maps
-    `attached_draft_exists` → `fixable_by: agent` with a hint to `edit`/`delete`.
-  - `list` — plain drafts only (`date_scheduled == 0`, not deleted/sent):
-    `{id, channel_id, text}`.
-  - `get <target>` / `edit <target> [text]` / `delete <target>` / `send <target>`
-    — operate on the single plain draft for the target. `send` posts it
-    (`chat.postMessage`) then deletes it; `send --schedule/--schedule-in`
-    instead **promotes** the draft to a scheduled message in place (one
-    `drafts.update` with `date_scheduled` + `is_from_composer:true`, same id, no
-    post/delete — it then lives under `scheduled`). Missing draft →
-    `fixable_by: agent` hint to `create`. `delete`/`edit` never touch a
-    scheduled draft (they filter to plain), so scheduled messages are managed
-    only via `scheduled`.
+- **Hand-off drafts → `is_from_composer: true`, id-addressed** (many per target).
+  We deliberately use the composer slot: it never pre-fills the user's input box
+  (no accidental send) and isn't capped at one per target, so concurrent agents
+  don't collide. `message draft` is a command group:
+  - `create <target> [text] [--blocks] [--attach]` — the LLM→human hand-off ("I've
+    written it; review and send"). Never conflicts; returns the new draft id.
+  - `list` — unscheduled drafts (`date_scheduled == 0`, not deleted/sent):
+    `{id, channel_id, text, file_ids}`. Includes drafts the user started in-app —
+    they're indistinguishable from ours (no source field).
+  - `get|edit|delete|send <target|id>` — address by draft id, or by a target when
+    it holds **exactly one** draft; a target with several errors and lists the
+    candidate ids rather than guessing (which could send a draft the user was
+    typing). `send` posts now — `files.share` when the draft carries files, else
+    `chat.postMessage` with `draft_id` (Slack clears the draft atomically, no
+    separate delete); `send --schedule/--schedule-in` instead **promotes** it to a
+    scheduled message in place (one `drafts.update` with `date_scheduled`, same id,
+    re-sending `file_ids` — it then lives under `scheduled`). Missing draft →
+    `fixable_by: agent` hint to `create`. `delete`/`edit` filter to unscheduled
+    drafts, so scheduled messages are managed only via `scheduled`.
 - **Scheduled messages → id-addressed** (many per target). `scheduled list` /
   `scheduled cancel <id>` (browser cancel needs no `--channel`; bot/user tokens
   do). Bot/user tokens use `chat.scheduleMessage` / `chat.scheduledMessages.list`
@@ -188,11 +191,15 @@ model (`attached_draft_exists`, no `drafts.send`, `client_last_updated_ts`).
 - **Liveness over caching, but write-warm for completion (decision):**
   `draft`/`scheduled` `list`/`get` always hit the API fresh and never *read* a
   cache — this is the instant-messaging edge where a stale read is wrong. But
-  `scheduled list` *writes* the ids it just fetched into a `scheduled` cache
-  category (write-only warm), so `scheduled cancel <id>` can offer id
-  completions. The split is what keeps liveness intact: the command path is
-  always live; only the completion path (a pure cache-file read, no API/creds)
-  consumes the warmed ids, which age out at the category TTL.
+  `scheduled list` and `draft list` each *write* the ids they just fetched into a
+  `scheduled` / `drafts` cache category (write-only warm), so `scheduled cancel
+  <id>` and `draft get|edit|delete|send <id>` can offer id completions. The split
+  is what keeps liveness intact: the command path is always live; only the
+  completion path (a pure cache-file read, no API/creds) consumes the warmed ids.
+  Neither category is part of `cache warm` (that sweeps stable resolution data —
+  users/channels/usergroups); stale ids (a sent, deleted, or promoted draft) are
+  not actively evicted but age out at the category TTL — a completion offering a
+  gone id just errors gracefully when used.
 - **Forwarding (`--forward <permalink>`) (decision):** `message send
   --forward <permalink>` forwards a message. Browser (xoxc) auth uses
   `chat.shareMessage` to post a real `is_share` card; other token kinds fall

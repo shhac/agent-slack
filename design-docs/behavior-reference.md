@@ -89,13 +89,12 @@ a UI.)
 
 Methods (all accept `xoxc`):
 
-- `drafts.create` — params: `client_msg_id` (UUID), `blocks` (rich_text — a
-  draft has no plain-text field), `destinations` (`[{channel_id}]`), `file_ids`
-  (required, may be `[]`), `is_from_composer`. A **scheduled** draft adds
-  `date_scheduled` (unix) and must set `is_from_composer: true`; a **plain**
-  draft sets `is_from_composer: false`.
+- `drafts.create` — params: `client_msg_id` (UUID — a non-UUID fails with
+  `invalid_client_msg_id`), `blocks` (rich_text — a draft has no plain-text
+  field), `destinations` (`[{channel_id}]`), `file_ids` (required, may be `[]`),
+  `is_from_composer`. A **scheduled** draft also sets `date_scheduled` (unix).
 - `drafts.list` — returns every draft (filter on `date_scheduled`, `is_deleted`,
-  `is_sent`).
+  `is_sent`); stored `file_ids` round-trip on read.
 - `drafts.info` — single draft by `draft_id`.
 - `drafts.update` — edit; same fields as create plus `client_last_updated_ts`.
 - `drafts.delete` — soft-delete (sets `is_deleted`); needs `client_last_updated_ts`.
@@ -104,23 +103,58 @@ Methods (all accept `xoxc`):
 (last-writer-wins) — a fresh "now" value wins; the draft's stored
 `last_updated_ts` is *not* what the server compares against.
 
-Cardinality (verified against the API):
+**`is_from_composer` is load-bearing (verified live).** It controls two
+independent things:
 
-- **Plain (unscheduled) drafts: at most one per target.** A second
-  `drafts.create` to a target that already has a plain draft fails with
-  `attached_draft_exists`. So a plain draft is target-addressed.
-- **Scheduled drafts: many per target.** Multiple `date_scheduled` drafts to the
-  same channel coexist, so scheduled messages are id-addressed.
+1. *The compose box.* An `is_from_composer: false` draft pre-fills the channel's
+   message input when the input is empty (it backs the input); an
+   `is_from_composer: true` draft never touches the input. Both are findable in
+   the client's Drafts list.
+2. *Dedup.* Slack allows at most **one** `is_from_composer: false` draft per
+   target (a second `drafts.create` fails with `attached_draft_exists`) but
+   **many** `is_from_composer: true` drafts per target.
 
-There is no `drafts.send`: "send a draft now" composes `chat.postMessage`
-(browser-allowed) with the draft's blocks, then `drafts.delete`.
+We create every hand-off draft as **`is_from_composer: true`**: it never shoves
+our text into the user's input box (no accidental send), and many-per-target
+means concurrent agents don't collide on a single slot. The cost: our drafts are
+then indistinguishable from drafts the user started in-app (no "source" field
+exists) — both appear in `drafts.list` — so the CLI addresses a draft by its id
+(`Dr…`), treating a target as a convenience only when it resolves to exactly one
+draft (otherwise it errors and lists the candidate ids). Draft kinds, by
+(`is_from_composer`, `date_scheduled`):
 
-**Promotion (plain draft → scheduled).** A single `drafts.update` that adds
-`date_scheduled` + `is_from_composer: true` flips a plain draft to a scheduled
-message in place (verified): same `draft_id`, it moves from the plain `list` to
-the scheduled `list`, with no separate post/delete. This backs
-`message draft send --schedule/--schedule-in`. (The reverse — a *detached*
-draft, `is_from_composer: false`, cannot be scheduled: `scheduled_draft_cannot_be_attached`.)
+- ours / the user's in-app drafts — `true`, `0` (many per target, id-addressed)
+- scheduled messages — `true`, `>0` (many per target, id-addressed)
+- a *detached* draft — `false`, `0` (one per target; we never create these, and
+  they can't be scheduled — `scheduled_draft_cannot_be_attached`)
+
+**Attaching a file to a draft (verified).** A draft references a file by id, but
+`drafts.create` rejects a *pending* upload with `file_not_found` — the file must
+be finalized first. Upload the bytes (`files.getUploadURLExternal` → POST), then
+`files.completeUploadExternal` with the file but **no `channel_id`**: that turns
+the pending upload into a real file *without posting it*, and `drafts.create`
+then accepts the id. (Same no-channel `files.completeUpload` step the web client
+uses.) Uploads run in parallel; the completion finalizes them.
+
+**Sending a draft.** There is no `drafts.send`. A draft that carries files goes
+via `files.share` (`draft_id` + comma-joined `files` + `blocks`) — the native
+"send message with files" path, which posts and removes the draft in one call
+(`chat.postMessage` can't re-attach an already-uploaded file). A fileless draft
+posts via `chat.postMessage` carrying `draft_id`, so Slack removes the draft as
+part of the post — no separate, raceable `drafts.delete`.
+
+**Promotion (draft → scheduled).** A single `drafts.update` that adds
+`date_scheduled` flips a draft to a scheduled message in place (verified): same
+`draft_id`, it moves from the plain `list` to the scheduled `list`, re-sending
+`file_ids` so attachments survive to delivery. This backs
+`message draft send --schedule/--schedule-in`.
+
+**Completion cache.** `drafts.list` write-warms a "drafts" completion category
+(ids + text) so the shell can suggest draft ids. Like the scheduled-id cache, it
+is *not* part of `cache warm` (which sweeps stable resolution data —
+users/channels/usergroups), and stale ids (sent, deleted, or promoted) age out
+at the category TTL rather than being actively evicted: a completion that offers
+a gone id simply errors gracefully when used.
 
 Human-in-the-loop is the `--yes` gate on destructive mutations (see
 `cli-design.md`).
