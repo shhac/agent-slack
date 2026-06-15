@@ -113,6 +113,32 @@ func (req sendRequest) outgoing() slack.OutgoingMessage {
 	}
 }
 
+// validateSendFlags rejects unsupported flag combinations: --forward with
+// --blocks/--attach, --schedule with --attach, --blocks with --attach, and the
+// per-target --reply-broadcast rules. Pure (no I/O) so the matrix is testable
+// in isolation.
+func validateSendFlags(targetKind render.TargetKind, threadTS string, postAt int64, flags sendFlags, attachPaths []string) error {
+	switch {
+	case flags.forward != "" && (flags.blocksPath != "" || len(attachPaths) > 0):
+		return agenterrors.New("--forward cannot be combined with --blocks or --attach", agenterrors.FixableByAgent)
+	case postAt != 0 && len(attachPaths) > 0:
+		return agenterrors.New("--schedule/--schedule-in cannot be combined with --attach (scheduled messages do not support uploads)", agenterrors.FixableByAgent)
+	case flags.blocksPath != "" && len(attachPaths) > 0:
+		return agenterrors.New("--blocks cannot be combined with --attach", agenterrors.FixableByAgent)
+	}
+	switch targetKind {
+	case render.TargetUser:
+		if flags.replyBroadcast {
+			return agenterrors.New("--reply-broadcast is not supported for DM targets", agenterrors.FixableByAgent)
+		}
+	case render.TargetChannel:
+		if flags.replyBroadcast && threadTS == "" {
+			return agenterrors.New("--reply-broadcast requires --thread-ts for channel targets", agenterrors.FixableByAgent)
+		}
+	}
+	return nil
+}
+
 // buildSendRequest validates the flag/target matrix and assembles the
 // request: text formatting, list→rich_text conversion or --blocks loading,
 // schedule resolution, and the per-target --reply-broadcast rules.
@@ -125,26 +151,9 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 		return sendRequest{}, err
 	}
 	attachPaths := dedupeStrings(flags.attach)
-	if flags.forward != "" && (flags.blocksPath != "" || len(attachPaths) > 0) {
-		return sendRequest{}, agenterrors.New("--forward cannot be combined with --blocks or --attach", agenterrors.FixableByAgent)
-	}
-	if postAt != 0 && len(attachPaths) > 0 {
-		return sendRequest{}, agenterrors.New("--schedule/--schedule-in cannot be combined with --attach (scheduled messages do not support uploads)", agenterrors.FixableByAgent)
-	}
-	if flags.blocksPath != "" && len(attachPaths) > 0 {
-		return sendRequest{}, agenterrors.New("--blocks cannot be combined with --attach", agenterrors.FixableByAgent)
-	}
-
 	threadTS := strings.TrimSpace(flags.threadTS)
-	switch targetKind {
-	case render.TargetUser:
-		if flags.replyBroadcast {
-			return sendRequest{}, agenterrors.New("--reply-broadcast is not supported for DM targets", agenterrors.FixableByAgent)
-		}
-	case render.TargetChannel:
-		if flags.replyBroadcast && threadTS == "" {
-			return sendRequest{}, agenterrors.New("--reply-broadcast requires --thread-ts for channel targets", agenterrors.FixableByAgent)
-		}
+	if err := validateSendFlags(targetKind, threadTS, postAt, flags, attachPaths); err != nil {
+		return sendRequest{}, err
 	}
 
 	rtBlocks, outboundText := render.RenderOutbound(text, flags.slackMarkdown)
