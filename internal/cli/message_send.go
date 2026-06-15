@@ -98,6 +98,7 @@ type sendRequest struct {
 	postAt         int64
 	slackMarkdown  bool
 	unfurl         bool
+	fileIDs        []string // pre-uploaded file ids, for draft attachments
 }
 
 func (req sendRequest) outgoing() slack.OutgoingMessage {
@@ -110,6 +111,7 @@ func (req sendRequest) outgoing() slack.OutgoingMessage {
 		Blocks:         req.blocks,
 		SlackMarkdown:  req.slackMarkdown,
 		UnfurlLinks:    req.unfurl,
+		FileIDs:        req.fileIDs,
 	}
 }
 

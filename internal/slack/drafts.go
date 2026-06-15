@@ -106,10 +106,14 @@ func DeleteDraft(ctx context.Context, c *Client, draftID string) error {
 // draftContent is the shared create/update body. postAt > 0 makes a scheduled
 // (composer) draft; a plain draft has no schedule and is not composer-attached.
 func draftContent(m OutgoingMessage, postAt int64) map[string]any {
+	fileIDs := make([]any, len(m.FileIDs))
+	for i, id := range m.FileIDs {
+		fileIDs[i] = id
+	}
 	params := map[string]any{
 		"blocks":           draftBlocks(m),
 		"destinations":     []any{map[string]any{"channel_id": m.ChannelID}},
-		"file_ids":         []any{},
+		"file_ids":         fileIDs,
 		"is_from_composer": postAt > 0,
 	}
 	if postAt > 0 {

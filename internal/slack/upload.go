@@ -42,6 +42,22 @@ func (c *Client) UploadLocalFiles(ctx context.Context, channelID string, filePat
 	return err
 }
 
+// UploadDraftFiles uploads each local file's bytes and returns the resulting
+// file ids, ready to attach to a draft (drafts.create/update reference ids
+// directly). Unlike UploadLocalFiles it does NOT call completeUploadExternal —
+// that would post a message; a draft just holds the ids until the human sends.
+func (c *Client) UploadDraftFiles(ctx context.Context, paths []string) ([]string, error) {
+	ids := make([]string, 0, len(paths))
+	for _, path := range paths {
+		fileID, _, err := c.uploadFileBytes(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, fileID)
+	}
+	return ids, nil
+}
+
 // uploadFileBytes validates a local file and uploads its bytes to the
 // per-file URL Slack hands out, returning the file_id to complete with and the
 // base filename (its title). It does not post anything — the caller batches the

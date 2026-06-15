@@ -35,6 +35,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 	var blocksPath string
 	var slackMarkdown bool
 	var forward string
+	var attach []string
 	cmd := &cobra.Command{
 		Use:               "create <target> [text]",
 		Short:             "Save a draft for the user to review, edit, and send",
@@ -42,7 +43,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown, forward)
+			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown, forward, attach)
 			if err != nil {
 				return err
 			}
@@ -60,6 +61,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
 	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
 	cmd.Flags().StringVar(&forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
+	cmd.Flags().StringArrayVar(&attach, "attach", nil, "Attach a local file to the draft (repeatable)")
 	parent.AddCommand(cmd)
 }
 
@@ -112,6 +114,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 	var blocksPath string
 	var slackMarkdown bool
 	var forward string
+	var attach []string
 	cmd := &cobra.Command{
 		Use:               "edit <target> [text]",
 		Short:             "Replace the plain draft for a target",
@@ -119,7 +122,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown, forward)
+			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown, forward, attach)
 			if err != nil {
 				return err
 			}
@@ -142,6 +145,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
 	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
 	cmd.Flags().StringVar(&forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
+	cmd.Flags().StringArrayVar(&attach, "attach", nil, "Attach a local file to the draft (repeatable)")
 	parent.AddCommand(cmd)
 }
 
@@ -224,8 +228,11 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 // --- shared draft helpers ---------------------------------------------------
 
 // buildDraftRequest parses the target and validates the text/--blocks into a
-// sendRequest (reusing the send build path, minus scheduling/attachments).
-func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string, slackMarkdown bool, forward string) (sendRequest, *clientContext, error) {
+// sendRequest (reusing the send build path, minus scheduling). Any --attach
+// files are uploaded to file ids and attached to the draft directly (drafts
+// keep their rich_text blocks, so links/formatting survive — unlike a direct
+// attachment send, which posts plain text).
+func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string, slackMarkdown bool, forward string, attach []string) (sendRequest, *clientContext, error) {
 	target, err := render.ParseTarget(args[0])
 	if err != nil {
 		return sendRequest{}, nil, err
@@ -246,11 +253,21 @@ func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalF
 	}
 	text = slack.ResolveMentions(ctx, cc.Client, text)
 	text = slack.ResolveChannelMentions(ctx, cc.Client, text)
-	req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown, forward: forward}, time.Now())
+	req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown, forward: forward, attach: attach}, time.Now())
 	if err != nil {
 		return sendRequest{}, nil, err
 	}
 	req.channelID = channelID
+	if len(req.attachPaths) > 0 {
+		// Upload bytes → file ids and attach to the draft; the send-path
+		// attachPaths (which would post + complete) are unused for drafts.
+		ids, uerr := cc.Client.UploadDraftFiles(ctx, req.attachPaths)
+		if uerr != nil {
+			return sendRequest{}, nil, uerr
+		}
+		req.fileIDs = ids
+		req.attachPaths = nil
+	}
 	return req, cc, nil
 }
 

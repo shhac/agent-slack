@@ -17,6 +17,10 @@ type OutgoingMessage struct {
 	// embedded permalink expands into a shared-message card regardless of token
 	// type (bot tokens default unfurl_links off).
 	UnfurlLinks bool
+	// FileIDs attaches already-uploaded files to a draft (drafts.create/update
+	// reference ids directly). Unused by chat.postMessage, which uploads +
+	// completes its own files.
+	FileIDs []string
 }
 
 func (m OutgoingMessage) params() map[string]any {
