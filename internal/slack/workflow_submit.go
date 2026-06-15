@@ -161,42 +161,14 @@ func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission
 	}
 	defer conn.Close()
 
-	// Start listening BEFORE tripping: view_opened can arrive before the trip
-	// call returns.
-	viewCh := make(chan map[string]any, 1)
-	listenCtx, cancelListen := context.WithTimeout(ctx, 15*time.Second)
-	defer cancelListen()
-	go func() {
-		for {
-			msg, rerr := conn.ReadJSON(listenCtx)
-			if rerr != nil {
-				close(viewCh)
-				return
-			}
-			if msg == nil {
-				continue
-			}
-			if t := getStr(msg, "type"); t == "view_opened" || t == "view_push" {
-				viewCh <- msg
-				return
-			}
-		}
-	}()
-
-	tripResult, err := RunWorkflowTrigger(ctx, c, input.ShortcutURL, input.ChannelID, input.BookmarkID)
+	var tripResult WorkflowRunResult
+	viewMsg, err := awaitOpenedView(ctx, conn, func() error {
+		var terr error
+		tripResult, terr = RunWorkflowTrigger(ctx, c, input.ShortcutURL, input.ChannelID, input.BookmarkID)
+		return terr
+	})
 	if err != nil {
 		return WorkflowSubmitResult{}, err
-	}
-
-	var viewMsg map[string]any
-	select {
-	case msg, ok := <-viewCh:
-		if !ok {
-			return WorkflowSubmitResult{}, agenterrors.New("timed out waiting for the workflow form (view_opened)", agenterrors.FixableByRetry)
-		}
-		viewMsg = msg
-	case <-listenCtx.Done():
-		return WorkflowSubmitResult{}, agenterrors.New("timed out waiting for the workflow form (view_opened)", agenterrors.FixableByRetry)
 	}
 
 	view := getRec(viewMsg, "view")
@@ -220,4 +192,45 @@ func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission
 		ViewID:              viewID,
 		Submitted:           true,
 	}, nil
+}
+
+// awaitOpenedView listens for the workflow's view_opened/view_push on the RTM
+// connection, then returns the opened view. Listening starts BEFORE trip fires
+// the trigger, because the event can arrive before the trip call returns; the
+// wait is bounded by a 15s timeout. trip is the trigger-tripping side effect
+// (kept as a callback so the listen-before-trip ordering lives in one place).
+func awaitOpenedView(ctx context.Context, conn rtmConn, trip func() error) (map[string]any, error) {
+	viewCh := make(chan map[string]any, 1)
+	listenCtx, cancelListen := context.WithTimeout(ctx, 15*time.Second)
+	defer cancelListen()
+	go func() {
+		for {
+			msg, rerr := conn.ReadJSON(listenCtx)
+			if rerr != nil {
+				close(viewCh)
+				return
+			}
+			if msg == nil {
+				continue
+			}
+			if t := getStr(msg, "type"); t == "view_opened" || t == "view_push" {
+				viewCh <- msg
+				return
+			}
+		}
+	}()
+
+	if err := trip(); err != nil {
+		return nil, err
+	}
+
+	select {
+	case msg, ok := <-viewCh:
+		if !ok {
+			return nil, agenterrors.New("timed out waiting for the workflow form (view_opened)", agenterrors.FixableByRetry)
+		}
+		return msg, nil
+	case <-listenCtx.Done():
+		return nil, agenterrors.New("timed out waiting for the workflow form (view_opened)", agenterrors.FixableByRetry)
+	}
 }
