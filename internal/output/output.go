@@ -117,45 +117,44 @@ func printYAML(w io.Writer, data any, prune bool) {
 }
 
 func normalizeYAMLNumbers(v any) any {
-	switch val := v.(type) {
-	case map[string]any:
-		for k, child := range val {
-			val[k] = normalizeYAMLNumbers(child)
+	return walkTree(v, nil, func(leaf any) any {
+		f, ok := leaf.(float64)
+		if !ok || math.IsInf(f, 0) || math.IsNaN(f) || math.Trunc(f) != f {
+			return leaf
 		}
-		return val
-	case []any:
-		for i, child := range val {
-			val[i] = normalizeYAMLNumbers(child)
-		}
-		return val
-	case float64:
-		if math.IsInf(val, 0) || math.IsNaN(val) || math.Trunc(val) != val {
-			return val
-		}
-		return int64(val)
-	default:
-		return v
-	}
+		return int64(f)
+	})
 }
 
 func pruneNulls(v any) any {
+	return walkTree(v, func(child any) bool { return child == nil }, nil)
+}
+
+// walkTree rewrites a decoded JSON tree. dropKey, when non-nil, removes a map
+// entry whose value it reports true for (before recursing); leaf, when non-nil,
+// transforms each scalar (non-container) value. Only map entries are ever
+// dropped — slice elements are always kept — which is what both callers need.
+func walkTree(v any, dropKey func(any) bool, leaf func(any) any) any {
 	switch val := v.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(val))
 		for k, child := range val {
-			if child == nil {
+			if dropKey != nil && dropKey(child) {
 				continue
 			}
-			out[k] = pruneNulls(child)
+			out[k] = walkTree(child, dropKey, leaf)
 		}
 		return out
 	case []any:
 		out := make([]any, len(val))
 		for i, child := range val {
-			out[i] = pruneNulls(child)
+			out[i] = walkTree(child, dropKey, leaf)
 		}
 		return out
 	default:
-		return v
+		if leaf != nil {
+			return leaf(val)
+		}
+		return val
 	}
 }

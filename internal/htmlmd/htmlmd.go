@@ -21,11 +21,17 @@ func Convert(html string) string {
 	return md
 }
 
-// extractPrimaryContent prefers <main>, then <article>, then <body> — canvas
-// exports wrap the document in chrome we don't want converted.
+// primaryContentRes matches the preferred document containers in order: <main>,
+// then <article>, then <body> — canvas exports wrap the document in chrome we
+// don't want converted.
+var primaryContentRes = []*regexp.Regexp{
+	regexp.MustCompile(`(?is)<main\b[^>]*>(.*?)</main>`),
+	regexp.MustCompile(`(?is)<article\b[^>]*>(.*?)</article>`),
+	regexp.MustCompile(`(?is)<body\b[^>]*>(.*?)</body>`),
+}
+
 func extractPrimaryContent(html string) string {
-	for _, tag := range []string{"main", "article", "body"} {
-		re := regexp.MustCompile(`(?is)<` + tag + `\b[^>]*>(.*?)</` + tag + `>`)
+	for _, re := range primaryContentRes {
 		if m := re.FindStringSubmatch(html); m != nil {
 			return m[1]
 		}
