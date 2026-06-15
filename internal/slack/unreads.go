@@ -83,17 +83,26 @@ func unreadEntries(resp map[string]any) []unreadEntry {
 	return withUnreads
 }
 
+// normalizeUnreadOptions fills the per-channel message and body-char caps with
+// their defaults.
+func normalizeUnreadOptions(opts UnreadsOptions) (maxMessages, maxBodyChars int) {
+	return orDefault(opts.MaxMessagesPerChannel, 10), orDefault(opts.MaxBodyChars, 4000)
+}
+
+// sortUnreadChannels orders channels mentions-first, then by unread volume.
+func sortUnreadChannels(channels []UnreadChannel) {
+	sort.SliceStable(channels, func(i, j int) bool {
+		if channels[i].MentionCount != channels[j].MentionCount {
+			return channels[i].MentionCount > channels[j].MentionCount
+		}
+		return channels[i].UnreadCount > channels[j].UnreadCount
+	})
+}
+
 // FetchUnreads reads client.counts (internal API: browser auth) and hydrates
 // each unread conversation with its name and the messages since last_read.
 func FetchUnreads(ctx context.Context, c *Client, opts UnreadsOptions) (UnreadsResult, error) {
-	maxMessages := opts.MaxMessagesPerChannel
-	if maxMessages == 0 {
-		maxMessages = 10
-	}
-	maxBodyChars := opts.MaxBodyChars
-	if maxBodyChars == 0 {
-		maxBodyChars = 4000
-	}
+	maxMessages, maxBodyChars := normalizeUnreadOptions(opts)
 
 	resp, err := c.API(ctx, "client.counts", map[string]any{"thread_count_by_channel": true})
 	if err != nil {
@@ -122,14 +131,7 @@ func FetchUnreads(ctx context.Context, c *Client, opts UnreadsOptions) (UnreadsR
 		}()
 	}
 	wg.Wait()
-
-	// Mentions first, then by unread volume.
-	sort.SliceStable(channels, func(i, j int) bool {
-		if channels[i].MentionCount != channels[j].MentionCount {
-			return channels[i].MentionCount > channels[j].MentionCount
-		}
-		return channels[i].UnreadCount > channels[j].UnreadCount
-	})
+	sortUnreadChannels(channels)
 
 	result := UnreadsResult{Channels: channels}
 	if threads := getRec(resp, "threads"); getBool(threads, "has_unreads") {
