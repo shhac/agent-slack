@@ -102,9 +102,13 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        --slack-markdown interprets text as Slack mrkdwn (*bold*, <url|label>).
        --attach <path> (repeatable), --blocks <file|-> raw Block Kit,
        --schedule <iso8601-with-tz|unix>, --schedule-in <30m|2d|tomorrow 9am>.
+       --forward <permalink> forwards that message (text becomes an optional
+       comment); same workspace only — a cross-workspace URL is a link, not a
+       forward. Browser (xoxc) auth posts a native forward card; other tokens
+       fall back to a permalink unfurl (permission-scoped to the source channel).
        Output includes ts + permalink. Reads (get/list/search/unreads/later)
        return Markdown too; --slack-markdown keeps native Slack mrkdwn.
-DRAFT  message draft create <target> [text] [--blocks <file|->]
+DRAFT  message draft create <target> [text] [--blocks <file|->] [--forward <permalink>]
        message draft list | get <target> | edit <target> [text] | send <target>
        message draft delete <target> --yes   (destructive)
        LLM→human hand-off (browser auth): save a draft for the user to review

@@ -13,6 +13,10 @@ type OutgoingMessage struct {
 	// SlackMarkdown selects the dialect when RawText is converted to draft
 	// rich_text blocks: Slack mrkdwn when true, standard Markdown otherwise.
 	SlackMarkdown bool
+	// UnfurlLinks forces link/media unfurling on — set when forwarding, so the
+	// embedded permalink expands into a shared-message card regardless of token
+	// type (bot tokens default unfurl_links off).
+	UnfurlLinks bool
 }
 
 func (m OutgoingMessage) params() map[string]any {
@@ -25,6 +29,10 @@ func (m OutgoingMessage) params() map[string]any {
 	}
 	if len(m.Blocks) > 0 {
 		params["blocks"] = m.Blocks
+	}
+	if m.UnfurlLinks {
+		params["unfurl_links"] = true
+		params["unfurl_media"] = true
 	}
 	return params
 }

@@ -28,8 +28,8 @@ without `--yes`; instead it returns a description of what *would* happen
 |---|---|---|
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve-users`, `--refresh-users`, `--no-download`, `--slack-markdown` | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, `--slack-markdown`, + the resolve/reaction flags from `get` | |
-| `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>`, `--slack-markdown` | |
-| `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown` | |
+| `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>`, `--slack-markdown`, `--forward <permalink>` | |
+| `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>` | |
 | `message draft list` | | |
 | `message draft get\|edit\|send <target>` | `edit`: `--blocks`, `--slack-markdown`; `send`: `--schedule`, `--schedule-in` | |
 | `message draft delete <target>` | | `--yes` |
@@ -43,8 +43,19 @@ without `--yes`; instead it returns a description of what *would* happen
 apply to channel-history mode and require `--oldest` to bound the scan.
 
 Text I/O is **standard Markdown** by default (both sending and reading);
-`@name`/`@group` handles resolve to real mentions; `--slack-markdown` switches to
-Slack's native mrkdwn dialect. Full table: [formatting.md](formatting.md).
+`@name`/`@group` handles and `#channel` names resolve to real mentions/links;
+`--slack-markdown` switches to Slack's native mrkdwn dialect. Full table:
+[formatting.md](formatting.md).
+
+`message send --forward <permalink>` forwards a message: any `[text]` becomes a
+comment above it. **Same workspace only** — a permalink from another workspace
+is a link, not a forward, and is rejected. On **browser (xoxc) auth** this posts
+a real native forward card (`chat.shareMessage`): the content is embedded with a
+"View conversation" control and no raw URL. On other tokens it falls back to
+posting the permalink for Slack to unfurl — a permission-scoped card that
+recipients without access to the source channel see only in reduced form.
+`draft create`/`edit --forward` always use the permalink form (you can't share
+into a draft), so the card appears when the human sends it.
 
 `message draft` (browser auth only) is the LLM→human hand-off: save a draft for
 the user to open, review, edit, and send. Plain drafts are **one per target**,

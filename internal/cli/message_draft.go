@@ -34,6 +34,7 @@ func registerMessageDraft(parent *cobra.Command, globals *GlobalFlags) {
 func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 	var blocksPath string
 	var slackMarkdown bool
+	var forward string
 	cmd := &cobra.Command{
 		Use:               "create <target> [text]",
 		Short:             "Save a draft for the user to review, edit, and send",
@@ -41,7 +42,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown)
+			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown, forward)
 			if err != nil {
 				return err
 			}
@@ -58,6 +59,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 	}
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
 	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
+	cmd.Flags().StringVar(&forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
 	parent.AddCommand(cmd)
 }
 
@@ -109,6 +111,7 @@ func registerDraftGet(parent *cobra.Command, globals *GlobalFlags) {
 func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 	var blocksPath string
 	var slackMarkdown bool
+	var forward string
 	cmd := &cobra.Command{
 		Use:               "edit <target> [text]",
 		Short:             "Replace the plain draft for a target",
@@ -116,7 +119,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown)
+			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown, forward)
 			if err != nil {
 				return err
 			}
@@ -138,6 +141,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 	}
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
 	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
+	cmd.Flags().StringVar(&forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
 	parent.AddCommand(cmd)
 }
 
@@ -221,7 +225,7 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 
 // buildDraftRequest parses the target and validates the text/--blocks into a
 // sendRequest (reusing the send build path, minus scheduling/attachments).
-func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string, slackMarkdown bool) (sendRequest, *clientContext, error) {
+func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string, slackMarkdown bool, forward string) (sendRequest, *clientContext, error) {
 	target, err := render.ParseTarget(args[0])
 	if err != nil {
 		return sendRequest{}, nil, err
@@ -234,9 +238,15 @@ func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalF
 	if len(args) > 1 {
 		text = args[1]
 	}
+	if forward != "" {
+		text, err = resolveForward(text, forward, cc.WorkspaceURL)
+		if err != nil {
+			return sendRequest{}, nil, err
+		}
+	}
 	text = slack.ResolveMentions(ctx, cc.Client, text)
 	text = slack.ResolveChannelMentions(ctx, cc.Client, text)
-	req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown}, time.Now())
+	req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown, forward: forward}, time.Now())
 	if err != nil {
 		return sendRequest{}, nil, err
 	}

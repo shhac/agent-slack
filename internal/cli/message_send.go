@@ -26,6 +26,7 @@ type sendFlags struct {
 	attach         []string
 	replyBroadcast bool
 	slackMarkdown  bool
+	forward        string
 }
 
 func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
@@ -51,6 +52,9 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 			cc, channelID, err := resolveTargetClient(ctx, globals, target, "")
 			if err != nil {
 				return err
+			}
+			if flags.forward != "" {
+				return runForward(ctx, globals, cc, channelID, text, *flags)
 			}
 			// Resolve @name / @group handles and #channel names to tokens before
 			// the text is formatted, so both the blocks and the text field carry
@@ -79,6 +83,7 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringVar(&flags.schedule, "schedule", "", "Schedule at an ISO 8601 time with timezone, or a unix timestamp")
 	cmd.Flags().StringVar(&flags.scheduleIn, "schedule-in", "", "Schedule after a duration (30m, 2d, tomorrow 9am, monday 9am)")
 	cmd.Flags().BoolVar(&flags.slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn (*bold*, <url|label>) instead of standard Markdown")
+	cmd.Flags().StringVar(&flags.forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
 	parent.AddCommand(cmd)
 }
 
@@ -92,6 +97,7 @@ type sendRequest struct {
 	attachPaths    []string
 	postAt         int64
 	slackMarkdown  bool
+	unfurl         bool
 }
 
 func (req sendRequest) outgoing() slack.OutgoingMessage {
@@ -103,6 +109,7 @@ func (req sendRequest) outgoing() slack.OutgoingMessage {
 		ReplyBroadcast: req.replyBroadcast,
 		Blocks:         req.blocks,
 		SlackMarkdown:  req.slackMarkdown,
+		UnfurlLinks:    req.unfurl,
 	}
 }
 
@@ -118,6 +125,9 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 		return sendRequest{}, err
 	}
 	attachPaths := dedupeStrings(flags.attach)
+	if flags.forward != "" && (flags.blocksPath != "" || len(attachPaths) > 0) {
+		return sendRequest{}, agenterrors.New("--forward cannot be combined with --blocks or --attach", agenterrors.FixableByAgent)
+	}
 	if postAt != 0 && len(attachPaths) > 0 {
 		return sendRequest{}, agenterrors.New("--schedule/--schedule-in cannot be combined with --attach (scheduled messages do not support uploads)", agenterrors.FixableByAgent)
 	}
@@ -159,6 +169,7 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 		attachPaths:    attachPaths,
 		postAt:         postAt,
 		slackMarkdown:  flags.slackMarkdown,
+		unfurl:         flags.forward != "",
 	}, nil
 }
 
