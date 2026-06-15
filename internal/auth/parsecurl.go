@@ -3,12 +3,16 @@ package auth
 import (
 	"net/url"
 	"regexp"
+	"strings"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
 var (
-	curlURLRe = regexp.MustCompile(`(?i)curl\s+['"]?(https?://([^.]+)\.slack\.com[^'"\s]*)`)
+	// Capture the whole *.slack.com host (group 2) rather than just the first
+	// label, so multi-label hosts like enterprise grid (acme.enterprise.slack.com)
+	// resolve instead of failing to match.
+	curlURLRe = regexp.MustCompile(`(?i)curl\s+['"]?https?://([a-z0-9.-]+\.slack\.com)`)
 
 	cookieFieldRes = []*regexp.Regexp{
 		regexp.MustCompile(`(?:-b|--cookie)\s+\$?'([^']+)'`),
@@ -35,7 +39,7 @@ func ParseCurl(input string) (Team, string, error) {
 	if urlMatch == nil {
 		return Team{}, "", agenterrors.New("could not find a Slack workspace URL in the cURL command", agenterrors.FixableByAgent)
 	}
-	workspaceURL := "https://" + urlMatch[2] + ".slack.com"
+	workspaceURL := "https://" + strings.ToLower(urlMatch[1])
 
 	var cookieHeader string
 	for _, re := range cookieFieldRes {
