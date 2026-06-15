@@ -23,6 +23,10 @@ type DownloadError struct {
 
 func (e *DownloadError) Error() string { return e.Message }
 
+// downloadErr wraps a low-level error as a status-less DownloadError — the
+// common case for filesystem and request-construction failures.
+func downloadErr(err error) *DownloadError { return downloadErr(err) }
+
 // DownloadOptions controls Client.DownloadFile.
 type DownloadOptions struct {
 	URL           string
@@ -66,10 +70,10 @@ func (c *Client) setDownloadAuthHeaders(req *http.Request) {
 func (c *Client) DownloadFile(ctx context.Context, opts DownloadOptions) (string, error) {
 	absDir, err := filepath.Abs(opts.DestDir)
 	if err != nil {
-		return "", &DownloadError{Message: err.Error()}
+		return "", downloadErr(err)
 	}
 	if err := os.MkdirAll(absDir, 0o700); err != nil {
-		return "", &DownloadError{Message: err.Error()}
+		return "", downloadErr(err)
 	}
 	name := opts.PreferredName
 	if name == "" {
@@ -88,7 +92,7 @@ func (c *Client) DownloadFile(ctx context.Context, opts DownloadOptions) (string
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, opts.URL, nil)
 	if err != nil {
-		return "", &DownloadError{Message: err.Error()}
+		return "", downloadErr(err)
 	}
 	c.setDownloadAuthHeaders(req)
 
@@ -117,7 +121,7 @@ func (c *Client) DownloadFile(ctx context.Context, opts DownloadOptions) (string
 		}
 	}
 	if err := os.WriteFile(path, body, 0o600); err != nil {
-		return "", &DownloadError{Message: err.Error()}
+		return "", downloadErr(err)
 	}
 	return path, nil
 }
@@ -257,7 +261,7 @@ func (c *Client) downloadCanvasAsMarkdown(ctx context.Context, fileID, fileURL s
 	}
 	html, err := os.ReadFile(htmlPath)
 	if err != nil {
-		return "", &DownloadError{Message: err.Error()}
+		return "", downloadErr(err)
 	}
 	if authPageRe.Match(html) {
 		return "", &DownloadError{Message: "downloaded auth/login page instead of canvas content (token may be expired)"}
@@ -265,7 +269,7 @@ func (c *Client) downloadCanvasAsMarkdown(ctx context.Context, fileID, fileURL s
 	markdown := strings.TrimSpace(opts.CanvasMarkdown(string(html)))
 	mdPath := filepath.Join(opts.DestDir, sanitizeFilename(fileID)+".md")
 	if err := os.WriteFile(mdPath, []byte(markdown), 0o600); err != nil {
-		return "", &DownloadError{Message: err.Error()}
+		return "", downloadErr(err)
 	}
 	return mdPath, nil
 }
