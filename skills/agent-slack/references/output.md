@@ -111,13 +111,29 @@ page.
   disables reads for a category. Categories include `get` and `list` (the 5m
   serve windows). `--refresh-users` still forces a profile re-fetch.
 
-Rejections are never cached (a transient `trigger_not_found` won't stick), and
-the side-effecting `workflow run` path is never cached.
+Individual rejections are never cached (a transient `trigger_not_found` won't
+stick), and the side-effecting `workflow run` path is never cached.
+
+**Completeness sentinel (authoritative misses).** When a full enumeration of a
+category finishes — `cache warm` (channels/usergroups always; users only with
+`--include-bots`), or a resolution that paginated to the end — the category is
+stamped complete. Within a per-category **completeness window** (default
+**30m**, keys `cache.ttl.users-complete` / `channels-complete` /
+`usergroups-complete`) a later **miss is treated as authoritative**: the
+`@handle` / `@group` / `#channel` is taken as absent without a remote lookup
+(an `@`/`#` mention stays literal; a channel *target* errors). This turns a
+message with many unknown references from one lookup per miss into a single
+warm. It is **not** a negative cache — it records "we held the complete set as
+of T," so it's bounded by the window. Newly-created entities therefore read as
+absent until the window expires or `--refresh-cache`/`--no-cache` is used
+(both bypass the sentinel). The window is independent of the `list` TTL — a
+`list` still re-fetches on its own 5m cadence.
 
 **Managing the cache:** `agent-slack cache info` shows what's cached per
-workspace (entries, size, age); `cache warm` pre-fetches users/channels/
-usergroups (paced for rate limits, streams JSONL progress) so completions and
-resolution are instant and offline; `cache purge [--workspace … |
+workspace (entries, size, age); `cache warm [users|channels|usergroups...]`
+pre-fetches the named categories (all if none given; paced for rate limits,
+streams JSONL progress) so completions and resolution are instant and offline,
+and arms the completeness sentinel; `cache purge [--workspace … |
 --all-workspaces]` clears it (local + regenerable). `agent-slack
 config set/get/list/unset` persists the TTLs above.
 

@@ -55,9 +55,11 @@ CACHE
   (5m); completions/resolution use longer TTLs. --no-cache bypasses;
   --refresh-cache re-fetches but still writes. Tune TTLs via --cache-ttl,
   AGENT_SLACK_CACHE_TTL[_<CATEGORY>], or 'config set cache.ttl.<cat>'.
-  'cache info' / 'cache purge' inspect and clear it; 'cache warm'
-  pre-fetches users/channels/usergroups (paced for rate limits, streams
-  JSONL) so completions and resolution are instant and offline.
+  'cache info' / 'cache purge' inspect and clear it; 'cache warm
+  [users|channels|usergroups]' pre-fetches list endpoints (paced, streams
+  JSONL) so completions/resolution are instant and offline, and arms a
+  completeness sentinel — within cache.ttl.*-complete (30m) a later miss is
+  authoritative (no remote lookup); --refresh-cache bypasses it.
 
 ERRORS
   JSON on stderr: {"error","fixable_by","hint"}. fixable_by=agent → fix the

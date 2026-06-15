@@ -162,7 +162,7 @@ wrapper exists.
 | Command | Notes |
 |---|---|
 | `cache info` | what's cached per workspace: categories, entry counts, size, age (all workspaces unless `--workspace`) |
-| `cache warm [--page-delay 1s] [--include-bots]` | pre-fetch users/channels/usergroups into the cache so completions + resolution are instant and offline. Paginates each endpoint, paced (`--page-delay 0` to disable) to stay under rate limits; streams JSONL progress (filter `done:true` for the per-category summary) |
+| `cache warm [users\|channels\|usergroups...] [--page-delay 1s] [--include-bots]` | pre-fetch the named categories (all if none given) so completions + resolution are instant and offline, and arm the completeness sentinel (a later miss is authoritative within `cache.ttl.*-complete`, default 30m). Paginates each endpoint, paced (`--page-delay 0` to disable); streams JSONL progress (filter `done:true` for the per-category summary) |
 | `cache purge [--workspace … \| --all-workspaces] [--downloads]` | clear cached data (local + regenerable; no `--yes`). `--downloads` clears the downloaded-files cache (global — see below) |
 | `config list` | persisted settings + the settable keys |
 | `config get <key>` / `config set <key> <value>` / `config unset <key>` | read/write persisted settings |
