@@ -138,6 +138,9 @@ func ResolveUsergroupID(ctx context.Context, c *Client, input string) (string, e
 	if id, ok := c.cachedUsergroupIDByHandle(key); ok {
 		return id, nil
 	}
+	if c.usergroupsComplete() {
+		return "", nil // authoritative: the complete set holds no such handle
+	}
 	groups, err := fetchUsergroups(ctx, c, true)
 	if err != nil {
 		return "", err
@@ -170,6 +173,11 @@ func fetchUsergroups(ctx context.Context, c *Client, includeDisabled bool) ([]Co
 		groups = append(groups, cg)
 	}
 	c.warmUsergroups(groups)
+	if includeDisabled {
+		// usergroups.list returns everything; with disabled groups included it's
+		// the complete set, so a later @group miss is authoritative.
+		c.markUsergroupsComplete()
+	}
 	return groups, nil
 }
 

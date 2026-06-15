@@ -47,6 +47,11 @@ func ResolveChannelID(ctx context.Context, c *Client, input string) (string, err
 		c.cacheChannelID(name, id)
 		return id, nil
 	}
+	if c.channelsComplete() {
+		// The complete set has no channel by this name; skip the full scan.
+		return "", errResolveFailed("channel name: #"+name,
+			"check the name or pass a channel ID (C…) — 'agent-slack channel list' shows conversations")
+	}
 
 	found := ""
 	err := EachPage(ctx, c, "conversations.list", map[string]any{
@@ -69,6 +74,9 @@ func ResolveChannelID(ctx context.Context, c *Client, input string) (string, err
 		return "", err
 	}
 	if found == "" {
+		// Paged every named channel without a match → the name index is now the
+		// complete set, so the next miss is authoritative.
+		c.markChannelsComplete()
 		return "", errResolveFailed("channel name: #"+name,
 			"check the name or pass a channel ID (C…) — 'agent-slack channel list' shows conversations")
 	}

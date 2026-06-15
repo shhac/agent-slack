@@ -43,6 +43,14 @@ type CacheTTL struct {
 	WorkflowSchema  time.Duration
 	Scheduled       time.Duration
 
+	// Completeness windows: how long after a full enumeration a resolution miss
+	// is trusted as authoritative (skip the remote lookup). Separate from the
+	// per-entry TTLs above and from List — a list can re-fetch on its own
+	// cadence while a miss is still trusted, and vice versa.
+	UsersComplete      time.Duration
+	ChannelsComplete   time.Duration
+	UsergroupsComplete time.Duration
+
 	// Serve thresholds: how fresh a cached entity/page must be to be returned
 	// from a `get`/`list` (short), as opposed to the long warm TTLs above that
 	// completions and name resolution tolerate.
@@ -63,8 +71,13 @@ func DefaultCacheTTL() CacheTTL {
 		WorkflowPreview: time.Hour,
 		WorkflowSchema:  time.Hour,
 		Scheduled:       time.Hour,
-		Get:             5 * time.Minute,
-		List:            5 * time.Minute,
+
+		UsersComplete:      30 * time.Minute,
+		ChannelsComplete:   30 * time.Minute,
+		UsergroupsComplete: 30 * time.Minute,
+
+		Get:  5 * time.Minute,
+		List: 5 * time.Minute,
 	}
 }
 
@@ -105,8 +118,12 @@ type cacheEntry[T any] struct {
 }
 
 type cacheData[T any] struct {
-	Version int                      `json:"version"`
-	Entries map[string]cacheEntry[T] `json:"entries"`
+	Version int `json:"version"`
+	// CompleteAt is the unix-ms time this category was last fully enumerated;
+	// 0 = never. Additive field — old files (without it) decode to 0, so no
+	// version bump is needed.
+	CompleteAt int64                    `json:"complete_at,omitempty"`
+	Entries    map[string]cacheEntry[T] `json:"entries"`
 }
 
 // cacheSnapshot is an in-memory, load-once / save-once view of one category
@@ -132,11 +149,12 @@ func cacheFilePath(dir, workspaceURL, category string) string {
 	return filepath.Join(dir, key, category+".json")
 }
 
-// readCacheFile parses one category file, returning nil when the path is
-// empty or the file is missing, corrupt, or a different version. Both the
-// TTL-respecting snapshot and the TTL-ignoring completion reader go through
-// this single point, so the on-disk format has exactly one parser.
-func readCacheFile[T any](path string) map[string]cacheEntry[T] {
+// readCacheFile parses one category file into the full cacheData (entries plus
+// the CompleteAt sentinel), returning nil when the path is empty or the file is
+// missing, corrupt, or a different version. Both the TTL-respecting snapshot and
+// the TTL-ignoring completion reader go through this single point, so the
+// on-disk format has exactly one parser.
+func readCacheFile[T any](path string) *cacheData[T] {
 	if path == "" {
 		return nil
 	}
@@ -148,7 +166,7 @@ func readCacheFile[T any](path string) map[string]cacheEntry[T] {
 	if err := json.Unmarshal(raw, &data); err != nil || data.Version != cacheFileVersion || data.Entries == nil {
 		return nil
 	}
-	return data.Entries
+	return &data
 }
 
 // openCache loads (once) the category file for the workspace. category is the
@@ -169,16 +187,16 @@ func openCache[T any](c *Cache, category, workspaceURL string, ttl time.Duration
 		return s
 	}
 
-	entries := readCacheFile[T](s.path)
-	if entries == nil {
+	data := readCacheFile[T](s.path)
+	if data == nil {
 		return s
 	}
-	for k, e := range entries {
+	for k, e := range data.Entries {
 		if k == "" || e.FetchedAt <= 0 || (validate != nil && !validate(k, e.Value)) {
-			delete(entries, k)
+			delete(data.Entries, k)
 		}
 	}
-	s.data.Entries = entries
+	s.data = data // carries Entries and the CompleteAt sentinel
 	return s
 }
 
@@ -215,6 +233,30 @@ func (s *cacheSnapshot[T]) get(key string) (T, bool) {
 		return zero, false
 	}
 	return e.Value, true
+}
+
+// isComplete reports whether this category was fully enumerated within the
+// given completeness window — so a key miss can be trusted as authoritative
+// and skip the remote lookup. Refresh and Off modes always report false
+// (forcing a live re-warm), matching get's stance.
+func (s *cacheSnapshot[T]) isComplete(ttl time.Duration) bool {
+	if s.path == "" || s.cache.Mode != CacheNormal || ttl <= 0 {
+		return false
+	}
+	if s.data.CompleteAt <= 0 {
+		return false
+	}
+	return s.cache.clock().UnixMilli()-s.data.CompleteAt < ttl.Milliseconds()
+}
+
+// markComplete records that this category was just fully enumerated, so later
+// misses within the completeness window are authoritative. The caller saves.
+func (s *cacheSnapshot[T]) markComplete() {
+	if s.path == "" {
+		return
+	}
+	s.data.CompleteAt = s.cache.clock().UnixMilli()
+	s.changed = true
 }
 
 // set records a value for save() to persist. No-op when caching is disabled.

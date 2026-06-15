@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -29,7 +30,10 @@ func TestResolveUsergroupID(t *testing.T) {
 	}
 }
 
-func TestResolveUsergroupIDNotFoundNotCached(t *testing.T) {
+// With the completeness sentinel fresh, a second @group miss is authoritative:
+// the first fetch enumerated every group, so the miss is answered locally
+// without a re-fetch.
+func TestResolveUsergroupIDMissAuthoritativeWhenComplete(t *testing.T) {
 	server := mockslack.New()
 	server.HandleBody("usergroups.list", map[string]any{"ok": true, "usergroups": []any{
 		map[string]any{"id": "S0YEET01", "handle": "yeeters"},
@@ -41,10 +45,34 @@ func TestResolveUsergroupIDNotFoundNotCached(t *testing.T) {
 			t.Fatalf("ghost lookup %d: id=%q err=%v", i, id, err)
 		}
 	}
-	// A not-found must NOT be cached against the TTL (a group created later must
-	// resolve), so the second lookup re-fetches.
+	if n := len(server.CallsFor("usergroups.list")); n != 1 {
+		t.Errorf("a fresh complete set makes the 2nd miss authoritative: usergroups.list called %d times, want 1", n)
+	}
+}
+
+// With completeness disabled (TTL 0) a not-found is never trusted, so each miss
+// re-fetches — a group created later still resolves.
+func TestResolveUsergroupIDMissRefetchesWhenCompletenessOff(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("usergroups.list", map[string]any{"ok": true, "usergroups": []any{
+		map[string]any{"id": "S0YEET01", "handle": "yeeters"},
+	}})
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	ttl := DefaultCacheTTL()
+	ttl.UsergroupsComplete = 0
+	now := time.Now()
+	cache := NewCache(t.TempDir(), CacheNormal, ttl, func() time.Time { return now })
+	c := New(Auth{Type: AuthStandard, Token: "xoxb-test", WorkspaceURL: "https://acme.slack.com"},
+		WithBaseURL(ts.URL), WithCache(cache))
+
+	for i := 0; i < 2; i++ {
+		if _, err := ResolveUsergroupID(context.Background(), c, "ghost"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if n := len(server.CallsFor("usergroups.list")); n != 2 {
-		t.Errorf("not-found should re-fetch: usergroups.list called %d times, want 2", n)
+		t.Errorf("completeness off → each miss re-fetches: usergroups.list called %d times, want 2", n)
 	}
 }
 

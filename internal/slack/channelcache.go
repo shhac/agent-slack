@@ -22,6 +22,20 @@ func (c *Client) cachedChannelID(name string) (string, bool) {
 	return c.channelNameCache().get(strings.ToLower(name))
 }
 
+// channelsComplete reports whether every named channel was enumerated within
+// the completeness window — so a #name miss is authoritative.
+func (c *Client) channelsComplete() bool {
+	return c.channelNameCache().isComplete(cacheTTLOf(c.cache).ChannelsComplete)
+}
+
+// markChannelsComplete records a full named-channel enumeration on the name
+// index. Best-effort.
+func (c *Client) markChannelsComplete() {
+	snap := c.channelNameCache()
+	snap.markComplete()
+	snap.save()
+}
+
 func (c *Client) cacheChannelID(name, id string) {
 	cacheSet(c.channelNameCache(), strings.ToLower(name), id, name != "" && id != "")
 }

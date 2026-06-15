@@ -110,7 +110,9 @@ func warmUsers(ctx context.Context, c *Client, opts WarmOptions, emit func(WarmE
 			users[i].DMID = dmMap[users[i].ID]
 		}
 	}
-	c.warmUserCache(users)
+	// Complete only when bots were included — otherwise the set is missing the
+	// bot members and a bot-handle miss must not be trusted as authoritative.
+	c.warmUserCache(users, opts.IncludeBots)
 	emit(WarmEvent{Category: "users", Count: len(users), Done: true})
 	return nil
 }
@@ -135,6 +137,7 @@ func warmChannels(ctx context.Context, c *Client, emit func(WarmEvent), pace fun
 	if err != nil {
 		return err
 	}
+	c.markChannelsComplete() // a full conversations.list sweep enumerates every named channel
 	emit(WarmEvent{Category: "channels", Count: count, Done: true})
 	return nil
 }

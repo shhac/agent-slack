@@ -77,6 +77,12 @@ func resolveChannelIDCheap(ctx context.Context, c *Client, name string) string {
 	if id, ok := c.cachedChannelID(name); ok {
 		return id
 	}
+	// If the channel set was fully enumerated recently, a miss is authoritative —
+	// skip even the search. Mentions never trigger the full warm themselves
+	// (that's the target path's job); they only benefit from a fresh sentinel.
+	if c.channelsComplete() {
+		return ""
+	}
 	if id := channelIDViaSearch(ctx, c, name); id != "" {
 		c.cacheChannelID(name, id)
 		return id

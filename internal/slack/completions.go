@@ -29,7 +29,11 @@ const (
 // TTL — completions surface even slightly-stale hints) and returns its entries
 // with their fetched_at timestamps. Pure read; no API, no credentials.
 func loadCacheEntries[T any](cacheDir, workspaceURL, category string) map[string]cacheEntry[T] {
-	return readCacheFile[T](cacheFilePath(cacheDir, workspaceURL, category))
+	data := readCacheFile[T](cacheFilePath(cacheDir, workspaceURL, category))
+	if data == nil {
+		return nil
+	}
+	return data.Entries
 }
 
 // ReadTargetCompletions returns channel and user <target> candidates — the

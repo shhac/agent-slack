@@ -72,22 +72,25 @@ func ResolveUserID(ctx context.Context, c *Client, input string) (string, error)
 	if handle == "" {
 		return "", errUserNotResolved(input)
 	}
-	handleLower := strings.ToLower(handle)
-	emailLower := strings.ToLower(trimmed)
+	if c.usersComplete() {
+		return "", errUserNotResolved(input) // authoritative: complete set lacks this handle/email
+	}
 
+	// Scan users.list to completion. On a match we early-exit; on a full miss
+	// we've enumerated everyone, so warm the whole set (handles + entity, bots
+	// included) and mark it complete — turning later misses into cache hits.
+	var all []CompactUser
 	found := ""
 	err := EachPage(ctx, c, "users.list", map[string]any{"limit": 200}, func(resp map[string]any) (bool, error) {
 		for _, m := range recItems(getArr(resp, "members")) {
-			matched := strings.ToLower(getStr(m, "name")) == handleLower
-			if !matched && looksLikeEmail {
-				email := getStr(getRec(m, "profile"), "email")
-				matched = email != "" && strings.ToLower(email) == emailLower
+			cu := ToCompactUser(m)
+			all = append(all, cu)
+			matched := strings.EqualFold(cu.Name, handle)
+			if !matched && looksLikeEmail && cu.Email != "" {
+				matched = strings.EqualFold(cu.Email, trimmed)
 			}
-			if !matched {
-				continue
-			}
-			if id := getStr(m, "id"); id != "" {
-				found = id
+			if matched && cu.ID != "" {
+				found = cu.ID
 				return false, nil
 			}
 		}
@@ -96,11 +99,12 @@ func ResolveUserID(ctx context.Context, c *Client, input string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	if found == "" {
-		return "", errUserNotResolved(input)
+	if found != "" {
+		c.cacheUserIDByHandle(cacheKey, found)
+		return found, nil
 	}
-	c.cacheUserIDByHandle(cacheKey, found)
-	return found, nil
+	c.warmUserCache(all, true) // full miss → the set is complete
+	return "", errUserNotResolved(input)
 }
 
 func userIDViaEmailLookup(ctx context.Context, c *Client, email string) string {
@@ -185,7 +189,7 @@ func ListUsers(ctx context.Context, c *Client, opts ListUsersOptions) (UsersPage
 	for i := range users {
 		users[i].DMID = dmMap[users[i].ID]
 	}
-	c.warmUserCache(users)
+	c.warmUserCache(users, false) // a bounded list page is not a full enumeration
 
 	page := UsersPage{Users: users, NextCursor: nextCursor}
 	pages.set(pageKey, page)
@@ -229,6 +233,6 @@ func GetUser(ctx context.Context, c *Client, input string) (CompactUser, error) 
 		return CompactUser{}, agenterrors.New("users.info returned no user", agenterrors.FixableByAgent)
 	}
 	compact := ToCompactUser(user)
-	c.warmUserCache([]CompactUser{compact}) // grow/refresh the cache from a direct get
+	c.warmUserCache([]CompactUser{compact}, false) // grow/refresh the cache from a direct get
 	return compact, nil
 }

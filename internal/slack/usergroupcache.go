@@ -25,6 +25,20 @@ func (c *Client) cachedUsergroupIDByHandle(key string) (string, bool) {
 	return c.usergroupsCache().get(key)
 }
 
+// usergroupsComplete reports whether every usergroup was enumerated within the
+// completeness window — so a @group miss is authoritative.
+func (c *Client) usergroupsComplete() bool {
+	return c.usergroupsCache().isComplete(cacheTTLOf(c.cache).UsergroupsComplete)
+}
+
+// markUsergroupsComplete records a full usergroup enumeration on the handle
+// index. Best-effort.
+func (c *Client) markUsergroupsComplete() {
+	snap := c.usergroupsCache()
+	snap.markComplete()
+	snap.save()
+}
+
 // warmUsergroups records the groups a usergroups.list returned into both the
 // entity store (by id) and the handle→id index, so completions, name→id
 // resolution, and `get` are all populated from one fetch. Batched (one save per

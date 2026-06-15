@@ -28,8 +28,10 @@ func (c *Client) usersCache() *cacheSnapshot[CompactUser] {
 // API calls. It also fills the handles index (handle→id) from each user's
 // name, so `@handle` resolution (ResolveUserID) is a cache hit after a warm —
 // the resolver reads the handles cache, which the entity store alone never
-// populated. Batched (one save per store) and best-effort.
-func (c *Client) warmUserCache(users []CompactUser) {
+// populated. When complete is set (the caller enumerated every user, bots
+// included), the handles index is marked complete so a later miss is
+// authoritative. Batched (one save per store) and best-effort.
+func (c *Client) warmUserCache(users []CompactUser, complete bool) {
 	snap := c.usersCache()
 	handles := c.handlesCache()
 	for _, u := range users {
@@ -41,8 +43,17 @@ func (c *Client) warmUserCache(users []CompactUser) {
 			handles.set(key, u.ID)
 		}
 	}
+	if complete {
+		handles.markComplete()
+	}
 	snap.save()
 	handles.save()
+}
+
+// usersComplete reports whether the users category was fully enumerated within
+// the completeness window — so an @handle miss is authoritative.
+func (c *Client) usersComplete() bool {
+	return c.handlesCache().isComplete(cacheTTLOf(c.cache).UsersComplete)
 }
 
 func ResolveUsersByID(ctx context.Context, c *Client, userIDs []string, forceRefresh bool) map[string]CompactUser {
