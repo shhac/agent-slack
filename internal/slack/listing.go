@@ -77,9 +77,7 @@ func ListConversations(ctx context.Context, c *Client, opts ConversationsOptions
 		"types":            types,
 		"exclude_archived": true,
 	}
-	if opts.Cursor != "" {
-		params["cursor"] = opts.Cursor
-	}
+	setStr(params, "cursor", opts.Cursor)
 	if !opts.All && opts.User != "" {
 		params["user"] = opts.User
 	}

@@ -176,9 +176,7 @@ func FetchChannelHistory(ctx context.Context, c *Client, opts HistoryOptions) ([
 	}
 
 	params := map[string]any{"channel": opts.ChannelID, "limit": pageLimit}
-	if opts.Oldest != "" {
-		params["oldest"] = opts.Oldest
-	}
+	setStr(params, "oldest", opts.Oldest)
 	if opts.IncludeReactions || hasReactionFilters {
 		params["include_all_metadata"] = true
 	}

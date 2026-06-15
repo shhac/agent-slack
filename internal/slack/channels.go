@@ -118,9 +118,7 @@ func GetChannelInfo(ctx context.Context, c *Client, channelID string) (CompactCh
 // ListChannelMembers returns one page of a channel's member user IDs.
 func ListChannelMembers(ctx context.Context, c *Client, channelID string, limit int, cursor string) ([]string, string, error) {
 	params := map[string]any{"channel": channelID, "limit": clampInt(limit, 1, 1000)}
-	if cursor != "" {
-		params["cursor"] = cursor
-	}
+	setStr(params, "cursor", cursor)
 	resp, err := c.API(ctx, "conversations.members", params)
 	if err != nil {
 		return nil, "", err

@@ -59,6 +59,21 @@ func clampInt(v, lo, hi int) int {
 	return min(max(v, lo), hi)
 }
 
+// setStr adds key=val to an API param map when val is non-empty — so optional
+// string params skip the `if val != "" {…}` guard at every call site.
+func setStr(params map[string]any, key, val string) {
+	if val != "" {
+		params[key] = val
+	}
+}
+
+// setPositive adds key=n to an API param map when n > 0.
+func setPositive(params map[string]any, key string, n int) {
+	if n > 0 {
+		params[key] = n
+	}
+}
+
 // orDefault substitutes def when v is the zero value.
 func orDefault(v, def int) int {
 	if v == 0 {

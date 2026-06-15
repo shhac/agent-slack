@@ -78,9 +78,7 @@ func FetchLaterItems(ctx context.Context, c *Client, opts LaterOptions) (LaterRe
 	var counts map[string]any
 	nextCursor := ""
 	params := map[string]any{"limit": 50}
-	if opts.Cursor != "" {
-		params["cursor"] = opts.Cursor
-	}
+	setStr(params, "cursor", opts.Cursor)
 	firstPage := true
 	err := EachPage(ctx, c, "saved.list", params, func(resp map[string]any) (bool, error) {
 		if firstPage {

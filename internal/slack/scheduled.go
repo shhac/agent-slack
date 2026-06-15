@@ -43,21 +43,11 @@ func listScheduledPage(ctx context.Context, c *Client, opts ScheduledListOptions
 	}
 
 	params := map[string]any{}
-	if opts.ChannelID != "" {
-		params["channel"] = opts.ChannelID
-	}
-	if opts.Cursor != "" {
-		params["cursor"] = opts.Cursor
-	}
-	if opts.Oldest != "" {
-		params["oldest"] = opts.Oldest
-	}
-	if opts.Latest != "" {
-		params["latest"] = opts.Latest
-	}
-	if opts.Limit > 0 {
-		params["limit"] = opts.Limit
-	}
+	setStr(params, "channel", opts.ChannelID)
+	setStr(params, "cursor", opts.Cursor)
+	setStr(params, "oldest", opts.Oldest)
+	setStr(params, "latest", opts.Latest)
+	setPositive(params, "limit", opts.Limit)
 	resp, err := c.API(ctx, "chat.scheduledMessages.list", params)
 	if err != nil {
 		return ScheduledPage{}, err
