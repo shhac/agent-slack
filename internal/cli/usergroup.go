@@ -56,26 +56,9 @@ func registerUsergroupGet(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			ctx := cmd.Context()
-			if len(args) == 1 {
-				group, err := slack.GetUsergroup(ctx, cc.Client, args[0])
-				if err != nil {
-					return err
-				}
-				return printSingle(globals, group)
-			}
-			// Several args → resolve each, collecting inputs that don't resolve
-			// rather than failing the batch (a typo doesn't drop the rest).
-			var items []any
-			var unresolved []string
-			for _, arg := range args {
-				group, err := slack.GetUsergroup(ctx, cc.Client, arg)
-				if err != nil {
-					unresolved = append(unresolved, arg)
-					continue
-				}
-				items = append(items, group)
-			}
-			return printList(globals, items, unresolvedMeta(unresolved))
+			return runEntityGet(globals, args, func(arg string) (any, error) {
+				return slack.GetUsergroup(ctx, cc.Client, arg)
+			})
 		},
 	}
 	parent.AddCommand(cmd)
@@ -98,23 +81,7 @@ func registerUsergroupMembers(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			if !resolveUsers && !refreshUsers {
-				items := make([]any, len(ids))
-				for i, id := range ids {
-					items[i] = map[string]any{"id": id}
-				}
-				return printList(globals, items, nil)
-			}
-			users := slack.ResolveUsersByID(ctx, cc.Client, ids, refreshUsers)
-			items := make([]any, 0, len(ids))
-			for _, id := range ids {
-				if u, ok := users[id]; ok {
-					items = append(items, u)
-				} else {
-					items = append(items, map[string]any{"id": id}) // profile fetch failed; keep the id
-				}
-			}
-			return printList(globals, items, nil)
+			return printMembers(ctx, globals, cc.Client, ids, resolveUsers, refreshUsers, nil)
 		},
 	}
 	cmd.Flags().BoolVar(&resolveUsers, "resolve-users", false, "Expand member ids to compact profiles")

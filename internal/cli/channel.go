@@ -35,24 +35,9 @@ func registerChannelGet(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: channelArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			if len(args) == 1 {
-				channel, err := getChannel(ctx, globals, args[0])
-				if err != nil {
-					return err
-				}
-				return printSingle(globals, channel)
-			}
-			var items []any
-			var unresolved []string
-			for _, arg := range args {
-				channel, err := getChannel(ctx, globals, arg)
-				if err != nil {
-					unresolved = append(unresolved, arg)
-					continue
-				}
-				items = append(items, channel)
-			}
-			return printList(globals, items, unresolvedMeta(unresolved))
+			return runEntityGet(globals, args, func(arg string) (any, error) {
+				return getChannel(ctx, globals, arg)
+			})
 		},
 	}
 	parent.AddCommand(cmd)
@@ -102,25 +87,8 @@ func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-
 			meta := listMeta(next, map[string]any{"channel_id": channelID})
-			if !resolveUsers && !refreshUsers {
-				items := make([]any, len(ids))
-				for i, id := range ids {
-					items[i] = map[string]any{"id": id}
-				}
-				return printList(globals, items, meta)
-			}
-			users := slack.ResolveUsersByID(ctx, cc.Client, ids, refreshUsers)
-			items := make([]any, 0, len(ids))
-			for _, id := range ids {
-				if u, ok := users[id]; ok {
-					items = append(items, u)
-				} else {
-					items = append(items, map[string]any{"id": id}) // profile fetch failed; keep the id
-				}
-			}
-			return printList(globals, items, meta)
+			return printMembers(ctx, globals, cc.Client, ids, resolveUsers, refreshUsers, meta)
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max members per page")

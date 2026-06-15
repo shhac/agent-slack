@@ -53,26 +53,9 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			ctx := cmd.Context()
-			if len(args) == 1 {
-				user, err := slack.GetUser(ctx, cc.Client, args[0])
-				if err != nil {
-					return err
-				}
-				return printSingle(globals, user)
-			}
-			// Several args → resolve each, collecting inputs that don't resolve
-			// rather than failing the batch (a typo doesn't drop the rest).
-			var items []any
-			var unresolved []string
-			for _, arg := range args {
-				user, err := slack.GetUser(ctx, cc.Client, arg)
-				if err != nil {
-					unresolved = append(unresolved, arg)
-					continue
-				}
-				items = append(items, user)
-			}
-			return printList(globals, items, unresolvedMeta(unresolved))
+			return runEntityGet(globals, args, func(arg string) (any, error) {
+				return slack.GetUser(ctx, cc.Client, arg)
+			})
 		},
 	}
 	userCmd.AddCommand(getCmd)

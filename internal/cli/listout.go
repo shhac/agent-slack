@@ -1,11 +1,38 @@
 package cli
 
 import (
+	"context"
 	"maps"
 	"slices"
 
 	"github.com/shhac/agent-slack/internal/output"
+	"github.com/shhac/agent-slack/internal/slack"
 )
+
+// printMembers is the shared body of the `members` commands (channel,
+// usergroup): it prints member user ids as `{"id": …}` rows, or — with
+// --resolve-users/--refresh-users — expands them to compact profiles, keeping
+// the bare id when a profile fetch fails. meta carries any trailing meta lines
+// (channel_id, pagination) the caller wants.
+func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, ids []string, resolveUsers, refreshUsers bool, meta map[string]any) error {
+	if !resolveUsers && !refreshUsers {
+		items := make([]any, len(ids))
+		for i, id := range ids {
+			items[i] = map[string]any{"id": id}
+		}
+		return printList(globals, items, meta)
+	}
+	users := slack.ResolveUsersByID(ctx, c, ids, refreshUsers)
+	items := make([]any, 0, len(ids))
+	for _, id := range ids {
+		if u, ok := users[id]; ok {
+			items = append(items, u)
+		} else {
+			items = append(items, map[string]any{"id": id}) // profile fetch failed; keep the id
+		}
+	}
+	return printList(globals, items, meta)
+}
 
 func printSingle(globals *GlobalFlags, payload any) error {
 	format, err := output.ResolveFormat(globals.Format, output.FormatJSON)
@@ -45,6 +72,31 @@ func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
 	}
 	output.Print(globals.stdout, payload, format, true)
 	return nil
+}
+
+// runEntityGet is the shared body of the entity `get` commands (user, channel,
+// usergroup): one arg prints the resolved object; several print NDJSON, then a
+// trailing {"@unresolved": […]} for inputs that didn't resolve — a typo never
+// drops the rest. get resolves one input to its output shape.
+func runEntityGet(globals *GlobalFlags, args []string, get func(arg string) (any, error)) error {
+	if len(args) == 1 {
+		item, err := get(args[0])
+		if err != nil {
+			return err
+		}
+		return printSingle(globals, item)
+	}
+	var items []any
+	var unresolved []string
+	for _, arg := range args {
+		item, err := get(arg)
+		if err != nil {
+			unresolved = append(unresolved, arg)
+			continue
+		}
+		items = append(items, item)
+	}
+	return printList(globals, items, unresolvedMeta(unresolved))
 }
 
 func toAnySlice[T any](items []T) []any {
