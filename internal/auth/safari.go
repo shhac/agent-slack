@@ -3,7 +3,6 @@ package auth
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -19,8 +18,8 @@ const safariFDAHint = "Safari's cookie store is sandboxed; grant your terminal F
 // plus Automation permission; the cookie read needs Full Disk Access because
 // the store lives in Safari's TCC-protected container.
 func extractFromSafari() (*Extracted, error) {
-	if runtime.GOOS != "darwin" {
-		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "Safari import is only supported on macOS, not %s", runtime.GOOS)
+	if err := requireMacOS("Safari"); err != nil {
+		return nil, err
 	}
 
 	teamsRaw, jsDisabled, err := runOsascript(safariTeamsAppleScript())
@@ -32,7 +31,7 @@ func extractFromSafari() (*Extracted, error) {
 	}
 	teams := parseTeamsJSON([]byte(teamsRaw))
 	if len(teams) == 0 {
-		return nil, agenterrors.New("no Slack workspaces found in the open Safari tab", agenterrors.FixableByHuman).WithHint(safariEnableJSHint)
+		return nil, errNoWorkspaces("Safari", safariEnableJSHint)
 	}
 
 	cookie, cookiesPath, err := safariSlackCookie()

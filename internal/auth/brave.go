@@ -3,7 +3,6 @@ package auth
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
@@ -21,8 +20,8 @@ var braveSafeStorageQueries = []safeStorageQuery{
 // AppleScript and the xoxd cookie from Brave's encrypted Cookies DB (macOS
 // only). Reading the tab requires Brave's "Allow JavaScript from Apple Events".
 func extractFromBrave() (*Extracted, error) {
-	if runtime.GOOS != "darwin" {
-		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "Brave import is only supported on macOS, not %s", runtime.GOOS)
+	if err := requireMacOS("Brave"); err != nil {
+		return nil, err
 	}
 
 	teamsRaw, jsDisabled, err := runOsascript(teamsAppleScript("Brave Browser"))
@@ -34,7 +33,7 @@ func extractFromBrave() (*Extracted, error) {
 	}
 	teams := parseTeamsJSON([]byte(teamsRaw))
 	if len(teams) == 0 {
-		return nil, agenterrors.New("no Slack workspaces found in the open Brave tab", agenterrors.FixableByHuman)
+		return nil, errNoWorkspaces("Brave", "")
 	}
 
 	home, err := os.UserHomeDir()

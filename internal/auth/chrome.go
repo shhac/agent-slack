@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"runtime"
 	"strings"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -11,8 +10,8 @@ import (
 // Chrome via AppleScript (macOS only). Chrome serves the xoxd cookie directly
 // to the page, so no cookie decryption is needed.
 func extractFromChrome() (*Extracted, error) {
-	if runtime.GOOS != "darwin" {
-		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "Chrome import is only supported on macOS, not %s", runtime.GOOS)
+	if err := requireMacOS("Chrome"); err != nil {
+		return nil, err
 	}
 
 	cookie, _, err := runOsascript(cookieAppleScript("Google Chrome"))
@@ -26,7 +25,7 @@ func extractFromChrome() (*Extracted, error) {
 	}
 	teams := parseTeamsJSON([]byte(teamsRaw))
 	if len(teams) == 0 {
-		return nil, agenterrors.New("no Slack workspaces found in the open Chrome tab", agenterrors.FixableByHuman)
+		return nil, errNoWorkspaces("Chrome", "")
 	}
 
 	return &Extracted{CookieD: cookie, Teams: teams}, nil
