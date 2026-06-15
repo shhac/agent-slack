@@ -22,6 +22,17 @@ func richTextBlockToMrkdwn(block any) string {
 	return strings.Join(out, "\n\n")
 }
 
+// styledTokenElements maps a single-token inline element type to the field
+// holding its id and the slackToken kind to emit. They all serialize the same
+// way, so a new mention-like element is a one-line addition here.
+var styledTokenElements = map[string]struct{ idKey, kind string }{
+	"emoji":     {"name", "emoji"},
+	"user":      {"user_id", "user"},
+	"channel":   {"channel_id", "channel"},
+	"usergroup": {"usergroup_id", "usergroup"},
+	"broadcast": {"range", "broadcast"},
+}
+
 func richTextElementToMrkdwn(elAny any) string {
 	el, ok := asRecord(elAny)
 	if !ok {
@@ -34,6 +45,15 @@ func richTextElementToMrkdwn(elAny any) string {
 			parts = append(parts, richTextElementToMrkdwn(child))
 		}
 		return strings.Join(parts, "")
+	}
+
+	// Single-token mention-like elements all serialize identically: pull the id,
+	// emit its Slack token wrapped in the element's style.
+	if spec, ok := styledTokenElements[str(el["type"])]; ok {
+		if v := str(el[spec.idKey]); v != "" {
+			return applyMrkdwnStyle(slackToken(spec.kind, v), el["style"])
+		}
+		return ""
 	}
 
 	switch str(el["type"]) {
@@ -85,36 +105,6 @@ func richTextElementToMrkdwn(elAny any) string {
 			token = "<" + url + "|" + text + ">"
 		}
 		return applyMrkdwnStyle(token, el["style"])
-
-	case "emoji":
-		if name := str(el["name"]); name != "" {
-			return applyMrkdwnStyle(slackToken("emoji", name), el["style"])
-		}
-		return ""
-
-	case "user":
-		if userID := str(el["user_id"]); userID != "" {
-			return applyMrkdwnStyle(slackToken("user", userID), el["style"])
-		}
-		return ""
-
-	case "channel":
-		if channelID := str(el["channel_id"]); channelID != "" {
-			return applyMrkdwnStyle(slackToken("channel", channelID), el["style"])
-		}
-		return ""
-
-	case "usergroup":
-		if id := str(el["usergroup_id"]); id != "" {
-			return applyMrkdwnStyle(slackToken("usergroup", id), el["style"])
-		}
-		return ""
-
-	case "broadcast":
-		if r := str(el["range"]); r != "" {
-			return applyMrkdwnStyle(slackToken("broadcast", r), el["style"])
-		}
-		return ""
 	}
 
 	return ""
