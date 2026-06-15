@@ -43,14 +43,14 @@ func ResolveChannelID(ctx context.Context, c *Client, input string) (string, err
 		return id, nil
 	}
 
+	if c.channelsComplete() {
+		// The complete set has no channel by this name; skip search and scan.
+		return "", errResolveFailed("channel name: #"+name,
+			"check the name or pass a channel ID (C…) — 'agent-slack channel list' shows conversations")
+	}
 	if id := channelIDViaSearch(ctx, c, name); id != "" {
 		c.cacheChannelID(name, id)
 		return id, nil
-	}
-	if c.channelsComplete() {
-		// The complete set has no channel by this name; skip the full scan.
-		return "", errResolveFailed("channel name: #"+name,
-			"check the name or pass a channel ID (C…) — 'agent-slack channel list' shows conversations")
 	}
 
 	found := ""
