@@ -15,6 +15,7 @@ COMMANDS
              scheduled list/cancel*
   channel    list | get | members | new* | invite* | mark
   user       list | get | dm-open
+  usergroup  list | get | members — workspace subteams (@group)
   search     all | messages | files
   workflow   list | preview | get | run
   canvas     get
@@ -139,6 +140,21 @@ GET      user get <U…|@handle|email …> — one arg → object; several → N
          with a trailing {"@unresolved": […]} for inputs that didn't resolve.
 DM-OPEN  user dm-open <users…> — open a DM or group DM (max 8); returns
          dm_channel_id to send into.`,
+
+	"usergroup": `agent-slack usergroup — user groups (subteams, @group).
+
+LIST     usergroup list [--include-disabled]
+         Compact rows: id (S…), handle, name, description, user_count, and
+         channels/groups (the group's DEFAULT channels/subteams — members are
+         auto-added to them). The CLI surfaces all default channels and takes
+         no view on which is "best" to post in; pick per your use case.
+GET      usergroup get <S…|@handle …> — one arg → object; several → NDJSON,
+         with a trailing {"@unresolved": […]} for inputs that didn't resolve.
+MEMBERS  usergroup members <S…|@handle> [--resolve-users] [--include-disabled]
+         Who is in the group: user ids (chain into 'user get'), or profiles
+         with --resolve-users. To answer "which groups am I in?", scan
+         'usergroup list' membership (or check 'auth test' user id against
+         members).`,
 
 	"search": `agent-slack search — messages and files.
 

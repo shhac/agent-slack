@@ -87,6 +87,20 @@ addresses, comma-separated. `channel mark` is personal read state, ungated.
 | `user get <user…>` | accepts `U…`, `@handle`, or email; one → object, several → NDJSON (+ `{"@unresolved": […]}`) |
 | `user dm-open <users…>` | returns the DM / group-DM channel id (up to 8 users) |
 
+## usergroup
+
+Workspace user groups (subteams, the `@group` you @-mention). Aliased `usergroups`.
+
+| Command | Notes |
+|---|---|
+| `usergroup list` | `--include-disabled`; compact rows: `id` (S…), `handle`, `name`, `description`, `user_count`, and `channels`/`groups` (the group's **default** channels/subteams — members are auto-added) |
+| `usergroup get <usergroup…>` | accepts `S…` or `@handle`; one → object, several → NDJSON (+ `{"@unresolved": […]}`) |
+| `usergroup members <usergroup>` | user ids by default; `--resolve-users` for profiles, `--include-disabled` |
+
+`channels` lists **all** the group's default channels — the CLI takes no view on
+which is "best" to post in; choose per your use case. To answer "which groups am
+I in?", check your user id (from `auth test`) against `usergroup members` output.
+
 ## search
 
 ```

@@ -45,6 +45,8 @@ func TestCompletionsAreWiredNotFileFallback(t *testing.T) {
 		{"workflow", "run", ""},
 		{"user", "get", ""},
 		{"user", "dm-open", ""},
+		{"usergroup", "get", ""},
+		{"usergroup", "members", ""},
 		{"later", "remind", ""},
 		{"message", "get", ""},
 		{"message", "list", ""},

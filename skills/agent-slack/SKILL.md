@@ -117,6 +117,9 @@ agent-slack channel members "#general" --resolve-users   # who's in it
 agent-slack user get @alice                   # one → object
 agent-slack user get @alice @bob @carol       # several → NDJSON (+ @unresolved for misses)
 agent-slack user dm-open @alice @bob          # group DM channel id
+agent-slack usergroup list                    # subteams + their default channels
+agent-slack usergroup get @marketing          # one → object; several → NDJSON
+agent-slack usergroup members @marketing --resolve-users   # who's in the group
 agent-slack workflow list "#ops"
 agent-slack workflow get Ft0001               # form fields + steps
 agent-slack workflow run Ft0001 --channel "#ops" --field "Summary=EU deploy failed"

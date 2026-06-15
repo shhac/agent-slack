@@ -31,8 +31,9 @@ type Target struct {
 }
 
 var (
-	channelIDRe = regexp.MustCompile(`^[CDG][A-Z0-9]{8,}$`)
-	userIDRe    = regexp.MustCompile(`^U[A-Z0-9]{8,}$`)
+	channelIDRe   = regexp.MustCompile(`^[CDG][A-Z0-9]{8,}$`)
+	userIDRe      = regexp.MustCompile(`^U[A-Z0-9]{8,}$`)
+	usergroupIDRe = regexp.MustCompile(`^S[A-Z0-9]{8,}$`)
 )
 
 // IsChannelID reports whether s is a Slack conversation ID (channel, DM, or
@@ -44,6 +45,11 @@ func IsChannelID(s string) bool {
 // IsUserID reports whether s is a Slack user ID.
 func IsUserID(s string) bool {
 	return userIDRe.MatchString(s)
+}
+
+// IsUsergroupID reports whether s is a Slack usergroup (subteam) ID: S….
+func IsUsergroupID(s string) bool {
+	return usergroupIDRe.MatchString(s)
 }
 
 // ParseTarget interprets a CLI <target> argument. A U… id or an "@handle" is a

@@ -61,6 +61,17 @@ func userArgsCompletion(globals *GlobalFlags) compFunc {
 	return cacheCompletion(globals, slack.CompleteUsers, false)
 }
 
+// usergroupArgsCompletion completes a usergroup on every positional (warmed by
+// `usergroup list` / mention resolution).
+func usergroupArgsCompletion(globals *GlobalFlags) compFunc {
+	return cacheCompletion(globals, slack.CompleteUsergroups, false)
+}
+
+// usergroupArgCompletion completes a usergroup-only first positional.
+func usergroupArgCompletion(globals *GlobalFlags) compFunc {
+	return cacheCompletion(globals, slack.CompleteUsergroups, true)
+}
+
 // registerFlagCompletion attaches a cache-backed completion to a flag value.
 func registerFlagCompletion(cmd *cobra.Command, flag string, globals *GlobalFlags, sources slack.CompletionSource) {
 	_ = cmd.RegisterFlagCompletionFunc(flag, cacheCompletion(globals, sources, false))

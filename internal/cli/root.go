@@ -102,6 +102,7 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	registerMessage(root, globals)
 	registerChannel(root, globals)
 	registerUser(root, globals)
+	registerUsergroup(root, globals)
 	registerSearch(root, globals)
 	registerUnreads(root, globals)
 	registerLater(root, globals)

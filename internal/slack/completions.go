@@ -22,6 +22,7 @@ const (
 	CompleteUsers
 	CompleteTriggers
 	CompleteScheduled
+	CompleteUsergroups
 )
 
 // loadCacheEntries reads one category file for a workspace directly (ignoring
@@ -109,6 +110,18 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 				add(u.ID, withHandle, e.FetchedAt)
 				add(u.Name, withID, e.FetchedAt)
 			}
+		}
+	}
+	if sources&CompleteUsergroups != 0 {
+		for _, e := range loadCacheEntries[CompactUsergroup](cacheDir, workspaceURL, "usergroup-entities") {
+			g := e.Value
+			desc := firstNonEmpty(g.Name, g.Description)
+			if g.Handle == "" {
+				add(g.ID, desc, e.FetchedAt) // no handle — id only
+				continue
+			}
+			// Forms: @handle (primary), id, bare handle.
+			addForms(desc, e.FetchedAt, "@"+g.Handle, g.ID, g.Handle)
 		}
 	}
 	if sources&CompleteTriggers != 0 {

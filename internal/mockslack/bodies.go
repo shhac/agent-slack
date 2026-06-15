@@ -58,6 +58,39 @@ func ChannelMatch(channelID string) map[string]any {
 	return map[string]any{"channel": map[string]any{"id": channelID}}
 }
 
+// UsergroupsList is a usergroups.list body.
+func UsergroupsList(groups ...map[string]any) map[string]any {
+	items := make([]any, len(groups))
+	for i, g := range groups {
+		items[i] = g
+	}
+	return map[string]any{"ok": true, "usergroups": items}
+}
+
+// Usergroup is one usergroups.list subteam object. channels are the group's
+// default channels (prefs.channels).
+func Usergroup(id, handle, name string, channels ...string) map[string]any {
+	chans := make([]any, len(channels))
+	for i, c := range channels {
+		chans[i] = c
+	}
+	return map[string]any{
+		"id":     id,
+		"handle": handle,
+		"name":   name,
+		"prefs":  map[string]any{"channels": chans, "groups": []any{}},
+	}
+}
+
+// UsergroupUsers is a usergroups.users.list body.
+func UsergroupUsers(userIDs ...string) map[string]any {
+	ids := make([]any, len(userIDs))
+	for i, u := range userIDs {
+		ids[i] = u
+	}
+	return map[string]any{"ok": true, "users": ids}
+}
+
 // ConversationsList is a conversations.list / users.conversations body.
 func ConversationsList(channels ...map[string]any) map[string]any {
 	items := make([]any, len(channels))

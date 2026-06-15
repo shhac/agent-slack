@@ -28,6 +28,23 @@ func getArr(m map[string]any, key string) []any {
 	return a
 }
 
+// getStrArr extracts a []string from a JSON array of strings (non-strings and
+// empties dropped), returning nil when absent — so a usergroup with no default
+// channels omits the field rather than emitting [].
+func getStrArr(m map[string]any, key string) []string {
+	arr := getArr(m, key)
+	if len(arr) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, v := range arr {
+		if s, ok := v.(string); ok && s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func recItems(values []any) []map[string]any {
 	out := make([]map[string]any, 0, len(values))
 	for _, v := range values {

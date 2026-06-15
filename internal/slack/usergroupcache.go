@@ -2,11 +2,20 @@ package slack
 
 // Usergroups (subteams) are addressed by handle (e.g. @marketing) but mentioned
 // by id (<!subteam^S…>). usergroups.list returns the whole set in one call, so a
-// miss warms every handle→id mapping at once. Handles rarely change, hence a 24h
-// TTL like users.
+// miss warms every group at once. Handles rarely change, hence a 24h TTL like
+// users. Two per-workspace caches back them, mirroring channels: a handle→id
+// index ("usergroups") that resolution and mention-rewriting hit, and an
+// id→CompactUsergroup entity store ("usergroup-entities") that `list`/`get` and
+// completions read.
+
+func validUsergroup(_ string, g CompactUsergroup) bool { return g.ID != "" }
 
 func (c *Client) usergroupsCache() *cacheSnapshot[string] {
 	return openCacheFor[string](c, "usergroups", cacheTTLOf(c.cache).Usergroups, nil)
+}
+
+func (c *Client) usergroupEntityCache() *cacheSnapshot[CompactUsergroup] {
+	return openCacheFor(c, "usergroup-entities", cacheTTLOf(c.cache).Usergroups, validUsergroup)
 }
 
 func (c *Client) cachedUsergroupIDByHandle(key string) (string, bool) {
@@ -16,14 +25,22 @@ func (c *Client) cachedUsergroupIDByHandle(key string) (string, bool) {
 	return c.usergroupsCache().get(key)
 }
 
-// warmUsergroupCache records handle→id mappings a usergroups.list returned.
-// Batched (one save) and best-effort.
-func (c *Client) warmUsergroupCache(byHandle map[string]string) {
-	snap := c.usergroupsCache()
-	for handle, id := range byHandle {
-		if handle != "" && id != "" {
-			snap.set(handle, id)
+// warmUsergroups records the groups a usergroups.list returned into both the
+// entity store (by id) and the handle→id index, so completions, name→id
+// resolution, and `get` are all populated from one fetch. Batched (one save per
+// store) and best-effort.
+func (c *Client) warmUsergroups(groups []CompactUsergroup) {
+	entity := c.usergroupEntityCache()
+	names := c.usergroupsCache()
+	for _, g := range groups {
+		if g.ID == "" {
+			continue
+		}
+		entity.set(g.ID, g)
+		if key := handleCacheKey(g.Handle); key != "" {
+			names.set(key, g.ID)
 		}
 	}
-	snap.save()
+	entity.save()
+	names.save()
 }

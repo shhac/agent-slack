@@ -16,6 +16,10 @@ func (c *Client) usersPageCache() *cacheSnapshot[UsersPage] {
 	return openCacheFor[UsersPage](c, "users-pages", cacheTTLOf(c.cache).List, nil)
 }
 
+func (c *Client) usergroupsPageCache() *cacheSnapshot[[]CompactUsergroup] {
+	return openCacheFor[[]CompactUsergroup](c, "usergroups-pages", cacheTTLOf(c.cache).List, nil)
+}
+
 // conversationsPageKey identifies one channel-list query. opts.User is already
 // a resolved U… id by the time it reaches ListConversations.
 func conversationsPageKey(opts ConversationsOptions) string {
@@ -25,4 +29,8 @@ func conversationsPageKey(opts ConversationsOptions) string {
 
 func usersPageKey(opts ListUsersOptions) string {
 	return fmt.Sprintf("bots=%t|limit=%d|cursor=%s", opts.IncludeBots, opts.Limit, opts.Cursor)
+}
+
+func usergroupsPageKey(opts ListUsergroupsOptions) string {
+	return fmt.Sprintf("disabled=%t", opts.IncludeDisabled)
 }
