@@ -3,11 +3,30 @@ package cli
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shhac/agent-slack/internal/mockslack"
 )
+
+// okUploadHost is an httptest server that accepts the raw byte POST (200).
+func okUploadHost(t *testing.T) *httptest.Server {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func writeTempFile(t *testing.T, name string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
 
 // draft create --attach uploads the file's bytes, finalizes the upload WITHOUT
 // a channel (so the id is a real file, not a still-pending one that drafts.create
@@ -139,4 +158,111 @@ func TestDraftSendScheduleKeepsFiles(t *testing.T) {
 			t.Errorf("scheduled promote should keep file id %s: %s", fid, update[0].Params.Get("file_ids"))
 		}
 	}
+}
+
+// R13: the parallel multi-file path uploads both files, finalizes them in ONE
+// no-channel completion, and attaches both ids to the draft.
+func TestDraftCreateAttachMultiple(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	uploadHost := okUploadHost(t)
+	f.server.HandleWhen("files.getUploadURLExternal",
+		func(p url.Values) bool { return p.Get("filename") == "a.txt" },
+		mockslack.Response{Body: map[string]any{"ok": true, "upload_url": uploadHost.URL + "/u", "file_id": "F0AAAA"}})
+	f.server.HandleWhen("files.getUploadURLExternal",
+		func(p url.Values) bool { return p.Get("filename") == "b.txt" },
+		mockslack.Response{Body: map[string]any{"ok": true, "upload_url": uploadHost.URL + "/u", "file_id": "F0BBBB"}})
+	f.server.HandleBody("files.completeUploadExternal", map[string]any{"ok": true})
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	a, b := writeTempFile(t, "a.txt"), writeTempFile(t, "b.txt")
+	if _, _, err := f.run(t, "message", "draft", "create", "C12345678", "two files", "--attach", a, "--attach", b); err != nil {
+		t.Fatal(err)
+	}
+	complete := f.server.CallsFor("files.completeUploadExternal")
+	if len(complete) != 1 || complete[0].Params.Get("channel_id") != "" {
+		t.Fatalf("want one no-channel completion, got %d (channel_id=%q)", len(complete), firstParamChannel(complete))
+	}
+	if files := complete[0].Params.Get("files"); !strings.Contains(files, `"id":"F0AAAA"`) || !strings.Contains(files, `"id":"F0BBBB"`) {
+		t.Errorf("completion files = %q, want both ids", files)
+	}
+	if ids := f.server.CallsFor("drafts.create")[0].Params.Get("file_ids"); !strings.Contains(ids, "F0AAAA") || !strings.Contains(ids, "F0BBBB") {
+		t.Errorf("draft file_ids = %q, want both", ids)
+	}
+}
+
+// R13: if any one upload fails, the whole draft create aborts — no partial draft.
+func TestDraftCreateAttachOneFails(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	uploadHost := okUploadHost(t)
+	f.server.HandleWhen("files.getUploadURLExternal",
+		func(p url.Values) bool { return p.Get("filename") == "ok.txt" },
+		mockslack.Response{Body: map[string]any{"ok": true, "upload_url": uploadHost.URL + "/u", "file_id": "F0OK"}})
+	f.server.HandleWhen("files.getUploadURLExternal",
+		func(p url.Values) bool { return p.Get("filename") == "bad.txt" },
+		mockslack.Response{Body: map[string]any{"ok": false, "error": "upload_disabled"}})
+	f.server.HandleBody("files.completeUploadExternal", map[string]any{"ok": true})
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	good, bad := writeTempFile(t, "ok.txt"), writeTempFile(t, "bad.txt")
+	if _, _, err := f.run(t, "message", "draft", "create", "C12345678", "two", "--attach", good, "--attach", bad); err == nil {
+		t.Fatal("a failed upload should abort the draft create")
+	}
+	if n := len(f.server.CallsFor("drafts.create")); n != 0 {
+		t.Errorf("no draft must be created when an upload fails, got %d", n)
+	}
+}
+
+// R14: a non-2xx response to the raw byte POST is a (retryable) error, and the
+// upload is not finalized.
+func TestDraftCreateAttachByteUploadHTTPError(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	failHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
+	t.Cleanup(failHost.Close)
+	f.server.HandleBody("files.getUploadURLExternal", map[string]any{"ok": true, "upload_url": failHost.URL + "/u", "file_id": "F0X"})
+	f.server.HandleBody("files.completeUploadExternal", map[string]any{"ok": true})
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C12345678"}}}})
+
+	if _, _, err := f.run(t, "message", "draft", "create", "C12345678", "x", "--attach", writeTempFile(t, "f.txt")); err == nil {
+		t.Fatal("a non-2xx byte upload should error")
+	}
+	if n := len(f.server.CallsFor("files.completeUploadExternal")); n != 0 {
+		t.Errorf("must not finalize after a failed byte upload, got %d", n)
+	}
+}
+
+// R16: a non-regular --attach path (a directory) is rejected before any upload.
+func TestDraftCreateAttachNonRegularFile(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	if _, _, err := f.run(t, "message", "draft", "create", "C12345678", "x", "--attach", t.TempDir()); err == nil {
+		t.Fatal("attaching a directory should error")
+	}
+	if n := len(f.server.CallsFor("files.getUploadURLExternal")); n != 0 {
+		t.Errorf("a non-regular file must be rejected before upload, got %d", n)
+	}
+}
+
+// R15: a draft with files whose files.share fails surfaces an error and does NOT
+// fall back to chat.postMessage (which would drop the attachments).
+func TestDraftSendShareFails(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		draftWithFiles("Dr0A", "C12345678", "see attached", "F0A")}})
+	f.server.HandleBody("files.share", map[string]any{"ok": false, "error": "file_not_found"})
+
+	if _, _, err := f.run(t, "message", "draft", "send", "Dr0A"); err == nil {
+		t.Fatal("files.share failure should surface as an error")
+	}
+	if n := len(f.server.CallsFor("chat.postMessage")); n != 0 {
+		t.Errorf("a file draft must not fall back to chat.postMessage, got %d", n)
+	}
+}
+
+func firstParamChannel(calls []mockslack.Call) string {
+	if len(calls) == 0 {
+		return ""
+	}
+	return calls[0].Params.Get("channel_id")
 }

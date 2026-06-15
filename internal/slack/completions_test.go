@@ -187,3 +187,29 @@ func TestReadTargetCompletionsColdCache(t *testing.T) {
 		t.Errorf("no cache dir should yield nothing, got %v", got)
 	}
 }
+
+// R16: addUsergroups was uncovered — seed the usergroup-entities cache and assert
+// the three completion forms (@handle primary, bare handle, id) plus the
+// id-only fallback for a handle-less group.
+func TestReadCompletionsUsergroups(t *testing.T) {
+	dir := t.TempDir()
+	ws := "https://acme.slack.com"
+	writeCacheCategory(t, dir, ws, "usergroup-entities", map[string]cacheEntry[CompactUsergroup]{
+		"S0MKT": {FetchedAt: 100, Value: CompactUsergroup{ID: "S0MKT", Handle: "marketing", Name: "Marketing"}},
+		"S0NOH": {FetchedAt: 100, Value: CompactUsergroup{ID: "S0NOH", Name: "No Handle Group"}},
+	})
+
+	if got := ReadCompletions(dir, ws, "@mark", 10, CompleteUsergroups); len(got) != 1 || got[0].Value != "@marketing" {
+		t.Errorf("@-prefix usergroup: %+v", got)
+	}
+	if got := ReadCompletions(dir, ws, "mark", 10, CompleteUsergroups); len(got) != 1 || got[0].Value != "marketing" {
+		t.Errorf("bare handle: %+v", got)
+	}
+	if got := ReadCompletions(dir, ws, "S0MKT", 10, CompleteUsergroups); len(got) != 1 || got[0].Value != "S0MKT" {
+		t.Errorf("id form: %+v", got)
+	}
+	// A handle-less group is offered by id only.
+	if got := ReadCompletions(dir, ws, "S0NOH", 10, CompleteUsergroups); len(got) != 1 || got[0].Value != "S0NOH" {
+		t.Errorf("handle-less group id-only: %+v", got)
+	}
+}
