@@ -95,6 +95,8 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        ~~strike~~, __underline__ (extension), inline + fenced code, [label](url),
        - bullets, 1. numbers, > quotes; backslash escapes a literal marker.
        Mentions: @here/@channel, @U… ids, and @name / @group handles all resolve.
+       #channel-name resolves to a channel link (a known channel only; "# " stays
+       a literal, and all-digit "#5" refs are left alone).
        --slack-markdown interprets text as Slack mrkdwn (*bold*, <url|label>).
        --attach <path> (repeatable), --blocks <file|-> raw Block Kit,
        --schedule <iso8601-with-tz|unix>, --schedule-in <30m|2d|tomorrow 9am>.

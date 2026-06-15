@@ -3,10 +3,13 @@ package cli
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shhac/agent-slack/internal/mockslack"
 )
 
 func TestMessageSendToChannel(t *testing.T) {
@@ -82,6 +85,24 @@ func TestMessageSendResolvesHandleMention(t *testing.T) {
 	// @alice resolved to a real user mention token in the text field.
 	if got := f.server.CallsFor("chat.postMessage")[0].Params.Get("text"); got != "hi <@U0ALICEAA>" {
 		t.Errorf("text = %q, want resolved mention", got)
+	}
+}
+
+func TestMessageSendResolvesChannelMention(t *testing.T) {
+	f := newCLIFixture(t)
+	// #general in the body resolves via the single-call search trick; the
+	// target is an explicit id, so it needs no resolution of its own.
+	f.server.HandleWhen("search.messages",
+		func(p url.Values) bool { return p.Get("query") == "in:#general" },
+		mockslack.Response{Body: mockslack.SearchMessages(mockslack.ChannelMatch("C0GENERAL"))})
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.0", "channel": "C0TARGET99"})
+
+	if _, _, err := f.run(t, "message", "send", "C0TARGET99", "join #general now"); err != nil {
+		t.Fatal(err)
+	}
+	call := f.server.CallsFor("chat.postMessage")[0]
+	if got := call.Params.Get("text"); got != "join <#C0GENERAL> now" {
+		t.Errorf("text = %q, want resolved channel link", got)
 	}
 }
 

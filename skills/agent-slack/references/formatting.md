@@ -32,9 +32,25 @@ All of these resolve to real mentions at send time:
 - `@U05ABC…` or `<@U05ABC…>` — a user by id
 - `@alice` — a **username handle** (resolved via the workspace, cached)
 - `@marketing` — a **usergroup handle** → `<!subteam^S…>` (resolved + cached 24h)
+- `#general` — a **channel name** → `<#C…>` (resolved + cached)
 
 A bare `@name` is tried as a user first, then as a usergroup; if neither matches
 it stays literal. Use an id (`<@U…>` / `<!subteam^S…>`) when you need to be exact.
+
+### `#channel` vs Markdown headings
+
+Slack has no Markdown headings, so there is no real conflict — and the two
+shapes are distinguished structurally, not heuristically:
+
+- **Channel** — `#name` with a name character flush against the `#`
+  (`#general`, `word #ops`). Lowercase letters/digits/`-`/`_`, the way Slack
+  stores channel names. Resolved to a link only when it matches a real channel;
+  otherwise left literal.
+- **Heading** — `# Title` (a space after the `#`) never matches: the space
+  isn't a name character. `## Sub` and friends are safe for the same reason.
+- **Not a channel** — `C#`/`F#` (the `#` follows a word character),
+  already-formed `<#C…>` tokens, anything inside code spans/blocks, and
+  all-digit refs like `#5`/`#1234` (issue/PR numbers) are all left untouched.
 
 ## --slack-markdown (opt-out)
 

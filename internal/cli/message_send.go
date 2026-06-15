@@ -52,9 +52,11 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			// Resolve @name / @group handles to mention tokens before the text is
-			// formatted, so both the blocks and the text field carry real mentions.
+			// Resolve @name / @group handles and #channel names to tokens before
+			// the text is formatted, so both the blocks and the text field carry
+			// real mentions and channel links.
 			text = slack.ResolveMentions(ctx, cc.Client, text)
+			text = slack.ResolveChannelMentions(ctx, cc.Client, text)
 			send, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, *flags, time.Now())
 			if err != nil {
 				return err
