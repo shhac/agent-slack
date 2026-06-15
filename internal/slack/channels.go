@@ -69,8 +69,8 @@ func ResolveChannelID(ctx context.Context, c *Client, input string) (string, err
 		return "", err
 	}
 	if found == "" {
-		return "", agenterrors.Newf(agenterrors.FixableByAgent, "could not resolve channel name: #%s", name).
-			WithHint("check the name or pass a channel ID (C…) — 'agent-slack channel list' shows conversations")
+		return "", errResolveFailed("channel name: #"+name,
+			"check the name or pass a channel ID (C…) — 'agent-slack channel list' shows conversations")
 	}
 	c.cacheChannelID(name, found)
 	return found, nil

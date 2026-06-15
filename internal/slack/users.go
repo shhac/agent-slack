@@ -112,8 +112,8 @@ func userIDViaEmailLookup(ctx context.Context, c *Client, email string) string {
 }
 
 func errUserNotResolved(input string) *agenterrors.APIError {
-	return agenterrors.Newf(agenterrors.FixableByAgent, "could not resolve user: %s", strings.TrimSpace(input)).
-		WithHint("pass a user ID (U…), @handle, or email — 'agent-slack user list' shows users")
+	return errResolveFailed("user: "+strings.TrimSpace(input),
+		"pass a user ID (U…), @handle, or email — 'agent-slack user list' shows users")
 }
 
 // ListUsersOptions controls ListUsers.

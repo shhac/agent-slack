@@ -174,6 +174,6 @@ func fetchUsergroups(ctx context.Context, c *Client, includeDisabled bool) ([]Co
 }
 
 func errUsergroupNotResolved(input string) *agenterrors.APIError {
-	return agenterrors.Newf(agenterrors.FixableByAgent, "could not resolve usergroup: %s", strings.TrimSpace(input)).
-		WithHint("pass a usergroup ID (S…) or @handle — 'agent-slack usergroup list' shows usergroups")
+	return errResolveFailed("usergroup: "+strings.TrimSpace(input),
+		"pass a usergroup ID (S…) or @handle — 'agent-slack usergroup list' shows usergroups")
 }

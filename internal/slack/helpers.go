@@ -1,5 +1,15 @@
 package slack
 
+import agenterrors "github.com/shhac/agent-slack/internal/errors"
+
+// errResolveFailed is the shared "could not resolve <subject>" error with a
+// format hint — the common shape behind user/channel/usergroup resolution
+// failures. subject carries the entity label and the offending input
+// (e.g. "user: alice", "channel name: #ops").
+func errResolveFailed(subject, hint string) *agenterrors.APIError {
+	return agenterrors.Newf(agenterrors.FixableByAgent, "could not resolve %s", subject).WithHint(hint)
+}
+
 // Loose lookups over decoded JSON, mirroring the TS object-type-guards:
 // missing keys and wrong types collapse to zero values.
 
