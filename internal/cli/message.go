@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -53,6 +54,22 @@ func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
 }
 
 func (f *readFlags) shouldResolveUsers() bool { return f.resolveUsers || f.refreshUsers }
+
+// scheduleFlags is the shared --schedule/--schedule-in pair. verb tailors the
+// help text ("Schedule" for send, "Promote to a scheduled message" for draft).
+type scheduleFlags struct {
+	schedule   string
+	scheduleIn string
+}
+
+func (f *scheduleFlags) register(cmd *cobra.Command, verb string) {
+	cmd.Flags().StringVar(&f.schedule, "schedule", "", verb+" at an ISO 8601 time with timezone, or a unix timestamp")
+	cmd.Flags().StringVar(&f.scheduleIn, "schedule-in", "", verb+" after a duration (30m, 2d, tomorrow 9am, monday 9am)")
+}
+
+func (f scheduleFlags) resolvePostAt(now time.Time) (int64, error) {
+	return slack.ResolveSchedulePostAt(f.schedule, f.scheduleIn, now)
+}
 
 // warnTruncatedURL nudges about shell-eaten permalinks (thread_ts without cid).
 func warnTruncatedURL(globals *GlobalFlags, ref *render.MessageRef) {

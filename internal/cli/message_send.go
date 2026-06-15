@@ -19,10 +19,9 @@ import (
 // sendFlags are message send's raw flag values, kept separate so the
 // validation matrix (buildSendRequest) is a pure, table-testable function.
 type sendFlags struct {
-	threadTS       string
-	blocksPath     string
-	schedule       string
-	scheduleIn     string
+	threadTS   string
+	blocksPath string
+	scheduleFlags
 	attach         []string
 	replyBroadcast bool
 	slackMarkdown  bool
@@ -80,8 +79,7 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().BoolVar(&flags.replyBroadcast, "reply-broadcast", false, "Broadcast a thread reply to the channel")
 	cmd.Flags().StringArrayVar(&flags.attach, "attach", nil, "Attach a local file (repeatable)")
 	cmd.Flags().StringVar(&flags.blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
-	cmd.Flags().StringVar(&flags.schedule, "schedule", "", "Schedule at an ISO 8601 time with timezone, or a unix timestamp")
-	cmd.Flags().StringVar(&flags.scheduleIn, "schedule-in", "", "Schedule after a duration (30m, 2d, tomorrow 9am, monday 9am)")
+	flags.register(cmd, "Schedule")
 	cmd.Flags().BoolVar(&flags.slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn (*bold*, <url|label>) instead of standard Markdown")
 	cmd.Flags().StringVar(&flags.forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
 	parent.AddCommand(cmd)
@@ -148,7 +146,7 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 	if text == "" && len(flags.attach) == 0 && flags.blocksPath == "" {
 		return sendRequest{}, agenterrors.New("message text is required unless --attach or --blocks is provided", agenterrors.FixableByAgent)
 	}
-	postAt, err := slack.ResolveSchedulePostAt(flags.schedule, flags.scheduleIn, now)
+	postAt, err := flags.resolvePostAt(now)
 	if err != nil {
 		return sendRequest{}, err
 	}
@@ -165,10 +163,8 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 		if err != nil {
 			return sendRequest{}, err
 		}
-	} else {
-		for _, b := range rtBlocks {
-			blocks = append(blocks, b)
-		}
+	} else if len(rtBlocks) > 0 {
+		blocks = toAnySlice(rtBlocks)
 	}
 
 	return sendRequest{

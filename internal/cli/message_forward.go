@@ -34,11 +34,7 @@ func runForward(ctx context.Context, globals *GlobalFlags, cc *clientContext, de
 	caption = slack.ResolveMentions(ctx, cc.Client, caption)
 	caption = slack.ResolveChannelMentions(ctx, cc.Client, caption)
 	rtBlocks, outboundText := render.RenderOutbound(caption, flags.slackMarkdown)
-	var blocks []any
-	for _, b := range rtBlocks {
-		blocks = append(blocks, b)
-	}
-	capMsg := slack.OutgoingMessage{Text: render.FormatOutboundText(outboundText), Blocks: blocks}
+	capMsg := slack.OutgoingMessage{Text: render.FormatOutboundText(outboundText), Blocks: toAnySlice(rtBlocks)}
 
 	res, err := slack.ForwardMessage(ctx, cc.Client, destChannelID, slack.ForwardSource{
 		ChannelID: ref.ChannelID,

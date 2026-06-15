@@ -173,7 +173,7 @@ func registerDraftDelete(parent *cobra.Command, globals *GlobalFlags) {
 }
 
 func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
-	var schedule, scheduleIn string
+	var sched scheduleFlags
 	cmd := &cobra.Command{
 		Use:               "send <target|id>",
 		Short:             "Send a draft now (by id, or by target when it has exactly one), or --schedule/--schedule-in to promote it to a scheduled message",
@@ -181,7 +181,7 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: draftArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			postAt, err := slack.ResolveSchedulePostAt(schedule, scheduleIn, time.Now())
+			postAt, err := sched.resolvePostAt(time.Now())
 			if err != nil {
 				return err
 			}
@@ -230,8 +230,7 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 			return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
 		},
 	}
-	cmd.Flags().StringVar(&schedule, "schedule", "", "Promote to a scheduled message at an ISO 8601 time with timezone, or a unix timestamp")
-	cmd.Flags().StringVar(&scheduleIn, "schedule-in", "", "Promote to a scheduled message after a duration (30m, 2d, tomorrow 9am, monday 9am)")
+	sched.register(cmd, "Promote to a scheduled message")
 	parent.AddCommand(cmd)
 }
 
