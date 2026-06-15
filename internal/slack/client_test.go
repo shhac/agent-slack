@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -263,6 +265,40 @@ func TestAuthRefreshHook(t *testing.T) {
 	}
 	if refreshes != 1 {
 		t.Errorf("refreshes = %d after second failure, want still 1", refreshes)
+	}
+}
+
+// Under concurrent auth failures the takeRefresh guard must fire the refresh
+// hook exactly once (never a refresh storm), with no data race on the
+// mutex-guarded auth/refreshed state. Run with -race.
+func TestAuthRefreshConcurrentRefreshesOnce(t *testing.T) {
+	server := mockslack.New()
+	server.ExpectToken = "xoxb-fresh"
+	server.HandleBody("auth.test", map[string]any{"ok": true, "user": "paul"})
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+
+	var refreshes int64
+	c := New(Auth{Type: AuthStandard, Token: "xoxb-stale"},
+		WithBaseURL(ts.URL),
+		WithAuthRefresh(func(context.Context) (Auth, bool) {
+			atomic.AddInt64(&refreshes, 1)
+			return Auth{Type: AuthStandard, Token: "xoxb-fresh"}, true
+		}))
+
+	const n = 8
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = c.API(context.Background(), "auth.test", nil)
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&refreshes); got != 1 {
+		t.Errorf("refreshes = %d, want exactly 1 (takeRefresh guard)", got)
 	}
 }
 
