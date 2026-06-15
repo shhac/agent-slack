@@ -73,69 +73,75 @@ func richTextElementToMrkdwn(elAny any) string {
 		return strings.Join(items, "\n")
 
 	case "text":
-		text := str(el["text"])
-		style, ok := asRecord(el["style"])
-		if !ok {
-			return text
-		}
-		if truthy(style["code"]) {
-			text = "`" + text + "`"
-		}
-		if truthy(style["bold"]) {
-			text = "*" + text + "*"
-		}
-		if truthy(style["italic"]) {
-			text = "_" + text + "_"
-		}
-		if truthy(style["strike"]) {
-			text = "~" + text + "~"
-		}
-		if truthy(style["underline"]) {
-			text = "__" + text + "__"
-		}
-		return text
+		return applyMrkdwnStyle(str(el["text"]), el["style"])
 
 	case "link":
 		url := str(el["url"])
 		text := str(el["text"])
+		token := url
 		if url == "" {
-			return text
+			token = text
+		} else if text != "" {
+			token = "<" + url + "|" + text + ">"
 		}
-		if text != "" {
-			return "<" + url + "|" + text + ">"
-		}
-		return url
+		return applyMrkdwnStyle(token, el["style"])
 
 	case "emoji":
 		if name := str(el["name"]); name != "" {
-			return slackToken("emoji", name)
+			return applyMrkdwnStyle(slackToken("emoji", name), el["style"])
 		}
 		return ""
 
 	case "user":
 		if userID := str(el["user_id"]); userID != "" {
-			return slackToken("user", userID)
+			return applyMrkdwnStyle(slackToken("user", userID), el["style"])
 		}
 		return ""
 
 	case "channel":
 		if channelID := str(el["channel_id"]); channelID != "" {
-			return slackToken("channel", channelID)
+			return applyMrkdwnStyle(slackToken("channel", channelID), el["style"])
 		}
 		return ""
 
 	case "usergroup":
 		if id := str(el["usergroup_id"]); id != "" {
-			return slackToken("usergroup", id)
+			return applyMrkdwnStyle(slackToken("usergroup", id), el["style"])
 		}
 		return ""
 
 	case "broadcast":
 		if r := str(el["range"]); r != "" {
-			return slackToken("broadcast", r)
+			return applyMrkdwnStyle(slackToken("broadcast", r), el["style"])
 		}
 		return ""
 	}
 
 	return ""
+}
+
+// applyMrkdwnStyle wraps a token in mrkdwn emphasis per the element's style.
+// Slack keeps style on links/mentions/emoji (not just text), so a styled link
+// serializes as _<url|label>_ and round-trips back to a styled link element.
+func applyMrkdwnStyle(text string, styleAny any) string {
+	style, ok := asRecord(styleAny)
+	if !ok || text == "" {
+		return text
+	}
+	if truthy(style["code"]) {
+		text = "`" + text + "`"
+	}
+	if truthy(style["bold"]) {
+		text = "*" + text + "*"
+	}
+	if truthy(style["italic"]) {
+		text = "_" + text + "_"
+	}
+	if truthy(style["strike"]) {
+		text = "~" + text + "~"
+	}
+	if truthy(style["underline"]) {
+		text = "__" + text + "__"
+	}
+	return text
 }
