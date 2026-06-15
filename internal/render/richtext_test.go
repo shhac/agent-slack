@@ -314,3 +314,52 @@ func TestTextToRichTextBlocksBlockquote(t *testing.T) {
 	}
 	t.Error("missing rich_text_quote element")
 }
+
+// Inline tokens inside a slack-mrkdwn emphasis span must parse into real
+// elements (carrying the span's style), not be emitted as literal text — the
+// bug where an italicized line's <url|label> rendered as text.
+func TestParseInlineElementsEmphasisRecursesTokens(t *testing.T) {
+	link := func(els []InlineElement) *InlineElement {
+		for i := range els {
+			if els[i].Type == "link" {
+				return &els[i]
+			}
+		}
+		return nil
+	}
+
+	got := ParseInlineElements("_see <https://example.com|here> now_")
+	l := link(got)
+	if l == nil {
+		t.Fatalf("link inside italic stayed literal: %+v", got)
+	}
+	if l.URL != "https://example.com" || l.Text != "here" {
+		t.Errorf("link = %+v", l)
+	}
+	if l.Style == nil || !l.Style.Italic {
+		t.Errorf("link should carry the enclosing italic style: %+v", l.Style)
+	}
+
+	// A mention inside bold becomes a user element (not literal), styled bold.
+	bold := ParseInlineElements("*ping <@U12345678>*")
+	var mention *InlineElement
+	for i := range bold {
+		if bold[i].Type == "user" {
+			mention = &bold[i]
+		}
+	}
+	if mention == nil || mention.UserID != "U12345678" {
+		t.Fatalf("mention inside bold stayed literal: %+v", bold)
+	}
+	if mention.Style == nil || !mention.Style.Bold {
+		t.Errorf("mention should carry the enclosing bold style: %+v", mention.Style)
+	}
+
+	// Nested emphasis combines styles.
+	nested := ParseInlineElements("_a *b* c_")
+	for _, el := range nested {
+		if el.Text == "b" && (el.Style == nil || !el.Style.Bold || !el.Style.Italic) {
+			t.Errorf("nested *b* inside _…_ should be bold+italic: %+v", el.Style)
+		}
+	}
+}

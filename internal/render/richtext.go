@@ -49,6 +49,20 @@ type RichTextBlock struct {
 
 func textEl(text string) InlineElement { return InlineElement{Type: "text", Text: text} }
 
+// styleElement folds an emphasis style (bold/italic/strike from an enclosing
+// *…*/_…_/~…~ span) into an element's existing style, so nested emphasis and
+// emphasized links/mentions carry the combined formatting.
+func styleElement(el InlineElement, add InlineStyle) InlineElement {
+	existing := InlineStyle{}
+	if el.Style != nil {
+		existing = *el.Style
+	}
+	if s := mergeStyle(existing, add); s != (InlineStyle{}) {
+		el.Style = &s
+	}
+	return el
+}
+
 func styledTextEl(text string, style InlineStyle) InlineElement {
 	return InlineElement{Type: "text", Text: text, Style: &style}
 }
@@ -74,6 +88,14 @@ func ParseInlineElements(text string) []InlineElement {
 		flush()
 		elements = append(elements, el)
 	}
+	// emitEmphasis recurses into a *…*/_…_/~…~ span so links, mentions, emoji
+	// and nested emphasis inside it become real elements (not literal text),
+	// merging the span's style onto each. Code spans never recurse (literal).
+	emitEmphasis := func(content string, add InlineStyle) {
+		for _, el := range ParseInlineElements(content) {
+			emit(styleElement(el, add))
+		}
+	}
 
 	i := 0
 	for i < len(text) {
@@ -92,19 +114,19 @@ func ParseInlineElements(text string) []InlineElement {
 			}
 		case '*':
 			if content, end, ok := scanDelimited(text, i, '*'); ok {
-				emit(styledTextEl(content, InlineStyle{Bold: true}))
+				emitEmphasis(content, InlineStyle{Bold: true})
 				i = end
 				continue
 			}
 		case '_':
 			if content, end, ok := scanDelimited(text, i, '_'); ok {
-				emit(styledTextEl(content, InlineStyle{Italic: true}))
+				emitEmphasis(content, InlineStyle{Italic: true})
 				i = end
 				continue
 			}
 		case '~':
 			if content, end, ok := scanDelimited(text, i, '~'); ok {
-				emit(styledTextEl(content, InlineStyle{Strike: true}))
+				emitEmphasis(content, InlineStyle{Strike: true})
 				i = end
 				continue
 			}
