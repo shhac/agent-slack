@@ -11,8 +11,12 @@ import (
 	"github.com/ncruces/zenity"
 )
 
+// entry is the secret-prompt backend — a package var so tests can swap the
+// native OS dialog for a fake and exercise PromptSecret over the boundary.
+var entry = zenity.Entry
+
 func PromptSecret(ctx context.Context, title, label, initial string) (string, error) {
-	value, err := zenity.Entry(
+	value, err := entry(
 		label,
 		zenity.Title(title),
 		zenity.EntryText(initial),
