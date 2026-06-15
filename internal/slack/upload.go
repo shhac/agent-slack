@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
@@ -42,18 +43,46 @@ func (c *Client) UploadLocalFiles(ctx context.Context, channelID string, filePat
 	return err
 }
 
-// UploadDraftFiles uploads each local file's bytes and returns the resulting
-// file ids, ready to attach to a draft (drafts.create/update reference ids
-// directly). Unlike UploadLocalFiles it does NOT call completeUploadExternal —
-// that would post a message; a draft just holds the ids until the human sends.
+// UploadDraftFiles uploads each local file's bytes, finalizes them, and returns
+// the resulting file ids ready to attach to a draft. The byte uploads run in
+// parallel, then a single files.completeUploadExternal with NO channel_id
+// finalizes them: that turns the pending uploads into real files WITHOUT
+// posting them anywhere. The completion is the load-bearing step — drafts.create
+// rejects a still-pending file_id with file_not_found (it races Slack
+// registering the upload), but reliably accepts a completed one.
 func (c *Client) UploadDraftFiles(ctx context.Context, paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+
+	type uploaded struct {
+		id, filename string
+		err          error
+	}
+	results := make([]uploaded, len(paths))
+	var wg sync.WaitGroup
+	for i, path := range paths {
+		wg.Add(1)
+		go func(i int, path string) {
+			defer wg.Done()
+			id, filename, err := c.uploadFileBytes(ctx, path)
+			results[i] = uploaded{id: id, filename: filename, err: err}
+		}(i, path)
+	}
+	wg.Wait()
+
+	files := make([]any, 0, len(paths))
 	ids := make([]string, 0, len(paths))
-	for _, path := range paths {
-		fileID, _, err := c.uploadFileBytes(ctx, path)
-		if err != nil {
-			return nil, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, r.err
 		}
-		ids = append(ids, fileID)
+		files = append(files, map[string]any{"id": r.id, "title": r.filename})
+		ids = append(ids, r.id)
+	}
+	// Finalize without a channel: real files, no message posted.
+	if _, err := c.API(ctx, "files.completeUploadExternal", map[string]any{"files": files}); err != nil {
+		return nil, err
 	}
 	return ids, nil
 }

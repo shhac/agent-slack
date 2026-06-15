@@ -21,6 +21,10 @@ type OutgoingMessage struct {
 	// reference ids directly). Unused by chat.postMessage, which uploads +
 	// completes its own files.
 	FileIDs []string
+	// DraftID, when set, tells chat.postMessage which draft this send fulfills:
+	// Slack removes that draft as part of the post (the native send-a-draft
+	// path), so there is no separate delete to race or leave stale.
+	DraftID string
 }
 
 func (m OutgoingMessage) params() map[string]any {
@@ -37,6 +41,9 @@ func (m OutgoingMessage) params() map[string]any {
 	if m.UnfurlLinks {
 		params["unfurl_links"] = true
 		params["unfurl_media"] = true
+	}
+	if m.DraftID != "" {
+		params["draft_id"] = m.DraftID
 	}
 	return params
 }

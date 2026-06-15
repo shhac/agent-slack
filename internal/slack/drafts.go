@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shhac/agent-slack/internal/render"
@@ -20,11 +21,12 @@ import (
 
 // Draft is the compact projection of one Slack draft.
 type Draft struct {
-	ID        string `json:"id"`
-	ChannelID string `json:"channel_id"`
-	PostAt    int64  `json:"post_at,omitempty"` // 0 = a plain (unscheduled) draft
-	Text      string `json:"text,omitempty"`
-	Blocks    []any  `json:"-"` // raw rich_text, kept for edit/send
+	ID        string   `json:"id"`
+	ChannelID string   `json:"channel_id"`
+	PostAt    int64    `json:"post_at,omitempty"` // 0 = a plain (unscheduled) draft
+	Text      string   `json:"text,omitempty"`
+	Blocks    []any    `json:"-"`                  // raw rich_text, kept for edit/send
+	FileIDs   []string `json:"file_ids,omitempty"` // already-uploaded attachments, kept for send
 }
 
 func toDraft(d map[string]any) Draft {
@@ -34,7 +36,23 @@ func toDraft(d map[string]any) Draft {
 		PostAt:    int64(getNum(d, "date_scheduled")),
 		Text:      render.RenderMessageContent(d),
 		Blocks:    getArr(d, "blocks"),
+		FileIDs:   draftFileIDs(d),
 	}
+}
+
+// draftFileIDs reads a draft's file_ids (Slack stores them as a string array).
+func draftFileIDs(d map[string]any) []string {
+	raw := getArr(d, "file_ids")
+	if len(raw) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok && s != "" {
+			ids = append(ids, s)
+		}
+	}
+	return ids
 }
 
 // listDrafts returns active (not deleted/sent) drafts. scheduled selects
@@ -91,6 +109,27 @@ func UpdateDraft(ctx context.Context, c *Client, draftID string, m OutgoingMessa
 	params["draft_id"] = draftID
 	params["client_last_updated_ts"] = draftClientTS()
 	return createDraft(ctx, c, "drafts.update", params)
+}
+
+// ShareDraft sends a draft that carries attachments via files.share — the
+// native "send message with files" path the web client uses. It posts the
+// draft's blocks together with its already-uploaded files and removes the draft
+// in one call. chat.postMessage can't re-attach pre-uploaded files, so a draft
+// with attachments must go this way (a fileless draft posts normally instead).
+// Browser auth only.
+func ShareDraft(ctx context.Context, c *Client, d Draft) (PostResult, error) {
+	resp, err := c.API(ctx, "files.share", map[string]any{
+		"draft_id":      d.ID,
+		"files":         strings.Join(d.FileIDs, ","),
+		"channel":       d.ChannelID,
+		"blocks":        d.Blocks,
+		"client_msg_id": newClientMsgID(),
+		"broadcast":     false,
+	})
+	if err != nil {
+		return PostResult{}, err
+	}
+	return PostResult{ChannelID: d.ChannelID, TS: getStr(resp, "file_msg_ts")}, nil
 }
 
 // DeleteDraft soft-deletes a draft by id. client_last_updated_ts is the client's

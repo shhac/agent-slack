@@ -192,10 +192,11 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			msg := slack.OutgoingMessage{ChannelID: d.ChannelID, Blocks: d.Blocks}
+			msg := slack.OutgoingMessage{ChannelID: d.ChannelID, Blocks: d.Blocks, FileIDs: d.FileIDs}
 			if postAt != 0 {
 				// Promote the plain draft to a scheduled message in place (same id);
-				// no separate post/delete — Slack delivers it at post_at.
+				// no separate post/delete — Slack delivers it (with its files) at
+				// post_at. UpdateDraft re-sends file_ids, so attachments survive.
 				promoted, err := slack.UpdateDraft(ctx, cc.Client, d.ID, msg, postAt)
 				if err != nil {
 					return err
@@ -211,12 +212,24 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 				payload["note"] = "promoted the draft to a scheduled message — manage it under 'message scheduled'"
 				return printSingle(globals, payload)
 			}
+			// A draft with attachments can't be re-posted via chat.postMessage
+			// (it can't attach already-uploaded files), so send it natively with
+			// files.share, which posts and removes the draft in one call.
+			if len(d.FileIDs) > 0 {
+				result, err := slack.ShareDraft(ctx, cc.Client, d)
+				if err != nil {
+					return err
+				}
+				return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
+			}
+			// A fileless draft posts via chat.postMessage; passing draft_id makes
+			// Slack remove the draft as part of the post (native, atomic — no
+			// separate delete to race or leave stale).
+			msg.DraftID = d.ID
 			result, err := slack.PostMessage(ctx, cc.Client, msg)
 			if err != nil {
 				return err
 			}
-			// Best effort: the message is sent; a stale draft is harmless.
-			_ = slack.DeleteDraft(ctx, cc.Client, d.ID)
 			return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
 		},
 	}

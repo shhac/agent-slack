@@ -121,7 +121,6 @@ func TestDraftSend(t *testing.T) {
 	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
 		draftObj("Dr0A", "C12345678", "ready to go", 0)}})
 	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.0001", "channel": "C12345678"})
-	f.server.HandleBody("drafts.delete", map[string]any{"ok": true})
 
 	out, _, err := f.run(t, "message", "draft", "send", "C12345678")
 	if err != nil {
@@ -134,12 +133,17 @@ func TestDraftSend(t *testing.T) {
 	if perma, _ := sent["permalink"].(string); !strings.Contains(perma, "/archives/C12345678/p") {
 		t.Errorf("send should surface a permalink: %v", sent["permalink"])
 	}
-	// Posts the draft's content, then removes the draft.
-	if !strings.Contains(f.server.CallsFor("chat.postMessage")[0].Params.Get("blocks"), "ready to go") {
+	// Posts the draft's content, passing draft_id so Slack removes the draft as
+	// part of the post (native, atomic — no separate drafts.delete to race).
+	post := f.server.CallsFor("chat.postMessage")[0]
+	if !strings.Contains(post.Params.Get("blocks"), "ready to go") {
 		t.Error("send should post the draft's blocks")
 	}
-	if len(f.server.CallsFor("drafts.delete")) != 1 {
-		t.Error("send should delete the draft after posting")
+	if post.Params.Get("draft_id") != "Dr0A" {
+		t.Errorf("send should post with the draft_id so Slack clears it: %q", post.Params.Get("draft_id"))
+	}
+	if n := len(f.server.CallsFor("drafts.delete")); n != 0 {
+		t.Errorf("send should not issue a separate drafts.delete (draft_id clears it), got %d", n)
 	}
 }
 
