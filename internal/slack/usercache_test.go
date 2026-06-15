@@ -11,6 +11,23 @@ import (
 	"github.com/shhac/agent-slack/internal/mockslack"
 )
 
+// Warming user profiles also fills the handles index, so a later @handle
+// resolution is a cache hit instead of paginating users.list.
+func TestWarmUserCacheFillsHandleIndex(t *testing.T) {
+	server := mockslack.New() // no users.list handler: a fall-through scan would error
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+
+	c.warmUserCache([]CompactUser{{ID: "U0ALICEAA", Name: "alice"}, {ID: "U0BOBBBBB", Name: "bob"}})
+
+	id, err := ResolveUserID(context.Background(), c, "@alice")
+	if err != nil || id != "U0ALICEAA" {
+		t.Fatalf("id=%q err=%v", id, err)
+	}
+	if n := len(server.CallsFor("users.list")); n != 0 {
+		t.Errorf("users.list called %d times; warm should have filled the handles index", n)
+	}
+}
+
 func userInfoBody(id, name string) map[string]any {
 	return mockslack.UserInfo(id, name)
 }

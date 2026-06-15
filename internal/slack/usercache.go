@@ -25,15 +25,24 @@ func (c *Client) usersCache() *cacheSnapshot[CompactUser] {
 
 // warmUserCache records profiles a list command already fetched, so user
 // completions and later ID→profile lookups are populated without their own
-// API calls. Batched (one save) and best-effort.
+// API calls. It also fills the handles index (handle→id) from each user's
+// name, so `@handle` resolution (ResolveUserID) is a cache hit after a warm —
+// the resolver reads the handles cache, which the entity store alone never
+// populated. Batched (one save per store) and best-effort.
 func (c *Client) warmUserCache(users []CompactUser) {
 	snap := c.usersCache()
+	handles := c.handlesCache()
 	for _, u := range users {
-		if validUser(u.ID, u) {
-			snap.set(u.ID, u)
+		if !validUser(u.ID, u) {
+			continue
+		}
+		snap.set(u.ID, u)
+		if key := handleCacheKey(u.Name); key != "" {
+			handles.set(key, u.ID)
 		}
 	}
 	snap.save()
+	handles.save()
 }
 
 func ResolveUsersByID(ctx context.Context, c *Client, userIDs []string, forceRefresh bool) map[string]CompactUser {
