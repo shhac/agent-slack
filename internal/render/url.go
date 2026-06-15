@@ -9,6 +9,20 @@ import (
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
+// SameWorkspaceHost reports whether two workspace URLs share a hostname — the
+// stable identity of a workspace (scheme, path, or a trailing slash may differ).
+func SameWorkspaceHost(a, b string) bool {
+	ha, hb := workspaceHost(a), workspaceHost(b)
+	return ha != "" && ha == hb
+}
+
+func workspaceHost(raw string) string {
+	if u, err := url.Parse(strings.TrimSpace(raw)); err == nil && u.Hostname() != "" {
+		return strings.ToLower(u.Hostname())
+	}
+	return ""
+}
+
 // MessageRef identifies a single Slack message extracted from a permalink.
 type MessageRef struct {
 	WorkspaceURL string

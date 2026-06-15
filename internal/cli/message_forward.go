@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"net/url"
 	"strings"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -25,14 +24,9 @@ func runForward(ctx context.Context, globals *GlobalFlags, cc *clientContext, de
 		return agenterrors.New("--forward does not support --thread-ts / --reply-broadcast", agenterrors.FixableByAgent)
 	}
 
-	ref, err := render.ParseMessageURL(flags.forward)
+	ref, err := parseForwardTarget(flags.forward, cc.WorkspaceURL)
 	if err != nil {
-		return agenterrors.Newf(agenterrors.FixableByAgent, "--forward: %v", err).
-			WithHint("pass a Slack message permalink (https://…/archives/C…/p…)")
-	}
-	if !sameSlackHost(ref.WorkspaceURL, cc.WorkspaceURL) {
-		return agenterrors.New("--forward cannot cross workspaces — a link to another workspace is a link, not a forward", agenterrors.FixableByAgent).
-			WithHint("forward within the source workspace, or put the URL in the message text instead")
+		return err
 	}
 
 	// The caption is an ordinary outbound message — mentions/#channels resolve
@@ -57,23 +51,15 @@ func runForward(ctx context.Context, globals *GlobalFlags, cc *clientContext, de
 	return printSingle(globals, postedMessagePayload(res, cc.WorkspaceURL, ""))
 }
 
-// resolveForward validates a --forward permalink against the destination
-// workspace and folds it into the message text: an optional comment, then the
-// permalink so Slack unfurls it into a shared-message card (the same is_share /
-// is_msg_unfurl shape inbound rendering already understands). Slack exposes no
-// API to embed a message's content directly — a true client "Forward" can't be
-// driven over the public API — so a cross-workspace forward is impossible
-// (unfurls are workspace- and permission-scoped); that case is a link, not a
-// forward, and is rejected with a clear hint.
+// resolveForward folds a --forward permalink into draft text: an optional
+// comment, then the permalink so Slack unfurls it into a shared-message card
+// when the human sends the draft. Drafts use this embed form rather than the
+// native chat.shareMessage forward (the send path's runForward) because
+// shareMessage posts immediately and can't target a draft.
 func resolveForward(comment, permalink, destWorkspaceURL string) (string, error) {
-	ref, err := render.ParseMessageURL(permalink)
+	ref, err := parseForwardTarget(permalink, destWorkspaceURL)
 	if err != nil {
-		return "", agenterrors.Newf(agenterrors.FixableByAgent, "--forward: %v", err).
-			WithHint("pass a Slack message permalink (https://…/archives/C…/p…)")
-	}
-	if !sameSlackHost(ref.WorkspaceURL, destWorkspaceURL) {
-		return "", agenterrors.New("--forward cannot cross workspaces — a link to another workspace is a link, not a forward", agenterrors.FixableByAgent).
-			WithHint("put the URL in the message text instead, or forward within the source workspace")
+		return "", err
 	}
 	if strings.TrimSpace(comment) == "" {
 		return ref.Raw, nil
@@ -81,16 +67,18 @@ func resolveForward(comment, permalink, destWorkspaceURL string) (string, error)
 	return comment + "\n\n" + ref.Raw, nil
 }
 
-// sameSlackHost reports whether two workspace URLs share a hostname (the stable
-// identity of a workspace — scheme/path/trailing slash may differ).
-func sameSlackHost(a, b string) bool {
-	ha, hb := slackHost(a), slackHost(b)
-	return ha != "" && ha == hb
-}
-
-func slackHost(raw string) string {
-	if u, err := url.Parse(strings.TrimSpace(raw)); err == nil && u.Hostname() != "" {
-		return strings.ToLower(u.Hostname())
+// parseForwardTarget parses a --forward permalink and rejects a cross-workspace
+// one — a link to another workspace is a link, not a forward. Shared by the
+// send (runForward) and draft (resolveForward) paths.
+func parseForwardTarget(permalink, destWorkspaceURL string) (*render.MessageRef, error) {
+	ref, err := render.ParseMessageURL(permalink)
+	if err != nil {
+		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "--forward: %v", err).
+			WithHint("pass a Slack message permalink (https://…/archives/C…/p…)")
 	}
-	return ""
+	if !render.SameWorkspaceHost(ref.WorkspaceURL, destWorkspaceURL) {
+		return nil, agenterrors.New("--forward cannot cross workspaces — a link to another workspace is a link, not a forward", agenterrors.FixableByAgent).
+			WithHint("forward within the source workspace, or put the URL in the message text instead")
+	}
+	return ref, nil
 }
