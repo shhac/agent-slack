@@ -112,13 +112,14 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        Output includes ts + permalink. Reads (get/list/search/unreads/later)
        return Markdown too; --slack-markdown keeps native Slack mrkdwn.
 DRAFT  message draft create <target> [text] [--blocks <file|->] [--forward <permalink>] [--attach <path>]
-       message draft list | get <target> | edit <target> [text] | send <target>
+       message draft list | get <target|id> | edit <target|id> [text] | send <target|id>
        --attach (repeatable) attaches files to the draft, keeping its rich text
        (links/formatting) — unlike a direct attachment send, which posts plain text.
-       message draft delete <target> --yes   (destructive)
+       message draft delete <target|id> --yes   (destructive)
        LLM→human hand-off (browser auth): save a draft for the user to review
-       and send. Plain drafts are one-per-target, so the group is
-       target-addressed; 'send' posts the draft now then removes it.
+       and send. create returns a draft id; drafts are many-per-target, so
+       get/edit/delete/send take an id or a target (when it has just one).
+       'send' posts the draft now (with files) then removes it.
 EDIT   message edit <target> <text> --yes     (destructive)
 DELETE message delete <target> --yes          (destructive)
 REACT  message react add|remove <target> <emoji>   (:rocket:, rocket, or 🚀)

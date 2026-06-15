@@ -29,10 +29,10 @@ without `--yes`; instead it returns a description of what *would* happen
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve-users`, `--refresh-users`, `--no-download`, `--slack-markdown` | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, `--slack-markdown`, + the resolve/reaction flags from `get` | |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post as one message, text = shared comment), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>`, `--slack-markdown`, `--forward <permalink>` | |
-| `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>`, `--attach <path>` (repeatable; keeps rich text, unlike a direct attachment send) | |
-| `message draft list` | | |
-| `message draft get\|edit\|send <target>` | `edit`: `--blocks`, `--slack-markdown`, `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | |
-| `message draft delete <target>` | | `--yes` |
+| `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>`, `--attach <path>` (repeatable; keeps rich text, unlike a direct attachment send) — returns a draft id | |
+| `message draft list` | each row carries `id` + `file_ids` | |
+| `message draft get\|edit\|send <target\|id>` | `edit`: `--blocks`, `--slack-markdown`, `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | |
+| `message draft delete <target\|id>` | | `--yes` |
 | `message edit <target> <text>` | `--ts`, `--slack-markdown` | `--yes` |
 | `message delete <target>` | `--ts` | `--yes` |
 | `message react add\|remove <target> <emoji>` | `--ts` | |
@@ -58,11 +58,15 @@ recipients without access to the source channel see only in reduced form.
 into a draft), so the card appears when the human sends it.
 
 `message draft` (browser auth only) is the LLM→human hand-off: save a draft for
-the user to open, review, edit, and send. Plain drafts are **one per target**,
-so the group is target-addressed: `create`, `list`, `get`, `edit`, `delete`,
-and `send <target>` (posts the draft now, then removes it). `create` on a
-target that already has a draft errors with a hint to `edit`/`delete`; `list`
-and `delete` only touch plain drafts (scheduled ones live under `scheduled`).
+the user to open, review, edit, and send. Drafts are **many-per-target** and
+non-intrusive (they never pre-fill the user's compose box), so `create` returns
+a draft id and never conflicts. `get`/`edit`/`delete`/`send` take a **draft id**
+(`Dr…`) or a **target** — a target resolves only when it holds exactly one
+draft, otherwise the command errors and lists the candidate ids to pass instead.
+`send` posts the draft now (with its attachments) and removes it. `list` shows
+every unscheduled draft — including any the user started in-app, which are
+indistinguishable from ours — each with its `id` and `file_ids`; scheduled
+messages live under `scheduled`.
 
 On browser (desktop-imported) auth, **scheduled messages are also drafts**:
 `message send --schedule*` creates a scheduled draft, `scheduled list` lists

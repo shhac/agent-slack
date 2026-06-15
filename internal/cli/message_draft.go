@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -12,9 +13,10 @@ import (
 )
 
 // registerMessageDraft is the `message draft` group — the LLM→human hand-off.
-// Plain drafts are one-per-target (Slack enforces it), so the lifecycle is
-// target-addressed: create/list/get/edit/delete/send. Browser auth only;
-// scheduled messages live under `message scheduled`, not here.
+// Drafts are many-per-target and non-intrusive (see the slack package note), so
+// create returns an id and get/edit/delete/send address a draft by id, or by a
+// target when it holds exactly one. Browser auth only; scheduled messages live
+// under `message scheduled`, not here.
 func registerMessageDraft(parent *cobra.Command, globals *GlobalFlags) {
 	draftCmd := &cobra.Command{
 		Use:   "draft",
@@ -38,7 +40,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 	var attach []string
 	cmd := &cobra.Command{
 		Use:               "create <target> [text]",
-		Short:             "Save a draft for the user to review, edit, and send",
+		Short:             "Save a draft for the user to review, edit, and send (returns its id)",
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -49,13 +51,9 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 			}
 			d, err := slack.SaveDraft(ctx, cc.Client, req.outgoing(), 0)
 			if err != nil {
-				if slack.ErrorCode(err) == "attached_draft_exists" {
-					return agenterrors.Newf(agenterrors.FixableByAgent, "a draft already exists for %s", args[0]).
-						WithHint("edit it with 'message draft edit " + args[0] + " …' or remove it with 'message draft delete " + args[0] + "'")
-				}
 				return err
 			}
-			return printSingle(globals, draftPayload(d, "saved as a draft — open Slack to review, edit, and send"))
+			return printSingle(globals, draftPayload(d, "saved as a draft — open Slack to review, edit, and send (address it by id; a target may hold several drafts)"))
 		},
 	}
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
@@ -68,7 +66,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 func registerDraftList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List plain (unscheduled) drafts; scheduled messages are under 'message scheduled list'",
+		Short: "List drafts (unscheduled), including any started in-app; scheduled messages are under 'message scheduled list'",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -95,12 +93,12 @@ func registerDraftList(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerDraftGet(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
-		Use:               "get <target>",
-		Short:             "Show the plain draft for a target",
+		Use:               "get <target|id>",
+		Short:             "Show a draft by id, or by target when it has exactly one",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, d, err := resolveTargetDraft(cmd.Context(), globals, args[0])
+			_, d, err := resolveDraftArg(cmd.Context(), globals, args[0])
 			if err != nil {
 				return err
 			}
@@ -116,25 +114,24 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 	var forward string
 	var attach []string
 	cmd := &cobra.Command{
-		Use:               "edit <target> [text]",
-		Short:             "Replace the plain draft for a target",
+		Use:               "edit <target|id> [text]",
+		Short:             "Replace a draft's content (by id, or by target when it has exactly one)",
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			req, cc, err := buildDraftRequest(ctx, cmd, globals, args, blocksPath, slackMarkdown, forward, attach)
+			cc, d, err := resolveDraftArg(ctx, globals, args[0])
 			if err != nil {
 				return err
 			}
-			d, ok, err := slack.PlainDraftForChannel(ctx, cc.Client, req.channelID)
+			text := ""
+			if len(args) > 1 {
+				text = args[1]
+			}
+			req, err := buildDraftContent(ctx, cmd, cc, d.ChannelID, render.TargetChannel, text, blocksPath, slackMarkdown, forward, attach)
 			if err != nil {
 				return err
 			}
-			if !ok {
-				return agenterrors.Newf(agenterrors.FixableByAgent, "no draft for %s", args[0]).
-					WithHint("create one with 'message draft create " + args[0] + " …'; scheduled messages are under 'message scheduled list'")
-			}
-			req.channelID = d.ChannelID
 			updated, err := slack.UpdateDraft(ctx, cc.Client, d.ID, req.outgoing(), 0)
 			if err != nil {
 				return err
@@ -152,13 +149,13 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 func registerDraftDelete(parent *cobra.Command, globals *GlobalFlags) {
 	var yes bool
 	cmd := &cobra.Command{
-		Use:               "delete <target>",
-		Short:             "Discard the plain draft for a target (destructive: requires --yes)",
+		Use:               "delete <target|id>",
+		Short:             "Discard a draft by id, or by target when it has exactly one (destructive: requires --yes)",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			cc, d, err := resolveTargetDraft(ctx, globals, args[0])
+			cc, d, err := resolveDraftArg(ctx, globals, args[0])
 			if err != nil {
 				return err
 			}
@@ -178,8 +175,8 @@ func registerDraftDelete(parent *cobra.Command, globals *GlobalFlags) {
 func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 	var schedule, scheduleIn string
 	cmd := &cobra.Command{
-		Use:               "send <target>",
-		Short:             "Send the plain draft for a target now, or --schedule/--schedule-in to promote it to a scheduled message",
+		Use:               "send <target|id>",
+		Short:             "Send a draft now (by id, or by target when it has exactly one), or --schedule/--schedule-in to promote it to a scheduled message",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -188,7 +185,7 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			cc, d, err := resolveTargetDraft(ctx, globals, args[0])
+			cc, d, err := resolveDraftArg(ctx, globals, args[0])
 			if err != nil {
 				return err
 			}
@@ -258,30 +255,42 @@ func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalF
 	if len(args) > 1 {
 		text = args[1]
 	}
+	req, err := buildDraftContent(ctx, cmd, cc, channelID, target.Kind, text, blocksPath, slackMarkdown, forward, attach)
+	if err != nil {
+		return sendRequest{}, nil, err
+	}
+	return req, cc, nil
+}
+
+// buildDraftContent turns text/--blocks/--forward/--attach into a sendRequest
+// bound to channelID. It is the shared body of create (target → channel) and
+// edit (resolved draft → channel): mentions resolve, attachments upload to file
+// ids (drafts keep their rich_text blocks, so links/formatting survive — unlike
+// a direct attachment send, which posts plain text).
+func buildDraftContent(ctx context.Context, cmd *cobra.Command, cc *clientContext, channelID string, targetKind render.TargetKind, text, blocksPath string, slackMarkdown bool, forward string, attach []string) (sendRequest, error) {
 	if forward != "" {
+		var err error
 		text, err = resolveForward(text, forward, cc.WorkspaceURL)
 		if err != nil {
-			return sendRequest{}, nil, err
+			return sendRequest{}, err
 		}
 	}
 	text = slack.ResolveMentions(ctx, cc.Client, text)
 	text = slack.ResolveChannelMentions(ctx, cc.Client, text)
-	req, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown, forward: forward, attach: attach}, time.Now())
+	req, err := buildSendRequest(cmd.InOrStdin(), targetKind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown, forward: forward, attach: attach}, time.Now())
 	if err != nil {
-		return sendRequest{}, nil, err
+		return sendRequest{}, err
 	}
 	req.channelID = channelID
 	if len(req.attachPaths) > 0 {
-		// Upload bytes → file ids and attach to the draft; the send-path
-		// attachPaths (which would post + complete) are unused for drafts.
 		ids, uerr := cc.Client.UploadDraftFiles(ctx, req.attachPaths)
 		if uerr != nil {
-			return sendRequest{}, nil, uerr
+			return sendRequest{}, uerr
 		}
 		req.fileIDs = ids
 		req.attachPaths = nil
 	}
-	return req, cc, nil
+	return req, nil
 }
 
 // resolveDraftClient resolves a target to a browser-auth client + channel id.
@@ -296,10 +305,32 @@ func resolveDraftClient(ctx context.Context, globals *GlobalFlags, target render
 	return cc, channelID, nil
 }
 
-// resolveTargetDraft resolves a target to its single plain draft (browser auth),
-// erroring with a create hint when the target has no plain draft.
-func resolveTargetDraft(ctx context.Context, globals *GlobalFlags, targetArg string) (*clientContext, slack.Draft, error) {
-	target, err := render.ParseTarget(targetArg)
+// resolveDraftArg resolves a draft from either a draft id (Dr…) or a target.
+// A draft id addresses one draft directly. A target resolves to its draft only
+// when it has exactly one — since drafts are many-per-target, more than one is
+// ambiguous and we ask for an id rather than silently acting on the wrong one
+// (e.g. a draft the user started in-app). Browser auth only.
+func resolveDraftArg(ctx context.Context, globals *GlobalFlags, arg string) (*clientContext, slack.Draft, error) {
+	if slack.IsDraftID(arg) {
+		cc, err := getClient(globals)
+		if err != nil {
+			return nil, slack.Draft{}, err
+		}
+		if err := requireDraftAuth(cc); err != nil {
+			return nil, slack.Draft{}, err
+		}
+		d, ok, err := slack.DraftByID(ctx, cc.Client, arg)
+		if err != nil {
+			return nil, slack.Draft{}, err
+		}
+		if !ok {
+			return nil, slack.Draft{}, agenterrors.Newf(agenterrors.FixableByAgent, "no draft with id %s", arg).
+				WithHint("list drafts with 'message draft list'")
+		}
+		return cc, d, nil
+	}
+
+	target, err := render.ParseTarget(arg)
 	if err != nil {
 		return nil, slack.Draft{}, err
 	}
@@ -307,15 +338,24 @@ func resolveTargetDraft(ctx context.Context, globals *GlobalFlags, targetArg str
 	if err != nil {
 		return nil, slack.Draft{}, err
 	}
-	d, ok, err := slack.PlainDraftForChannel(ctx, cc.Client, channelID)
+	drafts, err := slack.DraftsForChannel(ctx, cc.Client, channelID)
 	if err != nil {
 		return nil, slack.Draft{}, err
 	}
-	if !ok {
-		return nil, slack.Draft{}, agenterrors.Newf(agenterrors.FixableByAgent, "no draft for %s", targetArg).
-			WithHint("create one with 'message draft create " + targetArg + " …'; scheduled messages are under 'message scheduled list'")
+	switch len(drafts) {
+	case 0:
+		return nil, slack.Draft{}, agenterrors.Newf(agenterrors.FixableByAgent, "no draft for %s", arg).
+			WithHint("create one with 'message draft create " + arg + " …'; scheduled messages are under 'message scheduled list'")
+	case 1:
+		return cc, drafts[0], nil
+	default:
+		ids := make([]string, len(drafts))
+		for i, d := range drafts {
+			ids[i] = d.ID
+		}
+		return nil, slack.Draft{}, agenterrors.Newf(agenterrors.FixableByAgent, "%d drafts for %s: %s", len(drafts), arg, strings.Join(ids, ", ")).
+			WithHint("pass a draft id (Dr…) instead of a target")
 	}
-	return cc, d, nil
 }
 
 func requireDraftAuth(cc *clientContext) error {

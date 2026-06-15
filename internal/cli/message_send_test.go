@@ -359,7 +359,7 @@ func TestMessageDraftBrowser(t *testing.T) {
 		t.Errorf("out = %s", out)
 	}
 	call := f.server.CallsFor("drafts.create")[0]
-	if call.Params.Get("is_from_composer") != "false" || call.Params.Has("date_scheduled") {
+	if call.Params.Has("date_scheduled") {
 		t.Errorf("a plain draft is not scheduled: %v", call.Params)
 	}
 	if !strings.Contains(call.Params.Get("blocks"), "hand-off text") {

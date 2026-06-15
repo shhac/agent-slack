@@ -17,16 +17,17 @@ import (
 // reject client tokens (not_allowed_token_type), so the drafts.* methods back
 // scheduling and the `message draft` group on browser auth.
 //
-// Slack enforces its one-per-target dedup ONLY on the plain hand-off slot
-// (is_from_composer=false); the other kinds are unrestricted, so a target's
-// draft kinds are:
-//   - the plain hand-off draft — is_from_composer=false, date_scheduled=0 (ONE)
-//   - live UI composer drafts  — is_from_composer=true,  date_scheduled=0 (MANY)
-//   - scheduled messages       — is_from_composer=true,  date_scheduled>0 (MANY)
-// We manage only the first: a second hand-off create returns attached_draft_exists,
-// so it is genuinely one-per-target. Composer drafts are the user's in-app compose
-// boxes for that channel (there can be several) — we must NOT list, send, or
-// delete them, or we'd fire off whatever they happen to be typing.
+// is_from_composer controls two things, both verified live: (1) the compose box
+// — a false draft pre-fills the channel's input when it is empty, a true draft
+// never touches it; and (2) dedup — Slack allows only ONE is_from_composer=false
+// draft per target (a second create returns attached_draft_exists) but MANY
+// is_from_composer=true drafts. We create hand-off drafts as is_from_composer=true:
+// non-intrusive (never shoves our text into the user's input) and many-per-target
+// (concurrent agents don't collide), so a draft is addressed by its id. The
+// trade-off is that our drafts then look like drafts the user started in-app —
+// both surface in the list — so target resolution acts on a draft only when its
+// target has exactly one; otherwise it asks for an id. date_scheduled>0 still
+// marks a scheduled message (managed under `message scheduled`).
 
 // Draft is the compact projection of one Slack draft.
 type Draft struct {
@@ -79,12 +80,6 @@ func listDrafts(ctx context.Context, c *Client, scheduled bool, channelID string
 		if (getNum(d, "date_scheduled") > 0) != scheduled {
 			continue
 		}
-		// A plain hand-off draft is is_from_composer=false; an unscheduled
-		// composer draft (the user's live compose box) shares the same target
-		// and date_scheduled=0, so exclude it from the plain view.
-		if !scheduled && getBool(d, "is_from_composer") {
-			continue
-		}
 		if channelID != "" && draftChannelID(d) != channelID {
 			continue
 		}
@@ -99,14 +94,33 @@ func ListDrafts(ctx context.Context, c *Client) ([]Draft, error) {
 	return listDrafts(ctx, c, false, "")
 }
 
-// PlainDraftForChannel returns the single plain draft for a channel (plain
-// drafts are one-per-target), or ok=false when there is none.
-func PlainDraftForChannel(ctx context.Context, c *Client, channelID string) (Draft, bool, error) {
-	drafts, err := listDrafts(ctx, c, false, channelID)
-	if err != nil || len(drafts) == 0 {
+// DraftsForChannel returns every plain (unscheduled) draft whose destination is
+// the channel — there can be several, since is_from_composer drafts are not
+// deduped per target.
+func DraftsForChannel(ctx context.Context, c *Client, channelID string) ([]Draft, error) {
+	return listDrafts(ctx, c, false, channelID)
+}
+
+// DraftByID returns the plain draft with the given id, or ok=false when none
+// matches. drafts.list has no id filter, so it scans the list.
+func DraftByID(ctx context.Context, c *Client, draftID string) (Draft, bool, error) {
+	drafts, err := listDrafts(ctx, c, false, "")
+	if err != nil {
 		return Draft{}, false, err
 	}
-	return drafts[0], true, nil
+	for _, d := range drafts {
+		if d.ID == draftID {
+			return d, true, nil
+		}
+	}
+	return Draft{}, false, nil
+}
+
+// IsDraftID reports whether s looks like a draft id (Dr…). Draft ids are the
+// only Slack ids with that prefix — channel/user/DM ids use C/D/G/U/W — so it
+// cleanly separates "address by id" from "address by target".
+func IsDraftID(s string) bool {
+	return strings.HasPrefix(s, "Dr")
 }
 
 // SaveDraft creates a draft from an outgoing message: PostAt 0 is a plain draft,
@@ -157,8 +171,9 @@ func DeleteDraft(ctx context.Context, c *Client, draftID string) error {
 	return err
 }
 
-// draftContent is the shared create/update body. postAt > 0 makes a scheduled
-// (composer) draft; a plain draft has no schedule and is not composer-attached.
+// draftContent is the shared create/update body. is_from_composer is always
+// true (non-intrusive, many-per-target — see the package note); postAt > 0 adds
+// a schedule, making it a scheduled message rather than a plain hand-off draft.
 func draftContent(m OutgoingMessage, postAt int64) map[string]any {
 	fileIDs := make([]any, len(m.FileIDs))
 	for i, id := range m.FileIDs {
@@ -168,7 +183,7 @@ func draftContent(m OutgoingMessage, postAt int64) map[string]any {
 		"blocks":           draftBlocks(m),
 		"destinations":     []any{map[string]any{"channel_id": m.ChannelID}},
 		"file_ids":         fileIDs,
-		"is_from_composer": postAt > 0,
+		"is_from_composer": true,
 	}
 	if postAt > 0 {
 		params["date_scheduled"] = postAt

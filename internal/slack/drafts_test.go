@@ -65,11 +65,11 @@ func TestSaveDraftPlain(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := server.CallsFor("drafts.create")[0]
-	if call.Params.Get("is_from_composer") != "false" {
-		t.Errorf("a plain draft is not a composer draft: %v", call.Params)
+	if call.Params.Get("is_from_composer") != "true" {
+		t.Errorf("drafts are created is_from_composer=true (non-intrusive, many-per-target): %v", call.Params)
 	}
 	if call.Params.Has("date_scheduled") {
-		t.Error("a plain draft must not set date_scheduled")
+		t.Error("a plain draft must not set date_scheduled (that's what makes it scheduled)")
 	}
 }
 
@@ -106,7 +106,7 @@ func TestUpdateDraft(t *testing.T) {
 	if call.Params.Get("client_last_updated_ts") == "" {
 		t.Error("update needs a fresh client_last_updated_ts")
 	}
-	if call.Params.Get("is_from_composer") != "false" || call.Params.Has("date_scheduled") {
+	if call.Params.Has("date_scheduled") {
 		t.Errorf("editing a plain draft must not schedule it: %v", call.Params)
 	}
 	if !strings.Contains(call.Params.Get("blocks"), "new text") {
@@ -163,20 +163,45 @@ func TestListDraftsPlainOnly(t *testing.T) {
 	}
 }
 
-func TestPlainDraftForChannel(t *testing.T) {
+func TestDraftsForChannelAndByID(t *testing.T) {
 	server := mockslack.New()
 	server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
 		map[string]any{"id": "Dr0A", "date_scheduled": float64(0), "destinations": []any{map[string]any{"channel_id": "C1"}}},
+		map[string]any{"id": "Dr0B", "date_scheduled": float64(0), "destinations": []any{map[string]any{"channel_id": "C1"}}},
+		map[string]any{"id": "Dr0C", "date_scheduled": float64(0), "destinations": []any{map[string]any{"channel_id": "C2"}}},
 	}})
 	c := browserClient(t, server)
 
-	d, ok, err := PlainDraftForChannel(context.Background(), c, "C1")
-	if err != nil || !ok || d.ID != "Dr0A" {
-		t.Errorf("match: d=%+v ok=%v err=%v", d, ok, err)
+	// many-per-target: C1 holds two drafts
+	c1, err := DraftsForChannel(context.Background(), c, "C1")
+	if err != nil || len(c1) != 2 {
+		t.Errorf("C1 should have 2 drafts: %+v err=%v", c1, err)
 	}
-	_, ok, err = PlainDraftForChannel(context.Background(), c, "C2")
-	if err != nil || ok {
-		t.Errorf("no draft for C2 should be ok=false, nil err: ok=%v err=%v", ok, err)
+	if none, _ := DraftsForChannel(context.Background(), c, "C9"); len(none) != 0 {
+		t.Errorf("C9 should have no drafts: %+v", none)
+	}
+
+	d, ok, err := DraftByID(context.Background(), c, "Dr0C")
+	if err != nil || !ok || d.ChannelID != "C2" {
+		t.Errorf("DraftByID Dr0C: d=%+v ok=%v err=%v", d, ok, err)
+	}
+	if _, ok, _ := DraftByID(context.Background(), c, "Dr0MISSING"); ok {
+		t.Error("DraftByID for a missing id should be ok=false")
+	}
+}
+
+func TestIsDraftID(t *testing.T) {
+	for arg, want := range map[string]bool{
+		"Dr0BASG2JSQZ": true,  // draft id
+		"C12345678":    false, // channel
+		"D035EASSUH3":  false, // DM (D, but not Dr)
+		"U12345678":    false, // user
+		"#general":     false,
+		"@alice":       false,
+	} {
+		if got := IsDraftID(arg); got != want {
+			t.Errorf("IsDraftID(%q) = %v, want %v", arg, got, want)
+		}
 	}
 }
 
