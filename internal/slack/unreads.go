@@ -63,23 +63,17 @@ type unreadEntry struct {
 // unreadEntries collects the channels/mpims/dms from a client.counts response
 // that have unreads.
 func unreadEntries(resp map[string]any) []unreadEntry {
-	var all []unreadEntry
-	for _, ch := range recItems(getArr(resp, "channels")) {
-		all = append(all, unreadEntry{ch, "channel"})
-	}
-	for _, ch := range recItems(getArr(resp, "mpims")) {
-		all = append(all, unreadEntry{ch, "mpim"})
-	}
-	for _, ch := range recItems(getArr(resp, "ims")) {
-		all = append(all, unreadEntry{ch, "dm"})
-	}
-
 	var withUnreads []unreadEntry
-	for _, e := range all {
-		if getBool(e.raw, "has_unreads") {
-			withUnreads = append(withUnreads, e)
+	add := func(key, channelType string) {
+		for _, ch := range recItems(getArr(resp, key)) {
+			if getBool(ch, "has_unreads") {
+				withUnreads = append(withUnreads, unreadEntry{ch, channelType})
+			}
 		}
 	}
+	add("channels", "channel")
+	add("mpims", "mpim")
+	add("ims", "dm")
 	return withUnreads
 }
 

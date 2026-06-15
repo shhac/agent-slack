@@ -268,8 +268,8 @@ func (c *Client) parseResponse(method string, httpResp *http.Response) (map[stri
 		return nil, 0, mapHTTPError(method, httpResp.StatusCode)
 	}
 
-	if ok, _ := data["ok"].(bool); !ok {
-		code, _ := data["error"].(string)
+	if !getBool(data, "ok") {
+		code := getStr(data, "error")
 		c.debugf("POST %s -> 200 error=%s", method, code)
 		c.debugResponse(method, data)
 		return nil, 0, mapSlackError(method, code, data)

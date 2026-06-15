@@ -64,6 +64,21 @@ func (c *Client) setDownloadAuthHeaders(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+auth.Token)
 }
 
+// resolveDownloadName picks the on-disk basename for a download: the preferred
+// name if given, else the URL's last path segment, else a "file" fallback.
+func resolveDownloadName(preferred, rawURL string) string {
+	name := preferred
+	if name == "" {
+		if u, err := url.Parse(rawURL); err == nil {
+			name = filepath.Base(u.Path)
+		}
+	}
+	if name == "" || name == "." || name == "/" {
+		name = "file"
+	}
+	return name
+}
+
 // DownloadFile fetches a Slack-hosted file to DestDir with the account's
 // credentials and returns the local path. Existing files are reused (file IDs
 // are immutable, so the cache never goes stale).
@@ -75,16 +90,7 @@ func (c *Client) DownloadFile(ctx context.Context, opts DownloadOptions) (string
 	if err := os.MkdirAll(absDir, 0o700); err != nil {
 		return "", downloadErr(err)
 	}
-	name := opts.PreferredName
-	if name == "" {
-		if u, perr := url.Parse(opts.URL); perr == nil {
-			name = filepath.Base(u.Path)
-		}
-	}
-	if name == "" || name == "." || name == "/" {
-		name = "file"
-	}
-	path := filepath.Join(absDir, sanitizeFilename(name))
+	path := filepath.Join(absDir, sanitizeFilename(resolveDownloadName(opts.PreferredName, opts.URL)))
 
 	if _, err := os.Stat(path); err == nil {
 		return path, nil
