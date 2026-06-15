@@ -86,6 +86,7 @@ agent-slack message send "#general" "later" --schedule-in "tomorrow 9am"
 agent-slack message scheduled list
 agent-slack message scheduled cancel <id> --yes        # browser auth; add --channel for bot tokens
 agent-slack message draft create "#general" "Draft for you to review"   # hand-off: save a draft for the user to edit/send (browser auth)
+agent-slack message draft create "#general" "see attached" --attach ./report.pdf   # draft keeps rich text + files
 agent-slack message draft list                         # plain drafts; also get/edit/delete/send <target>
 agent-slack message react add "<permalink>" :eyes:
 agent-slack message edit "<permalink>" "fixed wording" --yes

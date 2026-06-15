@@ -29,9 +29,9 @@ without `--yes`; instead it returns a description of what *would* happen
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve-users`, `--refresh-users`, `--no-download`, `--slack-markdown` | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, `--slack-markdown`, + the resolve/reaction flags from `get` | |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post as one message, text = shared comment), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>`, `--slack-markdown`, `--forward <permalink>` | |
-| `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>` | |
+| `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>`, `--attach <path>` (repeatable; keeps rich text, unlike a direct attachment send) | |
 | `message draft list` | | |
-| `message draft get\|edit\|send <target>` | `edit`: `--blocks`, `--slack-markdown`; `send`: `--schedule`, `--schedule-in` | |
+| `message draft get\|edit\|send <target>` | `edit`: `--blocks`, `--slack-markdown`, `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | |
 | `message draft delete <target>` | | `--yes` |
 | `message edit <target> <text>` | `--ts`, `--slack-markdown` | `--yes` |
 | `message delete <target>` | `--ts` | `--yes` |
