@@ -10,19 +10,19 @@ import (
 )
 
 // printMembers is the shared body of the `members` commands (channel,
-// usergroup): it prints member user ids as `{"id": …}` rows, or — with
-// --resolve-users/--refresh-users — expands them to compact profiles, keeping
-// the bare id when a profile fetch fails. meta carries any trailing meta lines
-// (channel_id, pagination) the caller wants.
-func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, ids []string, resolveUsers, refreshUsers bool, meta map[string]any) error {
-	if !resolveUsers && !refreshUsers {
+// usergroup): it prints member user ids as `{"id": …}` rows, or — when --users
+// is cached/fresh — expands them to compact profiles, keeping the bare id when a
+// profile fetch fails. meta carries any trailing meta lines (channel_id,
+// pagination) the caller wants.
+func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, ids []string, mode userMode, meta map[string]any) error {
+	if !mode.resolve() {
 		items := make([]any, len(ids))
 		for i, id := range ids {
 			items[i] = map[string]any{"id": id}
 		}
 		return printList(globals, items, meta)
 	}
-	users := slack.ResolveUsersByID(ctx, c, ids, refreshUsers)
+	users := slack.ResolveUsersByID(ctx, c, ids, mode.forceRefresh())
 	items := make([]any, 0, len(ids))
 	for _, id := range ids {
 		if u, ok := users[id]; ok {

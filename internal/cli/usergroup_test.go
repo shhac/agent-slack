@@ -104,7 +104,7 @@ func TestUsergroupMembersByIDResolveUsers(t *testing.T) {
 		mockslack.Response{Body: mockslack.UsergroupUsers("U0ALICEAA")})
 	f.server.HandleBody("users.info", mockslack.UserInfo("U0ALICEAA", "alice"))
 
-	out, _, err := f.run(t, "usergroup", "members", "S0MARKETIN", "--resolve-users")
+	out, _, err := f.run(t, "usergroup", "members", "S0MARKETIN", "--users", "cached")
 	if err != nil {
 		t.Fatal(err)
 	}

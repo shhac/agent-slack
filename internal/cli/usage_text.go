@@ -42,8 +42,8 @@ OUTPUT
 CHAINING
   message get/send output a permalink; list rows carry channel_id + ts that
   chain into message get --ts. File metadata carries F… ids for
-  'file download'. --resolve-users expands U… ids (cached 24h;
-  --refresh-users busts the cache). --include-reactions opts into reactions.
+  'file download'. --users cached expands U… ids (24h cache); --users fresh
+  busts the cache. --include-reactions opts into reactions.
 
 CACHE
   Awkward resolutions (channel name→ID, @handle→ID, profiles, workflow
@@ -82,7 +82,7 @@ GET    message get <target> [--ts …] [--thread-ts …]
        One message + thread summary {ts,length} + permalink. Files
        auto-download to the cache dir (paths in files[].path; --no-download
        skips). Flags: --max-body-chars 8000, --include-reactions,
-       --resolve-users, --refresh-users.
+       --users none|cached|fresh.
 LIST   message list <target>
        Channel target → recent history (--limit 25 max 200, --oldest,
        --latest), chronological NDJSON + {"@channel_id":…} meta line.
@@ -132,9 +132,9 @@ LIST   channel list [--user U…|@handle] [--all] [--limit 100] [--cursor …]
        is_private/is_im/is_mpim, is_member, num_members, topic; --full = raw.
 GET    channel get <channel…> [--full] — channel metadata. One arg → object;
        several → NDJSON, with a trailing {"@unresolved": […]} for any misses.
-MEMBERS channel members <channel> [--resolve-users] [--limit] [--cursor]
+MEMBERS channel members <channel> [--users none|cached|fresh] [--limit] [--cursor]
        Who is in the channel: user ids (chain into 'user get'), or profiles
-       with --resolve-users.
+       with --users cached/fresh.
 NEW    channel new --name <name> [--private] --yes        (requires --yes)
 INVITE channel invite --channel <…> --users "U…,@a,b@x.com" --yes
        --external sends Slack Connect email invites
@@ -161,9 +161,9 @@ LIST     usergroup list [--include-disabled]
          no view on which is "best" to post in; pick per your use case.
 GET      usergroup get <S…|@handle …> — one arg → object; several → NDJSON,
          with a trailing {"@unresolved": […]} for inputs that didn't resolve.
-MEMBERS  usergroup members <S…|@handle> [--resolve-users] [--include-disabled]
+MEMBERS  usergroup members <S…|@handle> [--users none|cached|fresh] [--include-disabled]
          Who is in the group: user ids (chain into 'user get'), or profiles
-         with --resolve-users. To answer "which groups am I in?", scan
+         with --users cached/fresh. To answer "which groups am I in?", scan
          'usergroup list' membership (or check 'auth test' user id against
          members).`,
 

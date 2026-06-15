@@ -21,6 +21,9 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			if err := flags.validate(); err != nil {
+				return err
+			}
 			cc, ref, err := resolveMessageTarget(ctx, globals, args[0], flags.ts, flags.threadTS)
 			if err != nil {
 				return err
@@ -79,6 +82,9 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			if err := flags.validate(); err != nil {
+				return err
+			}
 			target, err := render.ParseTarget(args[0])
 			if err != nil {
 				return err

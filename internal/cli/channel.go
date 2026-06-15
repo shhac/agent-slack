@@ -67,14 +67,18 @@ func getChannel(ctx context.Context, globals *GlobalFlags, arg string) (any, err
 func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {
 	var limit int
 	var cursor string
-	var resolveUsers, refreshUsers bool
+	var users string
 	cmd := &cobra.Command{
 		Use:               "members <channel>",
-		Short:             "List the users in a channel (ids by default; --resolve-users for profiles)",
+		Short:             "List the users in a channel (ids by default; --users cached/fresh for profiles)",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: channelArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			mode, err := parseUserMode(users)
+			if err != nil {
+				return err
+			}
 			target, err := render.ParseTarget(args[0])
 			if err != nil {
 				return err
@@ -88,13 +92,12 @@ func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			meta := listMeta(next, map[string]any{"channel_id": channelID})
-			return printMembers(ctx, globals, cc.Client, ids, resolveUsers, refreshUsers, meta)
+			return printMembers(ctx, globals, cc.Client, ids, mode, meta)
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max members per page")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
-	cmd.Flags().BoolVar(&resolveUsers, "resolve-users", false, "Expand member ids to compact profiles")
-	cmd.Flags().BoolVar(&refreshUsers, "refresh-users", false, "Bypass the user cache when resolving")
+	registerUserMode(cmd, &users)
 	parent.AddCommand(cmd)
 }
 

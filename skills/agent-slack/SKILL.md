@@ -63,8 +63,9 @@ Always quote permalinks — unquoted `&` truncates them in the shell.
 `message get` includes a `permalink`, a `thread` summary `{ts,length}`, and
 downloads attachments (local paths in `files[].path`; `--no-download` to
 skip). Lists keep attachments metadata-only; add `--download` or
-`agent-slack file download F…` for point pulls. Add `--resolve-users` to
-expand `U…` ids to profiles, `--include-reactions` for reactions.
+`agent-slack file download F…` for point pulls. Add `--users cached` (or
+`fresh` to bypass the cache) to expand `U…` ids to profiles,
+`--include-reactions` for reactions.
 
 ## Searching
 
@@ -114,13 +115,13 @@ would happen — show it to the user before retrying with `--yes`.
 agent-slack channel list                      # compact; --full for raw
 agent-slack channel get "#general"            # one → object; several → NDJSON
 agent-slack channel get "#general" "#ops"     # batch; --full for raw
-agent-slack channel members "#general" --resolve-users   # who's in it
+agent-slack channel members "#general" --users cached   # who's in it
 agent-slack user get @alice                   # one → object
 agent-slack user get @alice @bob @carol       # several → NDJSON (+ @unresolved for misses)
 agent-slack user dm-open @alice @bob          # group DM channel id
 agent-slack usergroup list                    # subteams + their default channels
 agent-slack usergroup get @marketing          # one → object; several → NDJSON
-agent-slack usergroup members @marketing --resolve-users   # who's in the group
+agent-slack usergroup members @marketing --users cached   # who's in the group
 agent-slack message send "#team" "worth a read" --forward <permalink>   # forward a message (same workspace)
 agent-slack workflow list "#ops"
 agent-slack workflow get Ft0001               # form fields + steps

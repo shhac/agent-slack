@@ -167,8 +167,8 @@ scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
 
 ## User resolution / caching
 
-- In-memory user map; `--resolve-users` expands IDs to profiles,
-  `--refresh-users` clears the cache first.
+- In-memory user map; `--users cached` expands IDs to profiles,
+  `--users fresh` clears the cache first.
 
 ## Workflow and update behavior
 

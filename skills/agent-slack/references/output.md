@@ -18,7 +18,7 @@
 | Line | Meaning |
 |---|---|
 | `{"@pagination": {"has_more", "next_cursor"}}` | more pages exist; pass `--cursor <next_cursor>` |
-| `{"@referenced_users": {"U…": {id, name, …}}}` | profile metadata for the `U…` ids in the items (only with `--resolve-users`) |
+| `{"@referenced_users": {"U…": {id, name, …}}}` | profile metadata for the `U…` ids in the items (only with `--users cached`/`fresh`) |
 | `{"@channel_id": "C…"}` | the channel the listed messages came from |
 | `{"@thread_ts": "…"}` | the thread root, when listing a thread |
 | `{"@threads": {"has_unreads", "mention_count"}}` | unread thread-reply summary (`unreads`) |
@@ -50,9 +50,9 @@ Truncated content ends with `\n…`.
 - `auth list` → `{ default_workspace_url, credentials_path, workspaces: [{ workspace_url, auth_type, secrets: {token|xoxc|xoxd: "keychain"|"file"|"missing"}, hint? }] }`.
 
 User IDs stay canonical in payloads (`author.user_id`, reaction `users[]`,
-`@U…` mentions in rendered content). Pass `--resolve-users` to get an
+`@U…` mentions in rendered content). Pass `--users cached` to get an
 `@referenced_users` map of display metadata; the per-workspace user cache has
-a 24h TTL (`--refresh-users` bypasses it).
+a 24h TTL (`--users fresh` bypasses it).
 
 ## Attachment downloads
 
@@ -109,7 +109,7 @@ page.
   `AGENT_SLACK_CACHE_TTL_<CATEGORY>` > `AGENT_SLACK_CACHE_TTL` (all) >
   `config set cache.ttl.<category> <dur>` (persisted) > built-in default. `0`
   disables reads for a category. Categories include `get` and `list` (the 5m
-  serve windows). `--refresh-users` still forces a profile re-fetch.
+  serve windows). `--users fresh` still forces a profile re-fetch.
 
 Individual rejections are never cached (a transient `trigger_not_found` won't
 stick), and the side-effecting `workflow run` path is never cached.

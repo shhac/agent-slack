@@ -38,8 +38,7 @@ type readFlags struct {
 	threadTS         string
 	maxBodyChars     int
 	includeReactions bool
-	resolveUsers     bool
-	refreshUsers     bool
+	users            string // --users: none | cached | fresh
 	slackMarkdown    bool
 }
 
@@ -48,12 +47,18 @@ func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
 	cmd.Flags().StringVar(&f.threadTS, "thread-ts", "", "Thread root ts hint")
 	cmd.Flags().IntVar(&f.maxBodyChars, "max-body-chars", defaultMaxBody, "Max content chars per message (-1 = unlimited)")
 	cmd.Flags().BoolVar(&f.includeReactions, "include-reactions", false, "Include reactions and reacting users")
-	cmd.Flags().BoolVar(&f.resolveUsers, "resolve-users", false, "Resolve referenced user IDs to profiles")
-	cmd.Flags().BoolVar(&f.refreshUsers, "refresh-users", false, "Refresh the user cache before resolving (implies --resolve-users)")
+	registerUserMode(cmd, &f.users)
 	cmd.Flags().BoolVar(&f.slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 }
 
-func (f *readFlags) shouldResolveUsers() bool { return f.resolveUsers || f.refreshUsers }
+// userMode returns the parsed --users value; callers validate(f) first so the
+// parse here cannot fail.
+func (f *readFlags) userMode() userMode { return userMode(f.users) }
+
+func (f *readFlags) validate() error {
+	_, err := parseUserMode(f.users)
+	return err
+}
 
 // scheduleFlags is the shared --schedule/--schedule-in pair. verb tailors the
 // help text ("Schedule" for send, "Promote to a scheduled message" for draft).
@@ -169,10 +174,11 @@ func messageDownloadOptions(globals *GlobalFlags) slack.MessageDownloads {
 }
 
 func resolveReferencedUsers(ctx context.Context, cc *clientContext, flags *readFlags, messages []render.MessageSummary) map[string]slack.CompactUser {
-	if !flags.shouldResolveUsers() {
+	mode := flags.userMode()
+	if !mode.resolve() {
 		return nil
 	}
 	ids := render.CollectReferencedUserIDs(messages, flags.includeReactions)
-	users := slack.ResolveUsersByID(ctx, cc.Client, ids, flags.refreshUsers)
+	users := slack.ResolveUsersByID(ctx, cc.Client, ids, mode.forceRefresh())
 	return slack.ToReferencedUsers(ids, users)
 }
