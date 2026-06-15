@@ -68,6 +68,23 @@ func draftWithFiles(id, channelID, text string, fileIDs ...string) map[string]an
 	return d
 }
 
+// get surfaces a draft's file_ids so attachments are visible — from the same
+// drafts.list response, no extra call.
+func TestDraftGetShowsFileIDs(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		draftWithFiles("Dr0A", "C12345678", "see attached", "F0A", "F0B")}})
+
+	out, _, err := f.run(t, "message", "draft", "get", "C12345678")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := parseJSON(t, out)["file_ids"].([]any)
+	if len(got) != 2 || got[0] != "F0A" || got[1] != "F0B" {
+		t.Errorf("get should surface file_ids: %s", out)
+	}
+}
+
 // Sending a draft that carries attachments goes via files.share (the native
 // "send message with files" path) — chat.postMessage can't re-attach an
 // already-uploaded file. files.share posts and removes the draft in one call.

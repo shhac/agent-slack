@@ -331,6 +331,11 @@ func draftItem(d slack.Draft) map[string]any {
 	if d.PostAt > 0 {
 		item["post_at"] = d.PostAt
 	}
+	// file_ids ride along on the same drafts.list response toDraft already
+	// parsed — surfacing them here costs no extra call.
+	if len(d.FileIDs) > 0 {
+		item["file_ids"] = d.FileIDs
+	}
 	return item
 }
 
