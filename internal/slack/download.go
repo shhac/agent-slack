@@ -25,7 +25,7 @@ func (e *DownloadError) Error() string { return e.Message }
 
 // downloadErr wraps a low-level error as a status-less DownloadError — the
 // common case for filesystem and request-construction failures.
-func downloadErr(err error) *DownloadError { return downloadErr(err) }
+func downloadErr(err error) *DownloadError { return &DownloadError{Message: err.Error()} }
 
 // DownloadOptions controls Client.DownloadFile.
 type DownloadOptions struct {
