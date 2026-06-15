@@ -78,6 +78,10 @@ func GetUsergroup(ctx context.Context, c *Client, input string) (CompactUsergrou
 		if g, ok := serve.get(id); ok {
 			return g, nil
 		}
+	} else if c.usergroupsComplete() {
+		// The handle didn't resolve and the set is complete → authoritative
+		// not-found; don't re-enumerate.
+		return CompactUsergroup{}, errUsergroupNotResolved(input)
 	}
 	// Include disabled so `get` resolves a deactivated group by id too.
 	groups, err := fetchUsergroups(ctx, c, true)
