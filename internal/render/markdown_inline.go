@@ -53,25 +53,25 @@ func parseMarkdownInto(text string, base InlineStyle) []InlineElement {
 			}
 		case ':':
 			if name, end, ok := scanEmojiShortcode(text, i); ok && boundaryBefore(text, i) {
-				emit(InlineElement{Type: "emoji", Name: name})
+				emit(styleElement(InlineElement{Type: "emoji", Name: name}, base))
 				i = end
 				continue
 			}
 		case '<':
 			if el, end, ok := scanAngleToken(text, i); ok {
-				emit(el)
+				emit(styleElement(el, base))
 				i = end
 				continue
 			}
 		case '@':
 			if el, end, ok := scanBareMention(text, i); ok && boundaryBefore(text, i) {
-				emit(el)
+				emit(styleElement(el, base))
 				i = end
 				continue
 			}
 		case '[':
 			if el, end, ok := scanMarkdownLink(text, i); ok {
-				emit(el)
+				emit(styleElement(el, base))
 				i = end
 				continue
 			}

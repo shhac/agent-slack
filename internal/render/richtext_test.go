@@ -363,3 +363,42 @@ func TestParseInlineElementsEmphasisRecursesTokens(t *testing.T) {
 		}
 	}
 }
+
+// Emphasis must style inline tokens (link/mention/emoji) identically in BOTH
+// dialects — standard Markdown and slack-mrkdwn. The in-emphasis link bug was a
+// parity break: slack-mrkdwn dropped the token entirely, and standard Markdown
+// kept the link but not its style. A cross-dialect parity test catches both.
+func TestEmphasisStylesTokensInBothDialects(t *testing.T) {
+	findType := func(els []InlineElement, typ string) *InlineElement {
+		for i := range els {
+			if els[i].Type == typ {
+				return &els[i]
+			}
+		}
+		return nil
+	}
+	cases := []struct{ name, markdown, mrkdwn, typ string }{
+		{"link", "_[x](https://e.com)_", "_<https://e.com|x>_", "link"},
+		{"mention", "_<@U12345678>_", "_<@U12345678>_", "user"},
+		{"emoji", "_:wave:_", "_:wave:_", "emoji"},
+		{"channel", "_<#C12345678|gen>_", "_<#C12345678|gen>_", "channel"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			md := findType(ParseMarkdownInline(tc.markdown), tc.typ)
+			sm := findType(ParseInlineElements(tc.mrkdwn), tc.typ)
+			if md == nil {
+				t.Fatalf("standard Markdown dropped the %s token: %q", tc.typ, tc.markdown)
+			}
+			if sm == nil {
+				t.Fatalf("slack-mrkdwn dropped the %s token: %q", tc.typ, tc.mrkdwn)
+			}
+			if md.Style == nil || !md.Style.Italic {
+				t.Errorf("standard Markdown: %s inside _…_ not italic (style=%+v)", tc.typ, md.Style)
+			}
+			if sm.Style == nil || !sm.Style.Italic {
+				t.Errorf("slack-mrkdwn: %s inside _…_ not italic (style=%+v)", tc.typ, sm.Style)
+			}
+		})
+	}
+}
