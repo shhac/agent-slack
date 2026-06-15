@@ -140,6 +140,7 @@ these only when you need to:
 
 ```bash
 agent-slack cache info                         # what's cached, per workspace
+agent-slack cache warm                          # pre-fill users/channels/usergroups (JSONL progress)
 agent-slack cache purge --workspace "#…"        # clear one workspace
 agent-slack cache purge --downloads             # clear downloaded files
 agent-slack config set cache.ttl.channels 30m   # persist a TTL

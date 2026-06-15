@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
+	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
@@ -20,7 +21,34 @@ func registerCache(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(cacheCmd)
 	handleUnknownSubcommand(cacheCmd)
 	registerCacheInfo(cacheCmd, globals)
+	registerCacheWarm(cacheCmd, globals)
 	registerCachePurge(cacheCmd, globals)
+}
+
+func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
+	var pageDelay time.Duration
+	var includeBots bool
+	cmd := &cobra.Command{
+		Use:   "warm",
+		Short: "Pre-fetch users, channels, and usergroups into the cache (paced for rate limits; streams JSONL progress)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cc, err := getClient(globals)
+			if err != nil {
+				return err
+			}
+			w := output.NewNDJSONWriter(globals.stdout)
+			return slack.WarmWorkspace(cmd.Context(), cc.Client, slack.WarmOptions{
+				PageDelay:   pageDelay,
+				IncludeBots: includeBots,
+			}, func(e slack.WarmEvent) {
+				_ = w.WriteItem(e) // stream progress as we go; consumers can filter done:true for the summary
+			})
+		},
+	}
+	cmd.Flags().DurationVar(&pageDelay, "page-delay", time.Second, "Pause between paged API calls to stay under Slack rate limits (0 to disable)")
+	cmd.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot users")
+	parent.AddCommand(cmd)
 }
 
 // cacheWorkspaceLabels maps each present cache subdir key to its configured
