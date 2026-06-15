@@ -107,21 +107,9 @@ func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
 				if err != nil {
 					return err
 				}
-				var wsBytes int64
-				out := make([]map[string]any, 0, len(cats))
-				for _, c := range cats {
-					wsBytes += c.Bytes
-					entry := map[string]any{"category": c.Category, "entries": c.Entries, "bytes": c.Bytes}
-					if c.NewestMS > 0 {
-						entry["newest_age_seconds"] = (now - c.NewestMS) / 1000
-						entry["oldest_age_seconds"] = (now - c.OldestMS) / 1000
-					}
-					out = append(out, entry)
-				}
+				ws, wsBytes := cacheWorkspacePayload(labels[key], key, cats, now)
 				total += wsBytes
-				workspaces = append(workspaces, map[string]any{
-					"workspace": labels[key], "cache_key": key, "bytes": wsBytes, "categories": out,
-				})
+				workspaces = append(workspaces, ws)
 			}
 
 			return printSingle(globals, map[string]any{
@@ -133,6 +121,26 @@ func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	parent.AddCommand(cmd)
+}
+
+// cacheWorkspacePayload shapes one workspace's cache report and returns it with
+// its byte total — the pure transform (byte sums, age-second math) extracted
+// from registerCacheInfo's I/O loop so it can be exercised without the cache dir.
+func cacheWorkspacePayload(label, key string, cats []slack.CacheCategory, now int64) (map[string]any, int64) {
+	var wsBytes int64
+	out := make([]map[string]any, 0, len(cats))
+	for _, c := range cats {
+		wsBytes += c.Bytes
+		entry := map[string]any{"category": c.Category, "entries": c.Entries, "bytes": c.Bytes}
+		if c.NewestMS > 0 {
+			entry["newest_age_seconds"] = (now - c.NewestMS) / 1000
+			entry["oldest_age_seconds"] = (now - c.OldestMS) / 1000
+		}
+		out = append(out, entry)
+	}
+	return map[string]any{
+		"workspace": label, "cache_key": key, "bytes": wsBytes, "categories": out,
+	}, wsBytes
 }
 
 func registerCachePurge(parent *cobra.Command, globals *GlobalFlags) {
