@@ -83,24 +83,14 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			withReactions, err := normalizeReactionNames(withReaction)
-			if err != nil {
-				return err
-			}
-			withoutReactions, err := normalizeReactionNames(withoutReaction)
-			if err != nil {
-				return err
-			}
-			hasReactionFilters := len(withReactions) > 0 || len(withoutReactions) > 0
-
 			ts := strings.TrimSpace(flags.ts)
 			threadTS := strings.TrimSpace(flags.threadTS)
-			mode, err := resolveListMode(target.Kind, ts, threadTS, strings.TrimSpace(oldest), hasReactionFilters)
+			plan, err := planMessageList(target.Kind, ts, threadTS, strings.TrimSpace(oldest), withReaction, withoutReaction)
 			if err != nil {
 				return err
 			}
 
-			switch mode {
+			switch plan.mode {
 			case listModeURLThread:
 				return listURLThread(ctx, globals, flags, target.Ref, download)
 			case listModeHistory:
@@ -108,9 +98,9 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 					Limit:            limit,
 					Latest:           strings.TrimSpace(latest),
 					Oldest:           strings.TrimSpace(oldest),
-					IncludeReactions: flags.includeReactions || hasReactionFilters,
-					WithReactions:    withReactions,
-					WithoutReactions: withoutReactions,
+					IncludeReactions: flags.includeReactions || plan.hasReactionFilters,
+					WithReactions:    plan.withReactions,
+					WithoutReactions: plan.withoutReactions,
 				}
 				return listChannelHistory(ctx, globals, flags, target, opts, download)
 			default: // listModeThread
@@ -183,6 +173,35 @@ const (
 	listModeHistory                   // channel target, no thread specifier
 	listModeThread                    // channel target + --ts/--thread-ts
 )
+
+// listPlan is the resolved shape of a `message list` invocation: the mode plus
+// the normalized reaction filters that feed history mode.
+type listPlan struct {
+	mode               listMode
+	withReactions      []string
+	withoutReactions   []string
+	hasReactionFilters bool
+}
+
+// planMessageList normalizes the reaction-name filters and classifies the list
+// mode — the pure validation the RunE closure used to inline, now testable
+// without a live command.
+func planMessageList(targetKind render.TargetKind, ts, threadTS, oldest string, withReaction, withoutReaction []string) (listPlan, error) {
+	withReactions, err := normalizeReactionNames(withReaction)
+	if err != nil {
+		return listPlan{}, err
+	}
+	withoutReactions, err := normalizeReactionNames(withoutReaction)
+	if err != nil {
+		return listPlan{}, err
+	}
+	hasReactionFilters := len(withReactions) > 0 || len(withoutReactions) > 0
+	mode, err := resolveListMode(targetKind, ts, threadTS, oldest, hasReactionFilters)
+	if err != nil {
+		return listPlan{}, err
+	}
+	return listPlan{mode, withReactions, withoutReactions, hasReactionFilters}, nil
+}
 
 const listRejectUserMsg = "message list does not support user ID targets"
 
