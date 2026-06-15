@@ -32,12 +32,22 @@ global persistent flags.
 | `auth add / set-default / remove / import-* / parse-curl` | | | implemented |
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve-users`, `--refresh-users`, `--no-download` | | thread summary included; files auto-downloaded |
 | `message list <target>` | `--thread-ts`, `--ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars` (8000), `--download`, reaction/user flags as get | | NDJSON; reaction filters require `--oldest` |
-| `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable), `--blocks` (path or `-`), `--schedule`, `--schedule-in` | | DM auto-opens for `U…` targets |
+| `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post together as ONE message with one `initial_comment`, not one message per file), `--blocks` (path or `-`), `--forward <permalink>`, `--schedule`, `--schedule-in` | | DM auto-opens for `U…` targets |
 | `message edit <target> <text>` | `--ts` | `--yes` | |
 | `message delete <target>` | `--ts` | `--yes` | |
 | `message react add/remove <target> <emoji>` | `--ts` | | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | | NDJSON |
 | `message scheduled cancel <id>` | `--channel` | `--yes` | destroys a pending send |
+| `message draft create <target> [text]` | `--blocks`, `--slack-markdown`, `--forward <permalink>` | | browser-only; one plain draft per target |
+| `message draft list` | | | NDJSON; plain drafts only (`date_scheduled == 0`) |
+| `message draft get/edit/delete/send <target>` | `edit`: `--forward <permalink>`; `send`: `--schedule`, `--schedule-in` | | operate on the single plain draft for the target; `send` posts+deletes, or promotes to scheduled |
+| `usergroup list` | `--include-disabled` | | NDJSON, compact projection |
+| `usergroup get <usergroup…>` | | | id `S…` or `@handle`; one→object, several→NDJSON |
+| `usergroup members <usergroup>` | `--resolve-users`, `--refresh-users`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
+| `cache info` | | | reports cached categories/entries per workspace |
+| `cache warm` | `--page-delay` (1s), `--include-bots` | | paginates users/channels/usergroups, paced for rate limits, streams JSONL progress |
+| `cache purge` | `--workspace`, `--all-workspaces`, `--downloads` | | clears cached data |
+| `config get/set/list/unset` | | | persists settings (e.g. TTLs) in `config.json` |
 | `channel list` | `--user`, `--all`, `--limit` (100), `--cursor` | | NDJSON, compact projection |
 | `channel new` | `--name`, `--private` | `--yes` | |
 | `channel invite` | `--channel`, `--users`, `--external`, `--allow-external-user-invites` | `--yes` | |
@@ -141,6 +151,13 @@ is tried as a user first then a usergroup; unresolved handles stay literal. The
 resolver needs a client, so the CLI resolves the target client *before* building
 the (pure) request.
 
+Bare `#channel-name` tokens also resolve outbound to `<#C…>` channel links:
+cache-first (`channel-names`), then one `search.messages` lookup; unresolved
+names stay literal, and already-formed `<#…>` tokens and code spans are left
+untouched. A channel ref is distinguished from a Markdown heading structurally —
+`#name` is flush against the `#` (a channel) whereas `# ` with a trailing space
+is a heading — and all-digit refs like `#5` are ignored.
+
 ## Drafts and scheduled messages
 
 **Decision: drafts and scheduled messages are the same `drafts.*` store (browser
@@ -176,6 +193,12 @@ model (`attached_draft_exists`, no `drafts.send`, `client_last_updated_ts`).
   completions. The split is what keeps liveness intact: the command path is
   always live; only the completion path (a pure cache-file read, no API/creds)
   consumes the warmed ids, which age out at the category TTL.
+- **Forwarding (`--forward <permalink>`) (decision):** `message send
+  --forward <permalink>` forwards a message. Browser (xoxc) auth uses
+  `chat.shareMessage` to post a real `is_share` card; other token kinds fall
+  back to a permalink unfurl. Same-workspace only. Drafts embed the permalink
+  form (no share card at draft time); `draft create`/`edit` take `--forward`
+  the same way.
 
 ## File downloads
 

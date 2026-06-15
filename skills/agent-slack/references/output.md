@@ -23,7 +23,7 @@
 | `{"@thread_ts": "…"}` | the thread root, when listing a thread |
 | `{"@threads": {"has_unreads", "mention_count"}}` | unread thread-reply summary (`unreads`) |
 | `{"@counts": {…}}` | totals when `--counts-only` is set (`unreads`, `later`) |
-| `{"@unresolved": ["…"]}` | inputs that didn't resolve in a multi-arg `user get` / `channel get` (the rest still return) |
+| `{"@unresolved": ["…"]}` | inputs that didn't resolve in a multi-arg `user get` / `channel get` / `usergroup get` (the rest still return) |
 
 ## Compact by default, `--full` for raw
 
@@ -32,6 +32,7 @@ for the raw Slack API payload.
 
 - **channel**: `id, name, is_private, is_im, is_mpim, is_archived, is_member, member_count, topic`
 - **user**: `id, name, real_name, display_name, is_bot, deleted, tz, email`
+- **usergroup**: `id, handle, name, description, user_count, channels, groups` — `channels`/`groups` are the group's *default* channels/subteams (members are auto-added); the CLI lists them all and takes no view on which is "best" to post in
 - **message**: `channel_id, ts, thread_ts?, author{user_id}, content, files?, reactions?`
 
 Message bodies are capped by `--max-body-chars` (defaults: 8000 for
@@ -84,7 +85,9 @@ workspace under `<cacheDir>/<wshash>/<category>.json` (never message bodies):
 | `channel-names` | channel name → ID | 1h |
 | `channels` | channel ID → metadata (completions/resolution) | 1h |
 | `channel-info` | channel ID → full `conversations.info` (serves `channel get`) | 5m |
-| `conversations-pages` / `users-pages` | a `channel list`/`user list` page, keyed by query | 5m |
+| `usergroups` | @handle → subteam ID | 24h |
+| `usergroup-entities` | subteam ID → metadata (completions, `usergroup get/list`) | 24h |
+| `conversations-pages` / `users-pages` / `usergroups-pages` | a `channel list`/`user list`/`usergroup list` page, keyed by query | 5m |
 | `workflow-list` | channel ID → its workflows (annotated) | 1h |
 | `workflow-triggers` | `Ft…` → preview (workflow id, shortcut) | 1h |
 | `workflow-schemas` | `Wf…` → form fields/steps | 1h |
@@ -112,16 +115,19 @@ Rejections are never cached (a transient `trigger_not_found` won't stick), and
 the side-effecting `workflow run` path is never cached.
 
 **Managing the cache:** `agent-slack cache info` shows what's cached per
-workspace (entries, size, age); `cache purge [--workspace … | --all-workspaces]`
-clears it (local + regenerable). `agent-slack config set/get/list/unset`
-persists the TTLs above.
+workspace (entries, size, age); `cache warm` pre-fetches users/channels/
+usergroups (paced for rate limits, streams JSONL progress) so completions and
+resolution are instant and offline; `cache purge [--workspace … |
+--all-workspaces]` clears it (local + regenerable). `agent-slack
+config set/get/list/unset` persists the TTLs above.
 
 Shell completions read these caches (install via `agent-slack completion
 <shell>`, or Homebrew installs them automatically), most-recently-used first,
 capped and prefix-filtered. Suggestions are kind-appropriate: a `<target>`
 (message get/list/send/edit/delete, channel mark, later remind) suggests
 channels and DM users; `workflow list` and `--channel` flags suggest channels;
-`user get`/`dm-open` suggest users; `workflow preview/get/run` suggest cached
+`user get`/`dm-open` suggest users; `usergroup get`/`members` suggest cached
+subteams (`@handle`/id/`handle`); `workflow preview/get/run` suggest cached
 `Ft…` triggers (with the workflow name as the hint). Channels and users are
 offered in every form — `#name`/id/`name` and `@handle`/id/`handle` — so any
 prefix style matches; a bare tab shows the primary (`#name`/`@handle`).

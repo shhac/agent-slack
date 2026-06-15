@@ -155,7 +155,8 @@ For anything beyond the examples above, read the bundled references:
 
 - [references/commands.md](references/commands.md) — full command map, flags, and which commands are `--yes`-gated
 - [references/targets.md](references/targets.md) — permalink vs channel URL vs name/ID vs user-ID targeting, and multi-workspace rules
-- [references/output.md](references/output.md) — NDJSON + meta-line contract, compact vs `--full`, payload shapes, and download paths
+- [references/formatting.md](references/formatting.md) — the full Markdown table, mention/`#channel` resolution, and the `--slack-markdown` dialect
+- [references/output.md](references/output.md) — NDJSON + meta-line contract, compact vs `--full`, payload shapes, download paths, and the resolution cache
 
 Live docs from the binary: `agent-slack usage` is the overview;
 `agent-slack <domain> usage` (message, channel, search, workflow, later, …)

@@ -37,16 +37,19 @@ The command surface:
 - **auth**: `list` (`ls`, `whoami`), `test`, `add` (`--form`), `set-default`,
   `remove`, `import-desktop`, `import-browser <name>`, `parse-curl`
 - **message**: `get`, `list`, `send`, `edit`, `delete`,
-  `react add|remove`, `scheduled list|cancel`
-  (there is deliberately no browser-based draft editor — see Decisions)
+  `react add|remove`, `scheduled list|cancel`,
+  `draft create|list|get|edit|delete|send`
 - **channel**: `list`, `new`, `invite`, `mark`
 - **user**: `list`, `get`, `dm-open`
+- **usergroup**: `list`, `get`, `members`
 - **search**: `all`, `messages`, `files`
 - **workflow**: `list`, `preview`, `get`, `run`
 - **canvas**: `get`
 - **unreads**: top-level
 - **later**: `list`, `save`, `complete`, `archive`, `reopen`, `remove`, `remind`
 - **file**: `download` (point pull of a file seen in any listing)
+- **cache**: `warm`, `info`, `purge`
+- **config**: `get`, `set`, `list`, `unset`
 - **api**: `call` (raw Slack method escape hatch)
 
 Flags, defaults, projections, and per-command details live in

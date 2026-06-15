@@ -85,14 +85,17 @@ agent-slack message usage                  # per-domain detail pages
 |------------|----------|
 | `auth`     | `list` (`ls`), `test`, `add`, `set-default`, `remove`, `import-desktop`, `import-browser <name>`, `parse-curl` |
 | `message`  | `get`, `list`, `send`, `draft`, `edit`*, `delete`*, `react add/remove`, `scheduled list/cancel`* |
-| `channel`  | `list`, `new`*, `invite`*, `mark` |
+| `channel`  | `list`, `get`, `members`, `new`*, `invite`*, `mark` |
 | `user`     | `list`, `get`, `dm-open` |
+| `usergroup`| `list`, `get`, `members` (subteams; surfaces each group's default channels) |
 | `search`   | `all`, `messages`, `files` |
 | `workflow` | `list`, `preview`, `get`, `run` (incl. `--field` form submission) |
 | `canvas`   | `get` |
 | `unreads`  | (top-level) |
 | `later`    | `list`, `save`, `complete`, `archive`, `reopen`, `remove`, `remind` |
 | `file`     | `download` |
+| `cache`    | `info`, `warm`, `purge` |
+| `config`   | `get`, `set`, `list`, `unset` |
 | `api`      | `call` (raw escape hatch) |
 
 \* destructive — requires `--yes`, otherwise returns a description of what
