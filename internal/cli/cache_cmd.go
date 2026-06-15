@@ -29,9 +29,11 @@ func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 	var pageDelay time.Duration
 	var includeBots bool
 	cmd := &cobra.Command{
-		Use:   "warm",
-		Short: "Pre-fetch users, channels, and usergroups into the cache (paced for rate limits; streams JSONL progress)",
-		Args:  cobra.NoArgs,
+		Use:       "warm [users|channels|usergroups...]",
+		Short:     "Pre-fetch users, channels, and usergroups into the cache (paced for rate limits; streams JSONL progress)",
+		Long:      "Pre-fetch list endpoints into the cache. With no arguments all categories are warmed; pass one or more of users, channels, usergroups to scope it.",
+		Args:      cobra.OnlyValidArgs,
+		ValidArgs: []string{slack.WarmUsers, slack.WarmChannels, slack.WarmUsergroups},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc, err := getClient(globals)
 			if err != nil {
@@ -41,6 +43,7 @@ func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 			return slack.WarmWorkspace(cmd.Context(), cc.Client, slack.WarmOptions{
 				PageDelay:   pageDelay,
 				IncludeBots: includeBots,
+				Categories:  args,
 			}, func(e slack.WarmEvent) {
 				_ = w.WriteItem(e) // stream progress as we go; consumers can filter done:true for the summary
 			})

@@ -5,12 +5,33 @@ import (
 	"time"
 )
 
+// Warmable category names, also the accepted `cache warm` arguments.
+const (
+	WarmUsers      = "users"
+	WarmChannels   = "channels"
+	WarmUsergroups = "usergroups"
+)
+
 // WarmOptions configures a cache warm sweep.
 type WarmOptions struct {
 	// PageDelay pauses between paged API calls to stay under Slack's rate
 	// limits (the client also backs off on a 429). Zero disables the pause.
 	PageDelay   time.Duration
 	IncludeBots bool // include bot users in the users warm
+	// Categories limits the sweep to the named categories; empty means all.
+	Categories []string
+}
+
+func (o WarmOptions) wants(category string) bool {
+	if len(o.Categories) == 0 {
+		return true
+	}
+	for _, c := range o.Categories {
+		if c == category {
+			return true
+		}
+	}
+	return false
 }
 
 // WarmEvent is one progress record emitted as a warm sweep proceeds: a
@@ -42,19 +63,25 @@ func WarmWorkspace(ctx context.Context, c *Client, opts WarmOptions, progress fu
 		return c.sleep(ctx, opts.PageDelay)
 	}
 
-	if err := warmUsers(ctx, c, opts, emit, pace); err != nil {
-		return err
+	if opts.wants(WarmUsers) {
+		if err := warmUsers(ctx, c, opts, emit, pace); err != nil {
+			return err
+		}
 	}
-	if err := warmChannels(ctx, c, emit, pace); err != nil {
-		return err
+	if opts.wants(WarmChannels) {
+		if err := warmChannels(ctx, c, emit, pace); err != nil {
+			return err
+		}
 	}
-	// usergroups.list has no pagination; fetchUsergroups warms both the entity
-	// store and the handle index.
-	groups, err := fetchUsergroups(ctx, c, true)
-	if err != nil {
-		return err
+	if opts.wants(WarmUsergroups) {
+		// usergroups.list has no pagination; fetchUsergroups warms both the
+		// entity store and the handle index.
+		groups, err := fetchUsergroups(ctx, c, true)
+		if err != nil {
+			return err
+		}
+		emit(WarmEvent{Category: WarmUsergroups, Count: len(groups), Done: true})
 	}
-	emit(WarmEvent{Category: "usergroups", Count: len(groups), Done: true})
 	return nil
 }
 
