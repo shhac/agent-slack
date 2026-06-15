@@ -21,9 +21,15 @@ func draftObj(id, channelID, text string, postAt int) map[string]any {
 
 func TestDraftListPlainOnly(t *testing.T) {
 	f := newBrowserCLIFixture(t)
+	// The composer draft is the user's live in-app compose box: is_from_composer
+	// with date_scheduled=0, sharing the same target as our plain draft. It must
+	// be excluded — listing/sending it would fire off whatever they're typing.
+	composer := draftObj("Dr0COMPOSER", "C12345678", "user is typing this", 0)
+	composer["is_from_composer"] = true
 	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
 		draftObj("Dr0PLAIN", "C12345678", "a plain draft", 0),
 		draftObj("Dr0SCHED", "C12345678", "scheduled one", 100), // excluded
+		composer, // excluded
 	}})
 
 	out, _, err := f.run(t, "message", "draft", "list")
@@ -32,7 +38,7 @@ func TestDraftListPlainOnly(t *testing.T) {
 	}
 	lines := parseNDJSON(t, out)
 	if len(lines) != 1 || lines[0]["id"] != "Dr0PLAIN" || lines[0]["text"] != "a plain draft" {
-		t.Errorf("draft list should show only plain drafts: %v", lines)
+		t.Errorf("draft list should show only the plain hand-off draft: %v", lines)
 	}
 	if _, has := lines[0]["post_at"]; has {
 		t.Error("a plain draft has no post_at")

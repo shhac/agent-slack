@@ -15,9 +15,18 @@ import (
 // "scheduled message" as a draft with date_scheduled set, and a plain draft is
 // the LLM→human hand-off. chat.scheduleMessage / chat.scheduledMessages.list
 // reject client tokens (not_allowed_token_type), so the drafts.* methods back
-// scheduling and the `message draft` group on browser auth. Plain drafts are
-// one-per-target (a second create returns attached_draft_exists); scheduled
-// drafts are many-per-target.
+// scheduling and the `message draft` group on browser auth.
+//
+// Slack enforces its one-per-target dedup ONLY on the plain hand-off slot
+// (is_from_composer=false); the other kinds are unrestricted, so a target's
+// draft kinds are:
+//   - the plain hand-off draft — is_from_composer=false, date_scheduled=0 (ONE)
+//   - live UI composer drafts  — is_from_composer=true,  date_scheduled=0 (MANY)
+//   - scheduled messages       — is_from_composer=true,  date_scheduled>0 (MANY)
+// We manage only the first: a second hand-off create returns attached_draft_exists,
+// so it is genuinely one-per-target. Composer drafts are the user's in-app compose
+// boxes for that channel (there can be several) — we must NOT list, send, or
+// delete them, or we'd fire off whatever they happen to be typing.
 
 // Draft is the compact projection of one Slack draft.
 type Draft struct {
@@ -68,6 +77,12 @@ func listDrafts(ctx context.Context, c *Client, scheduled bool, channelID string
 			continue
 		}
 		if (getNum(d, "date_scheduled") > 0) != scheduled {
+			continue
+		}
+		// A plain hand-off draft is is_from_composer=false; an unscheduled
+		// composer draft (the user's live compose box) shares the same target
+		// and date_scheduled=0, so exclude it from the plain view.
+		if !scheduled && getBool(d, "is_from_composer") {
 			continue
 		}
 		if channelID != "" && draftChannelID(d) != channelID {
