@@ -232,6 +232,52 @@ func TestMessageSendAttach(t *testing.T) {
 	}
 }
 
+// Multiple --attach files land on ONE message: many byte uploads, then a single
+// files.completeUploadExternal listing every file_id with the shared comment.
+func TestMessageSendAttachMultiple(t *testing.T) {
+	f := newCLIFixture(t)
+
+	uploadHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(uploadHost.Close)
+
+	f.resolvableChannel("C12345678")
+	// Distinct file_id per filename so the single completion lists both.
+	f.server.HandleWhen("files.getUploadURLExternal",
+		func(p url.Values) bool { return p.Get("filename") == "a.txt" },
+		mockslack.Response{Body: map[string]any{"ok": true, "upload_url": uploadHost.URL + "/u", "file_id": "F0AAAA"}})
+	f.server.HandleWhen("files.getUploadURLExternal",
+		func(p url.Values) bool { return p.Get("filename") == "b.txt" },
+		mockslack.Response{Body: map[string]any{"ok": true, "upload_url": uploadHost.URL + "/u", "file_id": "F0BBBB"}})
+	f.server.HandleBody("files.completeUploadExternal", map[string]any{"ok": true})
+
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	b := filepath.Join(dir, "b.txt")
+	for _, p := range []string{a, b} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, _, err := f.run(t, "message", "send", "#general", "two files", "--attach", a, "--attach", b); err != nil {
+		t.Fatal(err)
+	}
+
+	completes := f.server.CallsFor("files.completeUploadExternal")
+	if len(completes) != 1 {
+		t.Fatalf("want ONE completeUploadExternal (single message), got %d", len(completes))
+	}
+	files := completes[0].Params.Get("files")
+	if !strings.Contains(files, `"id":"F0AAAA"`) || !strings.Contains(files, `"id":"F0BBBB"`) {
+		t.Errorf("files param = %q, want both file ids", files)
+	}
+	if completes[0].Params.Get("initial_comment") != "two files" {
+		t.Errorf("initial_comment = %q, want the shared comment", completes[0].Params.Get("initial_comment"))
+	}
+}
+
 func TestMessageSendAttachMissingFile(t *testing.T) {
 	f := newCLIFixture(t)
 	f.resolvableChannel("C12345678")

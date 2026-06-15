@@ -205,12 +205,10 @@ func sendAttachments(ctx context.Context, globals *GlobalFlags, cc *clientContex
 	if len(req.blocks) > 0 {
 		_, _ = fmt.Fprintln(globals.stderr, "Warning: rich text formatting is not supported with file attachments; sending as plain text.")
 	}
-	initialComment := req.text
-	for _, path := range req.attachPaths {
-		if err := cc.Client.UploadLocalFile(ctx, req.channelID, path, req.threadTS, initialComment); err != nil {
-			return err
-		}
-		initialComment = ""
+	// All files land on one message (one completeUploadExternal), so the text
+	// is a single shared comment rather than riding only the first file.
+	if err := cc.Client.UploadLocalFiles(ctx, req.channelID, req.attachPaths, req.threadTS, req.text); err != nil {
+		return err
 	}
 	return printSingle(globals, basePayload(req, req.channelID))
 }
