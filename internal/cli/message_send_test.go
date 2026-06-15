@@ -10,7 +10,39 @@ import (
 	"testing"
 
 	"github.com/shhac/agent-slack/internal/mockslack"
+	"github.com/shhac/agent-slack/internal/render"
 )
+
+// validateSendFlags is the shared flag-conflict matrix for send and draft.
+func TestValidateSendFlags(t *testing.T) {
+	cases := []struct {
+		name     string
+		kind     render.TargetKind
+		threadTS string
+		postAt   int64
+		flags    sendFlags
+		attach   []string
+		wantErr  bool
+	}{
+		{"forward + blocks", render.TargetChannel, "", 0, sendFlags{forward: "url", blocksPath: "b.json"}, nil, true},
+		{"forward + attach", render.TargetChannel, "", 0, sendFlags{forward: "url"}, []string{"a.txt"}, true},
+		{"schedule + attach", render.TargetChannel, "", 100, sendFlags{}, []string{"a.txt"}, true},
+		{"blocks + attach", render.TargetChannel, "", 0, sendFlags{blocksPath: "b.json"}, []string{"a.txt"}, true},
+		{"reply-broadcast to DM", render.TargetUser, "", 0, sendFlags{replyBroadcast: true}, nil, true},
+		{"reply-broadcast to channel without thread", render.TargetChannel, "", 0, sendFlags{replyBroadcast: true}, nil, true},
+		{"reply-broadcast to channel with thread", render.TargetChannel, "1.0", 0, sendFlags{replyBroadcast: true}, nil, false},
+		{"plain channel send", render.TargetChannel, "", 0, sendFlags{}, nil, false},
+		{"forward alone", render.TargetChannel, "", 0, sendFlags{forward: "url"}, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSendFlags(tc.kind, tc.threadTS, tc.postAt, tc.flags, tc.attach)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("validateSendFlags = %v, wantErr %v", err, tc.wantErr)
+			}
+		})
+	}
+}
 
 func TestMessageSendToChannel(t *testing.T) {
 	f := newCLIFixture(t)
@@ -275,6 +307,29 @@ func TestMessageSendAttachMultiple(t *testing.T) {
 	}
 	if completes[0].Params.Get("initial_comment") != "two files" {
 		t.Errorf("initial_comment = %q, want the shared comment", completes[0].Params.Get("initial_comment"))
+	}
+}
+
+// A getUploadURLExternal response missing upload_url/file_id is a retryable
+// error, not a silent no-op or a panic.
+func TestMessageSendAttachMissingUploadURL(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C12345678")
+	f.server.HandleBody("files.getUploadURLExternal", map[string]any{"ok": true}) // no upload_url / file_id
+
+	attachment := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(attachment, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, stderr, err := f.run(t, "message", "send", "#general", "x", "--attach", attachment)
+	if err == nil {
+		t.Fatalf("missing upload_url should error; out=%q", out)
+	}
+	if errPayload(t, stderr)["error"] == nil {
+		t.Errorf("expected a structured error: %s", stderr)
+	}
+	if n := len(f.server.CallsFor("files.completeUploadExternal")); n != 0 {
+		t.Errorf("must not complete an upload with no file id, got %d calls", n)
 	}
 }
 

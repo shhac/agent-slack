@@ -42,6 +42,27 @@ func TestForwardMessageBrowserUsesShareMessage(t *testing.T) {
 	}
 }
 
+// A caption-less forward sends an empty text and no blocks — matching the
+// native client, which forwards with just the shared card.
+func TestForwardMessageBrowserEmptyCaption(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("chat.shareMessage", map[string]any{"ok": true, "ts": "1.0", "channel": "C0DEST0001"})
+	c := browserClient(t, server)
+
+	if _, err := ForwardMessage(context.Background(), c, "C0DEST0001",
+		ForwardSource{ChannelID: "C0SOURCE00", TS: "1700000000.000100", Permalink: srcPermalink},
+		OutgoingMessage{}); err != nil {
+		t.Fatal(err)
+	}
+	call := server.CallsFor("chat.shareMessage")[0]
+	if call.Params.Get("text") != "" {
+		t.Errorf("text = %q, want empty for a caption-less forward", call.Params.Get("text"))
+	}
+	if call.Params.Has("blocks") {
+		t.Errorf("a caption-less forward should send no blocks; got %q", call.Params.Get("blocks"))
+	}
+}
+
 // Non-browser tokens can't call chat.shareMessage, so they fall back to posting
 // the permalink with unfurling forced on.
 func TestForwardMessageStandardFallsBackToUnfurl(t *testing.T) {
