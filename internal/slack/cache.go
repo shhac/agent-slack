@@ -42,6 +42,7 @@ type CacheTTL struct {
 	WorkflowPreview time.Duration
 	WorkflowSchema  time.Duration
 	Scheduled       time.Duration
+	Drafts          time.Duration
 
 	// Completeness windows: how long after a full enumeration a resolution miss
 	// is trusted as authoritative (skip the remote lookup). Separate from the
@@ -71,6 +72,7 @@ func DefaultCacheTTL() CacheTTL {
 		WorkflowPreview: time.Hour,
 		WorkflowSchema:  time.Hour,
 		Scheduled:       time.Hour,
+		Drafts:          time.Hour,
 
 		UsersComplete:      30 * time.Minute,
 		ChannelsComplete:   30 * time.Minute,

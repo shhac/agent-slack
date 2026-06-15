@@ -85,6 +85,9 @@ func listDrafts(ctx context.Context, c *Client, scheduled bool, channelID string
 		}
 		out = append(out, toDraft(d))
 	}
+	if !scheduled {
+		c.warmDraftCache(out)
+	}
 	return out, nil
 }
 

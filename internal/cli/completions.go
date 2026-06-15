@@ -56,6 +56,12 @@ func scheduledArgCompletion(globals *GlobalFlags) compFunc {
 	return cacheCompletion(globals, slack.CompleteScheduled, true)
 }
 
+// draftArgCompletion completes a draft id (Dr…, warmed by `draft list`) or a
+// target — get/edit/delete/send accept either.
+func draftArgCompletion(globals *GlobalFlags) compFunc {
+	return cacheCompletion(globals, slack.CompleteChannels|slack.CompleteUsers|slack.CompleteDrafts, true)
+}
+
 // userArgsCompletion completes a user on every positional (dm-open takes many).
 func userArgsCompletion(globals *GlobalFlags) compFunc {
 	return cacheCompletion(globals, slack.CompleteUsers, false)

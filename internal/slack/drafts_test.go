@@ -205,6 +205,33 @@ func TestIsDraftID(t *testing.T) {
 	}
 }
 
+func TestListDraftsWarmsCompletionCache(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		map[string]any{"id": "Dr0PLN", "date_scheduled": float64(0),
+			"destinations": []any{map[string]any{"channel_id": "C1"}},
+			"blocks":       []any{richTextBlock("a hand-off")}},
+		// scheduled drafts don't warm the plain-draft completion cache
+		map[string]any{"id": "Dr0SCHED", "date_scheduled": float64(1800000000),
+			"destinations": []any{map[string]any{"channel_id": "C1"}}},
+	}})
+	dir := t.TempDir()
+	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	cache := NewCache(dir, CacheNormal, DefaultCacheTTL(), func() time.Time { return now })
+	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-test", XOXD: "d", WorkspaceURL: ts.URL},
+		WithCache(cache))
+
+	if _, err := ListDrafts(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	items := ReadCompletions(dir, ts.URL, "Dr0", 10, CompleteDrafts)
+	if len(items) != 1 || items[0].Value != "Dr0PLN" || items[0].Description != "a hand-off" {
+		t.Errorf("draft completions = %+v (only the plain draft should warm)", items)
+	}
+}
+
 func TestListScheduledWarmsCompletionCacheBrowser(t *testing.T) {
 	server := mockslack.New()
 	server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{

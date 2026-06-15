@@ -23,6 +23,7 @@ const (
 	CompleteTriggers
 	CompleteScheduled
 	CompleteUsergroups
+	CompleteDrafts
 )
 
 // loadCacheEntries reads one category file for a workspace directly (ignoring
@@ -67,6 +68,9 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 	}
 	if sources&CompleteScheduled != 0 {
 		col.addScheduled()
+	}
+	if sources&CompleteDrafts != 0 {
+		col.addDrafts()
 	}
 	return col.rank(limit)
 }
@@ -176,6 +180,12 @@ func (c *completionCollector) addTriggers() {
 
 func (c *completionCollector) addScheduled() {
 	for id, e := range loadCacheEntries[CompactScheduled](c.cacheDir, c.workspaceURL, "scheduled") {
+		c.add(id, e.Value.Text, e.FetchedAt)
+	}
+}
+
+func (c *completionCollector) addDrafts() {
+	for id, e := range loadCacheEntries[CompactDraft](c.cacheDir, c.workspaceURL, "drafts") {
 		c.add(id, e.Value.Text, e.FetchedAt)
 	}
 }

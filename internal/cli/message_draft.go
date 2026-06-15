@@ -96,7 +96,7 @@ func registerDraftGet(parent *cobra.Command, globals *GlobalFlags) {
 		Use:               "get <target|id>",
 		Short:             "Show a draft by id, or by target when it has exactly one",
 		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: targetCompletion(globals),
+		ValidArgsFunction: draftArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, d, err := resolveDraftArg(cmd.Context(), globals, args[0])
 			if err != nil {
@@ -117,7 +117,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 		Use:               "edit <target|id> [text]",
 		Short:             "Replace a draft's content (by id, or by target when it has exactly one)",
 		Args:              cobra.RangeArgs(1, 2),
-		ValidArgsFunction: targetCompletion(globals),
+		ValidArgsFunction: draftArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cc, d, err := resolveDraftArg(ctx, globals, args[0])
@@ -152,7 +152,7 @@ func registerDraftDelete(parent *cobra.Command, globals *GlobalFlags) {
 		Use:               "delete <target|id>",
 		Short:             "Discard a draft by id, or by target when it has exactly one (destructive: requires --yes)",
 		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: targetCompletion(globals),
+		ValidArgsFunction: draftArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			cc, d, err := resolveDraftArg(ctx, globals, args[0])
@@ -178,7 +178,7 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 		Use:               "send <target|id>",
 		Short:             "Send a draft now (by id, or by target when it has exactly one), or --schedule/--schedule-in to promote it to a scheduled message",
 		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: targetCompletion(globals),
+		ValidArgsFunction: draftArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			postAt, err := slack.ResolveSchedulePostAt(schedule, scheduleIn, time.Now())
