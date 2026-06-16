@@ -10,11 +10,7 @@ import (
 
 const fetchConcurrency = 5
 
-// ResolveUsersByID expands user IDs to compact profiles via the Client's
-// per-workspace cache, best effort: IDs that fail to fetch are absent from the
-// result, and cache I/O never fails the command. forceRefresh ignores cached
-// reads but still writes fresh entries (the per-command --refresh-users, which
-// the caller ORs with the global --refresh-cache mode).
+// validUser gates which cache entries count: a referenced user id with a body.
 func validUser(id string, u CompactUser) bool {
 	return render.IsReferencedUserID(id) && u.ID != ""
 }
