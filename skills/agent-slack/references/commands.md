@@ -26,7 +26,7 @@ without `--yes`; instead it returns a description of what *would* happen
 
 | Command | Key flags | Gate |
 |---|---|---|
-| `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|fresh`, `--no-download`, `--slack-markdown` | |
+| `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|auto\|fresh`, `--no-download`, `--slack-markdown` | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, `--slack-markdown`, + the resolve/reaction flags from `get` | |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post as one message, text = shared comment), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>`, `--slack-markdown`, `--forward <permalink>` | |
 | `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>`, `--attach <path>` (repeatable; keeps rich text, unlike a direct attachment send) — returns a draft id | |
@@ -81,7 +81,7 @@ the `draft` group (drafts are a client feature).
 |---|---|---|
 | `channel list` | `--user`, `--all`, `--limit` (100), `--cursor` | |
 | `channel get <channel…>` | `--full` | |
-| `channel members <channel>` | `--resolve none\|cached\|fresh`, `--limit` (100), `--cursor` | |
+| `channel members <channel>` | `--resolve none\|cached\|auto\|fresh`, `--limit` (100), `--cursor` | |
 | `channel new` | `--name`, `--private` | `--yes` |
 | `channel invite` | `--channel`, `--users`, `--external`, `--allow-external-user-invites` | `--yes` |
 | `channel mark <target>` | `--ts` | |

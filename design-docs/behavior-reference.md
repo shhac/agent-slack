@@ -170,11 +170,16 @@ scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
 - A rich_text mention carries only the bare id (`{user_id}`/`{channel_id}`/
   `{usergroup_id}`, no label — verified), so making `<@U…>`/`<#C…>`/`<!subteam^S…>`
   mentions legible means resolving each id.
-- `--resolve cached` expands every referenced user, channel, and usergroup into
-  `referenced_users`/`referenced_channels`/`referenced_usergroups` maps from the
-  per-workspace caches; `--resolve fresh` bypasses cached reads (users via
-  users.info, channels via conversations.info, usergroups via a usergroups.list
-  refetch). Unresolved ids are omitted. (search currently resolves users only.)
+- `--resolve` expands every referenced user, channel, and usergroup into
+  `referenced_users`/`referenced_channels`/`referenced_usergroups` maps. Modes:
+  `none` (off), `cached` (cache-only, never fetch), `auto` (cache then fetch
+  misses unless the category's completeness sentinel is fresh — then a miss is
+  authoritative and skipped; prints a stderr `cache warm` hint when it fetched),
+  `fresh` (bypass cached reads). **`auto` is the default for message get/list and
+  search**; `members` lists default to `none` (bulk expansion stays opt-in).
+  Fetches: users via users.info, channels via conversations.info (per id),
+  usergroups via one usergroups.list. Unresolved ids are omitted. (search
+  currently resolves users only — channel/usergroup follow-up pending.)
 
 ## Workflow and update behavior
 

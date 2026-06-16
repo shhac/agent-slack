@@ -18,9 +18,9 @@
 | Line | Meaning |
 |---|---|
 | `{"@pagination": {"has_more", "next_cursor"}}` | more pages exist; pass `--cursor <next_cursor>` |
-| `{"@referenced_users": {"U…": {id, name, …}}}` | profile metadata for the `U…` ids in the items (only with `--resolve cached`/`fresh`) |
-| `{"@referenced_channels": {"C…": {id, name, …}}}` | metadata for the `C…` channel ids mentioned in content (only with `--resolve cached`/`fresh`) |
-| `{"@referenced_usergroups": {"S…": {id, handle, …}}}` | metadata for the `S…` usergroup ids mentioned in content (only with `--resolve cached`/`fresh`) |
+| `{"@referenced_users": {"U…": {id, name, …}}}` | profile metadata for the `U…` ids in the items (with `--resolve` (auto by default)) |
+| `{"@referenced_channels": {"C…": {id, name, …}}}` | metadata for the `C…` channel ids mentioned in content (with `--resolve` (auto by default)) |
+| `{"@referenced_usergroups": {"S…": {id, handle, …}}}` | metadata for the `S…` usergroup ids mentioned in content (with `--resolve` (auto by default)) |
 | `{"@channel_id": "C…"}` | the channel the listed messages came from |
 | `{"@thread_ts": "…"}` | the thread root, when listing a thread |
 | `{"@threads": {"has_unreads", "mention_count"}}` | unread thread-reply summary (`unreads`) |
@@ -53,9 +53,10 @@ Truncated content ends with `\n…`.
 
 Entity IDs stay canonical in payloads (`author.user_id`, reaction `users[]`, and
 `@U…`/`<#C…>`/`<!subteam^S…>` mentions in rendered content — rich_text carries
-the bare id, no label). Pass `--resolve cached` to expand every referenced user,
-channel, and usergroup into `@referenced_users` / `@referenced_channels` /
-`@referenced_usergroups` maps of display metadata; `--resolve fresh` bypasses the
+the bare id, no label). Message reads expand every referenced user, channel, and
+usergroup into `@referenced_users` / `@referenced_channels` /
+`@referenced_usergroups` maps **by default** (`--resolve auto`); `--resolve none`
+skips it, `cached` is cache-only, `fresh` bypasses the
 caches.
 
 ## Attachment downloads

@@ -30,7 +30,7 @@ global persistent flags.
 | `auth list` (alias `ls`, `whoami`) | | | implemented |
 | `auth test` | | | calls `auth.test`; lands with read commands |
 | `auth add / set-default / remove / import-* / parse-curl` | | | implemented |
-| `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|fresh`, `--no-download` | | thread summary included; files auto-downloaded |
+| `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|auto\|fresh`, `--no-download` | | thread summary included; files auto-downloaded |
 | `message list <target>` | `--thread-ts`, `--ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars` (8000), `--download`, reaction/user flags as get | | NDJSON; reaction filters require `--oldest` |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post together as ONE message with one `initial_comment`, not one message per file), `--blocks` (path or `-`), `--forward <permalink>`, `--schedule`, `--schedule-in` | | DM auto-opens for `U…` targets |
 | `message edit <target> <text>` | `--ts` | `--yes` | |
@@ -43,7 +43,7 @@ global persistent flags.
 | `message draft get/edit/delete/send <target\|id>` | `edit`: `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | | address by draft id, or by target when it has exactly one (else error with the ids); `send` posts (files via `files.share`), or promotes to scheduled |
 | `usergroup list` | `--include-disabled` | | NDJSON, compact projection |
 | `usergroup get <usergroup…>` | | | id `S…` or `@handle`; one→object, several→NDJSON |
-| `usergroup members <usergroup>` | `--resolve none\|cached\|fresh`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
+| `usergroup members <usergroup>` | `--resolve none\|cached\|auto\|fresh`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
 | `cache info` | | | reports cached categories/entries per workspace |
 | `cache warm` | `--page-delay` (1s), `--include-bots` | | paginates users/channels/usergroups, paced for rate limits, streams JSONL progress |
 | `cache purge` | `--workspace`, `--all-workspaces`, `--downloads` | | clears cached data |
@@ -105,9 +105,13 @@ This supersedes the broader "all writes gated" wording in
 - **Truncation:** `--max-body-chars` defaults (8000 message
   get/list; 4000 search/later/unreads; 20000 canvas; `-1` unlimited),
   truncated content ends with `\n…`.
-- **Lazy pulls stay opt-in:** `--include-reactions`, `--resolve cached`/`fresh`,
-  `--download` (below). Thread summary on
-  `message get` stays — one cheap call, high value.
+- **Lazy pulls stay opt-in:** `--include-reactions`, `--download` (below).
+  Referenced-entity `--resolve` is the deliberate exception: it is **on by
+  default for reads** (`auto` — cache, fetch misses, hint to warm) because a bare
+  `<@U…>`/`<#C…>`/`<!subteam^S…>` is degraded content, not extra data; the
+  completeness sentinel keeps a warm cache's resolution free. `members` lists
+  keep `--resolve none` default (bulk profile expansion stays opt-in). Thread
+  summary on `message get` stays — one cheap call, high value.
 - **Permalinks:** `message get` and `message send` outputs include
   `permalink` (computed locally via `render.BuildMessageURL`, no API call).
   List rows omit it to keep NDJSON lean; `channel_id` + `ts` chain into
@@ -261,7 +265,7 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
 - **Controls**: `--no-cache` (no read/write; `AGENT_SLACK_NO_CACHE`),
   `--refresh-cache` (skip reads, still write), `--cache-ttl` /
   `AGENT_SLACK_CACHE_TTL[_<CATEGORY>]` (0 disables reads). User resolution is a
-  single tri-state `--resolve none|cached|fresh` (replacing the old
+  single tri-state `--resolve none|cached|auto|fresh` (replacing the old
   `--resolve-users`/`--refresh-users` pair, where refresh silently implied
   resolve); `fresh` is the per-command cache-bypass for user profiles, distinct
   from the global `--refresh-cache`.
