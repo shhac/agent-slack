@@ -65,7 +65,7 @@ func TestListUsersWarmsUserCache(t *testing.T) {
 	// The profile is cached: a direct ID→profile resolve needs no users.info.
 	server.Reset()
 	c2 := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
-	got := ResolveUsersByID(context.Background(), c2, []string{"U0AAAA1111"}, false)
+	got, _ := ResolveUsersByID(context.Background(), c2, []string{"U0AAAA1111"}, ResolveCacheThenFetch)
 	if got["U0AAAA1111"].DisplayName != "Alice" {
 		t.Errorf("resolve from warmed cache: %+v", got)
 	}

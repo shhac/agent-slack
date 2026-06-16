@@ -89,7 +89,7 @@ func registerUsergroupMembers(parent *cobra.Command, globals *GlobalFlags) {
 			return printMembers(ctx, globals, cc.Client, ids, mode, nil)
 		},
 	}
-	registerResolveFlag(cmd, &resolveFlag)
+	registerResolveFlag(cmd, &resolveFlag, resolveNone)
 	cmd.Flags().BoolVar(&includeDisabled, "include-disabled", false, "Allow members of a deactivated usergroup")
 	parent.AddCommand(cmd)
 }

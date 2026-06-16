@@ -164,7 +164,7 @@ func ResolveChannelName(ctx context.Context, c *Client, channelID string) string
 			return channelID
 		}
 		// The counterpart's display name routes through the (cached) user store.
-		users := ResolveUsersByID(ctx, c, []string{ch.User}, false)
+		users, _ := ResolveUsersByID(ctx, c, []string{ch.User}, ResolveCacheThenFetch)
 		if u, found := users[ch.User]; found {
 			if u.DisplayName != "" {
 				return u.DisplayName

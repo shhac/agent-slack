@@ -387,7 +387,11 @@ func resolveSearchUsers(ctx context.Context, c *Client, opts SearchOptions, mess
 	if !opts.ResolveUsers && !opts.RefreshUsers {
 		return nil
 	}
+	policy := ResolveCacheThenFetch
+	if opts.RefreshUsers {
+		policy = ResolveBypassCache
+	}
 	ids := render.CollectReferencedUserIDs(messages, false)
-	users := ResolveUsersByID(ctx, c, ids, opts.RefreshUsers)
+	users, _ := ResolveUsersByID(ctx, c, ids, policy)
 	return ToReferencedUsers(ids, users)
 }

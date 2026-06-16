@@ -51,7 +51,7 @@ func TestResolveUsersByIDConcurrentFanout(t *testing.T) {
 	}
 
 	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
-	got := ResolveUsersByID(context.Background(), c, ids, false)
+	got, _ := ResolveUsersByID(context.Background(), c, ids, ResolveCacheThenFetch)
 
 	if len(got) != n {
 		t.Fatalf("got %d users, want %d (concurrent fan-out lost entries)", len(got), n)
@@ -81,7 +81,7 @@ func TestResolveUsersByIDFetchesAndCaches(t *testing.T) {
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
 
 	c := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
-	got := ResolveUsersByID(context.Background(), c, []string{"U12345678"}, false)
+	got, _ := ResolveUsersByID(context.Background(), c, []string{"U12345678"}, ResolveCacheThenFetch)
 	if got["U12345678"].Name != "alice" {
 		t.Fatalf("got %+v", got)
 	}
@@ -91,7 +91,7 @@ func TestResolveUsersByIDFetchesAndCaches(t *testing.T) {
 
 	// Within the TTL a fresh client serving the same workspace+dir hits cache.
 	later := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now.Add(23*time.Hour))
-	got = ResolveUsersByID(context.Background(), later, []string{"U12345678"}, false)
+	got, _ = ResolveUsersByID(context.Background(), later, []string{"U12345678"}, ResolveCacheThenFetch)
 	if got["U12345678"].Name != "alice" {
 		t.Fatalf("cache miss: %+v", got)
 	}
@@ -103,7 +103,7 @@ func TestResolveUsersByIDFetchesAndCaches(t *testing.T) {
 	server.Reset()
 	server.HandleBody("users.info", userInfoBody("U12345678", "alice-renamed"))
 	expired := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now.Add(25*time.Hour))
-	got = ResolveUsersByID(context.Background(), expired, []string{"U12345678"}, false)
+	got, _ = ResolveUsersByID(context.Background(), expired, []string{"U12345678"}, ResolveCacheThenFetch)
 	if got["U12345678"].Name != "alice-renamed" {
 		t.Errorf("got %+v, want refetched user", got)
 	}
@@ -116,12 +116,12 @@ func TestResolveUsersByIDForceRefresh(t *testing.T) {
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
 
 	c := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
-	ResolveUsersByID(context.Background(), c, []string{"U12345678"}, false)
+	ResolveUsersByID(context.Background(), c, []string{"U12345678"}, ResolveCacheThenFetch)
 
 	server.Reset()
 	server.HandleBody("users.info", userInfoBody("U12345678", "v2"))
 	c2 := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
-	got := ResolveUsersByID(context.Background(), c2, []string{"U12345678"}, true) // forceRefresh
+	got, _ := ResolveUsersByID(context.Background(), c2, []string{"U12345678"}, ResolveBypassCache) // forceRefresh
 	if got["U12345678"].Name != "v2" {
 		t.Errorf("got %+v, want refetched despite fresh cache", got)
 	}
@@ -134,13 +134,13 @@ func TestResolveUsersByIDRefreshModeWritesButSkipsReads(t *testing.T) {
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
 
 	seed := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
-	ResolveUsersByID(context.Background(), seed, []string{"U12345678"}, false)
+	ResolveUsersByID(context.Background(), seed, []string{"U12345678"}, ResolveCacheThenFetch)
 
 	server.Reset()
 	server.HandleBody("users.info", userInfoBody("U12345678", "v2"))
 	// CacheRefresh: ignore the cached v1, refetch v2, write it back.
 	refresh := cachingClient(t, server, "https://acme.slack.com", dir, CacheRefresh, now)
-	got := ResolveUsersByID(context.Background(), refresh, []string{"U12345678"}, false)
+	got, _ := ResolveUsersByID(context.Background(), refresh, []string{"U12345678"}, ResolveCacheThenFetch)
 	if got["U12345678"].Name != "v2" {
 		t.Errorf("refresh mode should skip the cached read: %+v", got)
 	}
@@ -148,7 +148,7 @@ func TestResolveUsersByIDRefreshModeWritesButSkipsReads(t *testing.T) {
 	// The refetch was written, so a Normal client now reads v2 without an API call.
 	server.Reset()
 	normal := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
-	got = ResolveUsersByID(context.Background(), normal, []string{"U12345678"}, false)
+	got, _ = ResolveUsersByID(context.Background(), normal, []string{"U12345678"}, ResolveCacheThenFetch)
 	if got["U12345678"].Name != "v2" || len(server.CallsFor("users.info")) != 0 {
 		t.Errorf("refresh mode should have written: %+v, calls=%d", got, len(server.CallsFor("users.info")))
 	}
@@ -161,13 +161,13 @@ func TestResolveUsersByIDNoCacheMode(t *testing.T) {
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
 
 	off := cachingClient(t, server, "https://acme.slack.com", dir, CacheOff, now)
-	ResolveUsersByID(context.Background(), off, []string{"U12345678"}, false)
+	ResolveUsersByID(context.Background(), off, []string{"U12345678"}, ResolveCacheThenFetch)
 
 	// Nothing was written: a Normal client must hit the API again.
 	server.Reset()
 	server.HandleBody("users.info", userInfoBody("U12345678", "v1"))
 	normal := cachingClient(t, server, "https://acme.slack.com", dir, CacheNormal, now)
-	ResolveUsersByID(context.Background(), normal, []string{"U12345678"}, false)
+	ResolveUsersByID(context.Background(), normal, []string{"U12345678"}, ResolveCacheThenFetch)
 	if calls := len(server.CallsFor("users.info")); calls != 1 {
 		t.Errorf("no-cache mode must not persist; calls after = %d", calls)
 	}
@@ -180,7 +180,7 @@ func TestResolveUsersByIDBestEffort(t *testing.T) {
 	)
 	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
 
-	got := ResolveUsersByID(context.Background(), c, []string{"U404NOTFOUND"}, false)
+	got, _ := ResolveUsersByID(context.Background(), c, []string{"U404NOTFOUND"}, ResolveCacheThenFetch)
 	if len(got) != 0 {
 		t.Errorf("got %+v, want empty (failed fetches are skipped)", got)
 	}
@@ -188,7 +188,7 @@ func TestResolveUsersByIDBestEffort(t *testing.T) {
 
 func TestResolveUsersByIDFiltersInvalidIDs(t *testing.T) {
 	c := New(Auth{Type: AuthStandard, Token: "x"}) // must not hit the API
-	got := ResolveUsersByID(context.Background(), c, []string{"", "not-an-id", "C12345678"}, false)
+	got, _ := ResolveUsersByID(context.Background(), c, []string{"", "not-an-id", "C12345678"}, ResolveCacheThenFetch)
 	if len(got) != 0 {
 		t.Errorf("got %+v", got)
 	}
@@ -201,11 +201,11 @@ func TestResolveUsersByIDSeparateWorkspaceCaches(t *testing.T) {
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
 
 	one := cachingClient(t, server, "https://one.slack.com", dir, CacheNormal, now)
-	ResolveUsersByID(context.Background(), one, []string{"U12345678"}, false)
+	ResolveUsersByID(context.Background(), one, []string{"U12345678"}, ResolveCacheThenFetch)
 	// A different workspace must not see the first workspace's cache.
 	server.HandleBody("users.info", userInfoBody("U12345678", "alice"))
 	two := cachingClient(t, server, "https://two.slack.com", dir, CacheNormal, now)
-	ResolveUsersByID(context.Background(), two, []string{"U12345678"}, false)
+	ResolveUsersByID(context.Background(), two, []string{"U12345678"}, ResolveCacheThenFetch)
 
 	if calls := len(server.CallsFor("users.info")); calls != 2 {
 		t.Errorf("API calls = %d, want 2 (per-workspace caches)", calls)

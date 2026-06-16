@@ -1,12 +1,17 @@
 package cli
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/shhac/agent-slack/internal/slack"
+)
 
 func TestParseResolveMode(t *testing.T) {
 	valid := map[string]resolveMode{
-		"":       resolveNone, // unset defaults to none
+		"":       resolveAuto, // unset defaults to auto (resolution on)
 		"none":   resolveNone,
 		"cached": resolveCached,
+		"auto":   resolveAuto,
 		"fresh":  resolveFresh,
 	}
 	for in, want := range valid {
@@ -19,15 +24,25 @@ func TestParseResolveMode(t *testing.T) {
 		t.Error("parseResolveMode(\"bogus\") should error")
 	}
 
-	// resolve/forceRefresh derive cleanly — the old "refresh implies resolve" is
-	// structural now, and "refresh but don't resolve" is unrepresentable.
-	if resolveNone.resolve() || resolveNone.forceRefresh() {
-		t.Error("none must neither resolve nor refresh")
+	// resolve() — only none (and unset) means "don't resolve".
+	if resolveNone.resolve() {
+		t.Error("none must not resolve")
 	}
-	if !resolveCached.resolve() || resolveCached.forceRefresh() {
-		t.Error("cached must resolve without refreshing")
+	for _, m := range []resolveMode{resolveCached, resolveAuto, resolveFresh} {
+		if !m.resolve() {
+			t.Errorf("%q must resolve", m)
+		}
 	}
-	if !resolveFresh.resolve() || !resolveFresh.forceRefresh() {
-		t.Error("fresh must resolve and refresh")
+
+	// policy() maps to the slack cache policy.
+	cases := map[resolveMode]slack.ResolvePolicy{
+		resolveCached: slack.ResolveCacheOnly,
+		resolveAuto:   slack.ResolveCacheThenFetch,
+		resolveFresh:  slack.ResolveBypassCache,
+	}
+	for m, want := range cases {
+		if got := m.policy(); got != want {
+			t.Errorf("%q.policy() = %v, want %v", m, got, want)
+		}
 	}
 }

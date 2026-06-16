@@ -195,7 +195,7 @@ func TestMessageGetResolvesChannelsAndUsergroups(t *testing.T) {
 		mockslack.Usergroup("S0TEAM1234", "productteam", "Product Team")))
 
 	out, _, err := f.run(t, "message", "get",
-		"https://acme.slack.com/archives/C0123ABCD/p1770165109628379", "--resolve", "cached")
+		"https://acme.slack.com/archives/C0123ABCD/p1770165109628379", "--resolve", "auto")
 	if err != nil {
 		t.Fatal(err)
 	}

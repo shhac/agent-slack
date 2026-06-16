@@ -56,18 +56,21 @@ func (c *Client) usersComplete() bool {
 	return c.handlesCache().isComplete(cacheTTLOf(c.cache).UsersComplete)
 }
 
-func ResolveUsersByID(ctx context.Context, c *Client, userIDs []string, forceRefresh bool) map[string]CompactUser {
+// ResolveUsersByID expands user ids to compact profiles per the policy, reading
+// the per-workspace cache and fetching misses (users.info) unless the policy or
+// the completeness sentinel says not to. Returns whether it made an API fetch.
+func ResolveUsersByID(ctx context.Context, c *Client, userIDs []string, policy ResolvePolicy) (map[string]CompactUser, bool) {
 	ids := dedupeUserIDs(userIDs)
 	out := make(map[string]CompactUser, len(ids))
 	if len(ids) == 0 {
-		return out
+		return out, false
 	}
 
 	snap := c.usersCache()
 
 	var missing []string
 	for _, id := range ids {
-		if !forceRefresh {
+		if policy != ResolveBypassCache {
 			if u, ok := snap.get(id); ok {
 				out[id] = u
 				continue
@@ -76,15 +79,17 @@ func ResolveUsersByID(ctx context.Context, c *Client, userIDs []string, forceRef
 		missing = append(missing, id)
 	}
 
-	if len(missing) > 0 {
+	fetched := false
+	if len(missing) > 0 && policy.wantFetch(c.usersComplete()) {
 		for id, user := range fetchUsersByID(ctx, c, missing) {
 			snap.set(id, user)
 			out[id] = user
 		}
+		fetched = true
 	}
 
 	snap.save()
-	return out
+	return out, fetched
 }
 
 // ToReferencedUsers shapes resolved users into the referenced_users output

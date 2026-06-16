@@ -58,7 +58,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 			if thread != nil {
 				payload["thread"] = thread
 			}
-			for k, v := range resolveReferencedEntities(ctx, cc, flags, []render.MessageSummary{msg}) {
+			for k, v := range resolveReferencedEntities(ctx, cc, globals, flags, []render.MessageSummary{msg}) {
 				payload[k] = v
 			}
 			return printSingle(globals, payload)
@@ -270,7 +270,7 @@ func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext,
 	if meta == nil {
 		meta = map[string]any{}
 	}
-	for k, v := range resolveReferencedEntities(ctx, cc, flags, messages) {
+	for k, v := range resolveReferencedEntities(ctx, cc, globals, flags, messages) {
 		meta[k] = v
 	}
 	if len(meta) == 0 {

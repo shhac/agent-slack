@@ -97,7 +97,7 @@ func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {
 	}
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max members per page")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
-	registerResolveFlag(cmd, &resolveFlag)
+	registerResolveFlag(cmd, &resolveFlag, resolveNone)
 	parent.AddCommand(cmd)
 }
 

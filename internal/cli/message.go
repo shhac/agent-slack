@@ -38,7 +38,7 @@ type readFlags struct {
 	threadTS         string
 	maxBodyChars     int
 	includeReactions bool
-	resolve          string // --resolve: none | cached | fresh
+	resolve          string // --resolve: none | cached | auto | fresh
 	slackMarkdown    bool
 }
 
@@ -47,7 +47,7 @@ func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
 	cmd.Flags().StringVar(&f.threadTS, "thread-ts", "", "Thread root ts hint")
 	cmd.Flags().IntVar(&f.maxBodyChars, "max-body-chars", defaultMaxBody, "Max content chars per message (-1 = unlimited)")
 	cmd.Flags().BoolVar(&f.includeReactions, "include-reactions", false, "Include reactions and reacting users")
-	registerResolveFlag(cmd, &f.resolve)
+	registerResolveFlag(cmd, &f.resolve, resolveAuto)
 	cmd.Flags().BoolVar(&f.slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 }
 
@@ -177,23 +177,47 @@ func messageDownloadOptions(globals *GlobalFlags) slack.MessageDownloads {
 // messages references into referenced_* output maps, per --resolve. Returns nil
 // when resolution is off or nothing resolved; the caller merges the entries into
 // its payload/meta.
-func resolveReferencedEntities(ctx context.Context, cc *clientContext, flags *readFlags, messages []render.MessageSummary) map[string]any {
+func resolveReferencedEntities(ctx context.Context, cc *clientContext, globals *GlobalFlags, flags *readFlags, messages []render.MessageSummary) map[string]any {
 	mode := flags.resolveMode()
 	if !mode.resolve() {
 		return nil
 	}
+	policy := mode.policy()
 	refs := render.CollectReferencedIDs(messages, flags.includeReactions)
-	fresh := mode.forceRefresh()
 	out := map[string]any{}
-	if users := slack.ToReferencedUsers(refs.Users, slack.ResolveUsersByID(ctx, cc.Client, refs.Users, fresh)); users != nil {
-		out["referenced_users"] = users
+	var fetched []string
+
+	users, uf := slack.ResolveUsersByID(ctx, cc.Client, refs.Users, policy)
+	if ru := slack.ToReferencedUsers(refs.Users, users); ru != nil {
+		out["referenced_users"] = ru
 	}
-	if chans := slack.ResolveChannelsByID(ctx, cc.Client, refs.Channels, fresh); chans != nil {
-		out["referenced_channels"] = chans
+	if uf {
+		fetched = append(fetched, "users")
 	}
-	if groups := slack.ResolveUsergroupsByID(ctx, cc.Client, refs.Usergroups, fresh); groups != nil {
-		out["referenced_usergroups"] = groups
+	if chans, cf := slack.ResolveChannelsByID(ctx, cc.Client, refs.Channels, policy); chans != nil || cf {
+		if chans != nil {
+			out["referenced_channels"] = chans
+		}
+		if cf {
+			fetched = append(fetched, "channels")
+		}
 	}
+	if groups, gf := slack.ResolveUsergroupsByID(ctx, cc.Client, refs.Usergroups, policy); groups != nil || gf {
+		if groups != nil {
+			out["referenced_usergroups"] = groups
+		}
+		if gf {
+			fetched = append(fetched, "usergroups")
+		}
+	}
+
+	// Under auto a miss-fetch means the cache wasn't warm/complete — nudge toward
+	// warming so the next --resolve is instant (cached/fresh are explicit choices,
+	// so no hint there).
+	if mode == resolveAuto && len(fetched) > 0 && globals.stderr != nil {
+		_, _ = fmt.Fprintf(globals.stderr, "hint: --resolve fetched %s via API; run 'cache warm' to make this instant\n", strings.Join(fetched, ", "))
+	}
+
 	if len(out) == 0 {
 		return nil
 	}

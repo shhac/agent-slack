@@ -22,7 +22,7 @@ func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, id
 		}
 		return printList(globals, items, meta)
 	}
-	users := slack.ResolveUsersByID(ctx, c, ids, mode.forceRefresh())
+	users, _ := slack.ResolveUsersByID(ctx, c, ids, mode.policy())
 	items := make([]any, 0, len(ids))
 	for _, id := range ids {
 		if u, ok := users[id]; ok {
