@@ -135,3 +135,7 @@ func TestWriteNotice(t *testing.T) {
 		t.Errorf("empty hint should be omitted: %s", buf.String())
 	}
 }
+
+func TestWriteNoticeNilWriter(t *testing.T) {
+	WriteNotice(nil, "x", "y") // must not panic on a nil writer
+}

@@ -209,3 +209,29 @@ func TestMessageGetResolvesChannelsAndUsergroups(t *testing.T) {
 		t.Errorf("referenced_usergroups = %v", payload["referenced_usergroups"])
 	}
 }
+
+// The cold-cache warm hint fires on stderr under --resolve auto (the default)
+// but is suppressed under none/cached/fresh (explicit choices, no nudge).
+func TestMessageGetResolveWarmHintGate(t *testing.T) {
+	run := func(args ...string) string {
+		f := newCLIFixture(t) // fresh = cold cache
+		f.server.HandleBody("conversations.history", historyWith(
+			simpleMessage("1770165109.628379", "U12345678", "hi <@U0ALICEAA>")))
+		f.server.HandleBody("users.info", mockslack.UserInfo("U0ALICEAA", "alice"))
+		full := append([]string{"message", "get",
+			"https://acme.slack.com/archives/C0123ABCD/p1770165109628379"}, args...)
+		_, stderr, err := f.run(t, full...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stderr
+	}
+	if s := run(); !strings.Contains(s, "cold cache") || !strings.Contains(s, "cache warm") {
+		t.Errorf("auto (default) cold fetch should hint on stderr: %q", s)
+	}
+	for _, mode := range []string{"none", "cached", "fresh"} {
+		if s := run("--resolve", mode); strings.Contains(s, "cold cache") {
+			t.Errorf("--resolve %s must not emit the warm hint: %q", mode, s)
+		}
+	}
+}
