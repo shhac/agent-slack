@@ -68,13 +68,18 @@ type SearchResult struct {
 	ReferencedUsers      map[string]CompactUser      `json:"referenced_users,omitempty"`
 	ReferencedChannels   map[string]CompactChannel   `json:"referenced_channels,omitempty"`
 	ReferencedUsergroups map[string]CompactUsergroup `json:"referenced_usergroups,omitempty"`
+	// FetchedCategories names the resolution categories that hit the API (for the
+	// CLI's cache-warm hint); not part of the serialized result.
+	FetchedCategories []string `json:"-"`
 }
 
-// searchRefs holds the resolved referenced entities for a set of search hits.
+// searchRefs holds the resolved referenced entities for a set of search hits,
+// plus which categories required an API fetch (for the cache-warm hint).
 type searchRefs struct {
 	users      map[string]CompactUser
 	channels   map[string]CompactChannel
 	usergroups map[string]CompactUsergroup
+	fetched    []string
 }
 
 // Search runs message and/or file search. With --channel filters it falls
@@ -113,6 +118,7 @@ func Search(ctx context.Context, c *Client, opts SearchOptions) (SearchResult, e
 		out.ReferencedUsers = refs.users
 		out.ReferencedChannels = refs.channels
 		out.ReferencedUsergroups = refs.usergroups
+		out.FetchedCategories = refs.fetched
 	}
 
 	if opts.Kind == SearchFiles || opts.Kind == SearchAll {
@@ -404,12 +410,22 @@ func resolveSearchRefs(ctx context.Context, c *Client, opts SearchOptions, messa
 		policy = ResolveBypassCache
 	}
 	refs := render.CollectReferencedIDs(messages, false)
-	users, _ := ResolveUsersByID(ctx, c, refs.Users, policy)
-	channels, _ := ResolveChannelsByID(ctx, c, refs.Channels, policy)
-	usergroups, _ := ResolveUsergroupsByID(ctx, c, refs.Usergroups, policy)
+	users, uf := ResolveUsersByID(ctx, c, refs.Users, policy)
+	channels, cf := ResolveChannelsByID(ctx, c, refs.Channels, policy)
+	usergroups, gf := ResolveUsergroupsByID(ctx, c, refs.Usergroups, policy)
+	var fetched []string
+	for _, f := range []struct {
+		ok  bool
+		cat string
+	}{{uf, "users"}, {cf, "channels"}, {gf, "usergroups"}} {
+		if f.ok {
+			fetched = append(fetched, f.cat)
+		}
+	}
 	return searchRefs{
 		users:      ToReferencedUsers(refs.Users, users),
 		channels:   channels,
 		usergroups: usergroups,
+		fetched:    fetched,
 	}
 }

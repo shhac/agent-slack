@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -92,6 +94,10 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 			addRef("referenced_users", result.ReferencedUsers, result.ReferencedUsers != nil)
 			addRef("referenced_channels", result.ReferencedChannels, result.ReferencedChannels != nil)
 			addRef("referenced_usergroups", result.ReferencedUsergroups, result.ReferencedUsergroups != nil)
+			if mode == resolveAuto && len(result.FetchedCategories) > 0 {
+				emitNotice(globals, "--resolve fetched "+strings.Join(result.FetchedCategories, ", ")+" via API (cold cache)",
+					"run 'cache warm' to make --resolve instant")
+			}
 			return printList(globals, items, listMeta("", extra))
 		},
 	}
