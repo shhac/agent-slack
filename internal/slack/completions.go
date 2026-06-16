@@ -67,10 +67,10 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 		col.addTriggers()
 	}
 	if sources&CompleteScheduled != 0 {
-		col.addScheduled()
+		col.addIDText("scheduled")
 	}
 	if sources&CompleteDrafts != 0 {
-		col.addDrafts()
+		col.addIDText("drafts")
 	}
 	return col.rank(limit)
 }
@@ -178,14 +178,10 @@ func (c *completionCollector) addTriggers() {
 	}
 }
 
-func (c *completionCollector) addScheduled() {
-	for id, e := range loadCacheEntries[CompactScheduled](c.cacheDir, c.workspaceURL, "scheduled") {
-		c.add(id, e.Value.Text, e.FetchedAt)
-	}
-}
-
-func (c *completionCollector) addDrafts() {
-	for id, e := range loadCacheEntries[CompactDraft](c.cacheDir, c.workspaceURL, "drafts") {
+// addIDText feeds a write-only {id, text} completion category (drafts,
+// scheduled) into the collector.
+func (c *completionCollector) addIDText(category string) {
+	for id, e := range loadCacheEntries[compactIDText](c.cacheDir, c.workspaceURL, category) {
 		c.add(id, e.Value.Text, e.FetchedAt)
 	}
 }
