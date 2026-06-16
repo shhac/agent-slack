@@ -178,8 +178,9 @@ scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
   `fresh` (bypass cached reads). **`auto` is the default for message get/list and
   search**; `members` lists default to `none` (bulk expansion stays opt-in).
   Fetches: users via users.info, channels via conversations.info (per id),
-  usergroups via one usergroups.list. Unresolved ids are omitted. (search
-  currently resolves users only — channel/usergroup follow-up pending.)
+  usergroups via one usergroups.list. Unresolved ids are omitted. `search`
+  resolves all three too (it maps --resolve to cache-then-fetch / bypass, so its
+  `cached` is effectively cache-then-fetch — the cache-only nuance is get/list-only).
 
 ## Workflow and update behavior
 

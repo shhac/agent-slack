@@ -92,3 +92,40 @@ func TestSearchInvalidDate(t *testing.T) {
 		t.Errorf("stderr = %s", stderr)
 	}
 }
+
+// search resolves referenced channels + usergroups (default --resolve auto),
+// surfacing them as @referenced_channels / @referenced_usergroups meta lines.
+func TestSearchResolvesChannelsAndUsergroups(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("search.messages", mockslack.SearchMessages(
+		mockslack.SearchMatch("C12345678", "1770165109.628379",
+			"https://acme.slack.com/archives/C12345678/p1770165109628379"),
+	))
+	f.server.HandleBody("conversations.history", historyWith(
+		simpleMessage("1770165109.628379", "U12345678",
+			"see <#C0ABCDEF1|general> ping <!subteam^S0TEAM1234>"),
+	))
+	f.server.HandleBody("conversations.info", mockslack.ChannelInfo("C0ABCDEF1", "general-updates"))
+	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList(
+		mockslack.Usergroup("S0TEAM1234", "productteam", "Product Team")))
+
+	out, _, err := f.run(t, "search", "messages", "found", "--resolve", "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chans, groups map[string]any
+	for _, line := range parseNDJSON(t, out) {
+		if c, ok := line["@referenced_channels"].(map[string]any); ok {
+			chans = c
+		}
+		if g, ok := line["@referenced_usergroups"].(map[string]any); ok {
+			groups = g
+		}
+	}
+	if c, _ := chans["C0ABCDEF1"].(map[string]any); c == nil || c["name"] != "general-updates" {
+		t.Errorf("@referenced_channels = %v", chans)
+	}
+	if g, _ := groups["S0TEAM1234"].(map[string]any); g == nil || g["handle"] != "productteam" {
+		t.Errorf("@referenced_usergroups = %v", groups)
+	}
+}

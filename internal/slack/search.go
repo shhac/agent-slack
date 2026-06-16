@@ -63,9 +63,18 @@ type SearchFileItem struct {
 }
 
 type SearchResult struct {
-	Messages        []SearchMessageItem    `json:"messages,omitempty"`
-	Files           []SearchFileItem       `json:"files,omitempty"`
-	ReferencedUsers map[string]CompactUser `json:"referenced_users,omitempty"`
+	Messages             []SearchMessageItem         `json:"messages,omitempty"`
+	Files                []SearchFileItem            `json:"files,omitempty"`
+	ReferencedUsers      map[string]CompactUser      `json:"referenced_users,omitempty"`
+	ReferencedChannels   map[string]CompactChannel   `json:"referenced_channels,omitempty"`
+	ReferencedUsergroups map[string]CompactUsergroup `json:"referenced_usergroups,omitempty"`
+}
+
+// searchRefs holds the resolved referenced entities for a set of search hits.
+type searchRefs struct {
+	users      map[string]CompactUser
+	channels   map[string]CompactChannel
+	usergroups map[string]CompactUsergroup
 }
 
 // Search runs message and/or file search. With --channel filters it falls
@@ -91,17 +100,19 @@ func Search(ctx context.Context, c *Client, opts SearchOptions) (SearchResult, e
 	out := SearchResult{}
 	if opts.Kind == SearchMessages || opts.Kind == SearchAll {
 		var messages []SearchMessageItem
-		var users map[string]CompactUser
+		var refs searchRefs
 		if len(opts.Channels) > 0 {
-			messages, users, err = searchMessagesInChannels(ctx, c, opts)
+			messages, refs, err = searchMessagesInChannels(ctx, c, opts)
 		} else {
-			messages, users, err = searchMessagesViaAPI(ctx, c, opts, slackQuery)
+			messages, refs, err = searchMessagesViaAPI(ctx, c, opts, slackQuery)
 		}
 		if err != nil {
 			return SearchResult{}, err
 		}
 		out.Messages = messages
-		out.ReferencedUsers = users
+		out.ReferencedUsers = refs.users
+		out.ReferencedChannels = refs.channels
+		out.ReferencedUsergroups = refs.usergroups
 	}
 
 	if opts.Kind == SearchFiles || opts.Kind == SearchAll {
@@ -308,26 +319,26 @@ func searchMatchRefs(matches []map[string]any, limit int, resolveChannel func(na
 	return refs, nil
 }
 
-func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slackQuery string) ([]SearchMessageItem, map[string]CompactUser, error) {
+func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slackQuery string) ([]SearchMessageItem, searchRefs, error) {
 	matches, err := searchPaged(ctx, c, "search.messages", "messages", slackQuery, opts.Limit)
 	if err != nil {
-		return nil, nil, err
+		return nil, searchRefs{}, err
 	}
 	if len(matches) == 0 {
-		return []SearchMessageItem{}, nil, nil
+		return []SearchMessageItem{}, searchRefs{}, nil
 	}
 
-	refs, err := searchMatchRefs(matches, opts.Limit, func(name string) (string, error) {
+	matchRefs, err := searchMatchRefs(matches, opts.Limit, func(name string) (string, error) {
 		return ResolveChannelID(ctx, c, "#"+name)
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, searchRefs{}, err
 	}
 
 	downloaded := map[string]render.DownloadResult{}
 	var resolved []render.MessageSummary
 	var out []SearchMessageItem
-	for _, ref := range refs {
+	for _, ref := range matchRefs {
 		full, ok := fetchSearchMessage(ctx, c, opts, ref)
 		if !ok {
 			continue
@@ -343,8 +354,7 @@ func searchMessagesViaAPI(ctx context.Context, c *Client, opts SearchOptions, sl
 		}
 	}
 
-	users := resolveSearchUsers(ctx, c, opts, resolved)
-	return out, users, nil
+	return out, resolveSearchRefs(ctx, c, opts, resolved), nil
 }
 
 // fetchSearchMessage resolves one search match to its full message. The
@@ -383,15 +393,23 @@ func searchFilesViaAPI(ctx context.Context, c *Client, opts SearchOptions, slack
 	return out, nil
 }
 
-func resolveSearchUsers(ctx context.Context, c *Client, opts SearchOptions, messages []render.MessageSummary) map[string]CompactUser {
+// resolveSearchRefs expands the users, channels, and usergroups referenced by
+// the search hits, mirroring message get/list resolution.
+func resolveSearchRefs(ctx context.Context, c *Client, opts SearchOptions, messages []render.MessageSummary) searchRefs {
 	if !opts.ResolveUsers && !opts.RefreshUsers {
-		return nil
+		return searchRefs{}
 	}
 	policy := ResolveCacheThenFetch
 	if opts.RefreshUsers {
 		policy = ResolveBypassCache
 	}
-	ids := render.CollectReferencedUserIDs(messages, false)
-	users, _ := ResolveUsersByID(ctx, c, ids, policy)
-	return ToReferencedUsers(ids, users)
+	refs := render.CollectReferencedIDs(messages, false)
+	users, _ := ResolveUsersByID(ctx, c, refs.Users, policy)
+	channels, _ := ResolveChannelsByID(ctx, c, refs.Channels, policy)
+	usergroups, _ := ResolveUsergroupsByID(ctx, c, refs.Usergroups, policy)
+	return searchRefs{
+		users:      ToReferencedUsers(refs.Users, users),
+		channels:   channels,
+		usergroups: usergroups,
+	}
 }

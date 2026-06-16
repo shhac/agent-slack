@@ -80,9 +80,18 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 				items = append(items, map[string]any{"file": f})
 			}
 			var extra map[string]any
-			if result.ReferencedUsers != nil {
-				extra = map[string]any{"referenced_users": result.ReferencedUsers}
+			addRef := func(key string, m any, present bool) {
+				if !present {
+					return
+				}
+				if extra == nil {
+					extra = map[string]any{}
+				}
+				extra[key] = m
 			}
+			addRef("referenced_users", result.ReferencedUsers, result.ReferencedUsers != nil)
+			addRef("referenced_channels", result.ReferencedChannels, result.ReferencedChannels != nil)
+			addRef("referenced_usergroups", result.ReferencedUsergroups, result.ReferencedUsergroups != nil)
 			return printList(globals, items, listMeta("", extra))
 		},
 	}

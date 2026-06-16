@@ -66,14 +66,14 @@ func (f channelScanFilter) match(summary render.MessageSummary) (keep, pastOldes
 	return true, false
 }
 
-func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions) ([]SearchMessageItem, map[string]CompactUser, error) {
+func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions) ([]SearchMessageItem, searchRefs, error) {
 	channelIDs, err := resolveChannelIDs(ctx, c, opts.Channels)
 	if err != nil {
-		return nil, nil, err
+		return nil, searchRefs{}, err
 	}
 	filter, err := newChannelScanFilter(ctx, c, opts)
 	if err != nil {
-		return nil, nil, err
+		return nil, searchRefs{}, err
 	}
 
 	downloaded := map[string]render.DownloadResult{}
@@ -106,15 +106,14 @@ func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions
 			return true, nil
 		})
 		if err != nil {
-			return nil, nil, err
+			return nil, searchRefs{}, err
 		}
 		if full {
 			break
 		}
 	}
 
-	users := resolveSearchUsers(ctx, c, opts, matched)
-	return out, users, nil
+	return out, resolveSearchRefs(ctx, c, opts, matched), nil
 }
 
 // searchUserIDForFilter resolves @name/name to an ID for fallback scans,
