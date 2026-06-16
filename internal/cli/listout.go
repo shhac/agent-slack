@@ -22,7 +22,7 @@ func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, id
 		}
 		return printList(globals, items, meta)
 	}
-	users, _ := slack.ResolveUsersByID(ctx, c, ids, mode.policy())
+	users, fetched := slack.ResolveUsersByID(ctx, c, ids, mode.policy())
 	items := make([]any, 0, len(ids))
 	for _, id := range ids {
 		if u, ok := users[id]; ok {
@@ -31,7 +31,17 @@ func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, id
 			items = append(items, map[string]any{"id": id}) // profile fetch failed; keep the id
 		}
 	}
+	if mode == resolveAuto && fetched {
+		emitNotice(globals, "--resolve fetched member profiles via API (cold cache)",
+			"run 'cache warm users' to make this instant")
+	}
 	return printList(globals, items, meta)
+}
+
+// emitNotice writes a structured, non-fatal notice to stderr (hints/warnings),
+// keeping stderr machine-parseable JSON like the error contract.
+func emitNotice(globals *GlobalFlags, notice, hint string) {
+	output.WriteNotice(globals.stderr, notice, hint)
 }
 
 func printSingle(globals *GlobalFlags, payload any) error {

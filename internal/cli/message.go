@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -79,8 +78,8 @@ func (f scheduleFlags) resolvePostAt(now time.Time) (int64, error) {
 // warnTruncatedURL nudges about shell-eaten permalinks (thread_ts without cid).
 func warnTruncatedURL(globals *GlobalFlags, ref *render.MessageRef) {
 	if ref.PossiblyTruncated {
-		_, _ = fmt.Fprintln(globals.stderr,
-			"Warning: the URL looks truncated (thread_ts without cid) — quote Slack URLs to stop the shell eating '&'")
+		emitNotice(globals, "the URL looks truncated (thread_ts without cid)",
+			"quote Slack URLs so the shell doesn't eat '&'")
 	}
 }
 
@@ -214,8 +213,9 @@ func resolveReferencedEntities(ctx context.Context, cc *clientContext, globals *
 	// Under auto a miss-fetch means the cache wasn't warm/complete — nudge toward
 	// warming so the next --resolve is instant (cached/fresh are explicit choices,
 	// so no hint there).
-	if mode == resolveAuto && len(fetched) > 0 && globals.stderr != nil {
-		_, _ = fmt.Fprintf(globals.stderr, "hint: --resolve fetched %s via API; run 'cache warm' to make this instant\n", strings.Join(fetched, ", "))
+	if mode == resolveAuto && len(fetched) > 0 {
+		emitNotice(globals, "--resolve fetched "+strings.Join(fetched, ", ")+" via API (cold cache)",
+			"run 'cache warm' to make --resolve instant")
 	}
 
 	if len(out) == 0 {

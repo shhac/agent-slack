@@ -179,7 +179,7 @@ func desktopRefresh(globals *GlobalFlags, store *credential.Store, workspaceURL 
 				Name: team.Name,
 				Auth: credential.Auth{Type: credential.AuthBrowser, XOXC: team.Token, XOXD: extracted.CookieD},
 			})
-			_, _ = fmt.Fprintln(globals.stderr, "agent-slack: credentials refreshed from Slack Desktop")
+			emitNotice(globals, "credentials refreshed from Slack Desktop", "")
 			return slack.Auth{
 				Type:         slack.AuthBrowser,
 				XOXC:         team.Token,

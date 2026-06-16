@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -210,7 +209,7 @@ func sendPlain(ctx context.Context, globals *GlobalFlags, cc *clientContext, req
 
 func sendAttachments(ctx context.Context, globals *GlobalFlags, cc *clientContext, req sendRequest) error {
 	if len(req.blocks) > 0 {
-		_, _ = fmt.Fprintln(globals.stderr, "Warning: rich text formatting is not supported with file attachments; sending as plain text.")
+		emitNotice(globals, "rich text formatting is not supported with file attachments; sending as plain text", "")
 	}
 	// All files land on one message (one completeUploadExternal), so the text
 	// is a single shared comment rather than riding only the first file.

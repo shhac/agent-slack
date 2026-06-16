@@ -114,3 +114,24 @@ func TestNormalizeYAMLNumbers(t *testing.T) {
 		t.Errorf("nested fraction must stay float64, got %T", nested[1])
 	}
 }
+
+func TestWriteNotice(t *testing.T) {
+	var buf bytes.Buffer
+	WriteNotice(&buf, "cache was cold", "run 'cache warm'")
+	payload := map[string]any{}
+	if err := json.Unmarshal(buf.Bytes(), &payload); err != nil {
+		t.Fatalf("notice should be JSON: %v (%q)", err, buf.String())
+	}
+	if payload["notice"] != "cache was cold" || payload["hint"] != "run 'cache warm'" {
+		t.Errorf("notice payload = %v", payload)
+	}
+
+	// hint omitted when empty (fresh map — Unmarshal merges, doesn't clear).
+	buf.Reset()
+	WriteNotice(&buf, "just a notice", "")
+	fresh := map[string]any{}
+	_ = json.Unmarshal(buf.Bytes(), &fresh)
+	if _, has := fresh["hint"]; has {
+		t.Errorf("empty hint should be omitted: %s", buf.String())
+	}
+}

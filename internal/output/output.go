@@ -64,6 +64,22 @@ func WriteError(w io.Writer, err error) {
 	_ = enc.Encode(payload)
 }
 
+// WriteNotice emits a structured, non-fatal notice to w (typically stderr) —
+// parallel to WriteError but informational, so stderr stays machine-parseable
+// JSON rather than ad-hoc prose. hint is the optional actionable next step.
+func WriteNotice(w io.Writer, notice, hint string) {
+	if w == nil {
+		return
+	}
+	payload := map[string]any{"notice": notice}
+	if hint != "" {
+		payload["hint"] = hint
+	}
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(payload)
+}
+
 type NDJSONWriter struct {
 	enc *json.Encoder
 }
