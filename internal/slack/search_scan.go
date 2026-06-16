@@ -66,14 +66,14 @@ func (f channelScanFilter) match(summary render.MessageSummary) (keep, pastOldes
 	return true, false
 }
 
-func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions) ([]SearchMessageItem, searchRefs, error) {
+func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions) ([]SearchMessageItem, ReferencedEntities, error) {
 	channelIDs, err := resolveChannelIDs(ctx, c, opts.Channels)
 	if err != nil {
-		return nil, searchRefs{}, err
+		return nil, ReferencedEntities{}, err
 	}
 	filter, err := newChannelScanFilter(ctx, c, opts)
 	if err != nil {
-		return nil, searchRefs{}, err
+		return nil, ReferencedEntities{}, err
 	}
 
 	downloaded := map[string]render.DownloadResult{}
@@ -106,7 +106,7 @@ func searchMessagesInChannels(ctx context.Context, c *Client, opts SearchOptions
 			return true, nil
 		})
 		if err != nil {
-			return nil, searchRefs{}, err
+			return nil, ReferencedEntities{}, err
 		}
 		if full {
 			break

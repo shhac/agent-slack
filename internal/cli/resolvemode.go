@@ -30,12 +30,11 @@ const (
 // resolve reports whether any resolution happens at all.
 func (m resolveMode) resolve() bool { return m != resolveNone && m != "" }
 
-// forceRefresh reports whether cached reads are bypassed (search wiring).
-func (m resolveMode) forceRefresh() bool { return m == resolveFresh }
-
 // policy maps the mode to the slack-layer cache policy.
 func (m resolveMode) policy() slack.ResolvePolicy {
 	switch m {
+	case resolveNone:
+		return slack.ResolveOff
 	case resolveCached:
 		return slack.ResolveCacheOnly
 	case resolveFresh:

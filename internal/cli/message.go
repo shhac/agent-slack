@@ -181,45 +181,37 @@ func resolveReferencedEntities(ctx context.Context, cc *clientContext, globals *
 	if !mode.resolve() {
 		return nil
 	}
-	policy := mode.policy()
 	refs := render.CollectReferencedIDs(messages, flags.includeReactions)
-	out := map[string]any{}
-	var fetched []string
-
-	users, uf := slack.ResolveUsersByID(ctx, cc.Client, refs.Users, policy)
-	if ru := slack.ToReferencedUsers(refs.Users, users); ru != nil {
-		out["referenced_users"] = ru
-	}
-	if uf {
-		fetched = append(fetched, "users")
-	}
-	if chans, cf := slack.ResolveChannelsByID(ctx, cc.Client, refs.Channels, policy); chans != nil || cf {
-		if chans != nil {
-			out["referenced_channels"] = chans
-		}
-		if cf {
-			fetched = append(fetched, "channels")
-		}
-	}
-	if groups, gf := slack.ResolveUsergroupsByID(ctx, cc.Client, refs.Usergroups, policy); groups != nil || gf {
-		if groups != nil {
-			out["referenced_usergroups"] = groups
-		}
-		if gf {
-			fetched = append(fetched, "usergroups")
-		}
-	}
-
-	// Under auto a miss-fetch means the cache wasn't warm/complete — nudge toward
-	// warming so the next --resolve is instant (cached/fresh are explicit choices,
-	// so no hint there).
-	if mode == resolveAuto && len(fetched) > 0 {
-		emitNotice(globals, "--resolve fetched "+strings.Join(fetched, ", ")+" via API (cold cache)",
-			"run 'cache warm' to make --resolve instant")
-	}
-
+	ents := slack.ResolveReferenced(ctx, cc.Client, refs, mode.policy())
+	maybeWarmHint(globals, mode, ents.Fetched)
+	out := referencedPayload(ents)
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+// referencedPayload spreads resolved referenced entities into the output keys.
+func referencedPayload(ents slack.ReferencedEntities) map[string]any {
+	out := map[string]any{}
+	if ents.Users != nil {
+		out["referenced_users"] = ents.Users
+	}
+	if ents.Channels != nil {
+		out["referenced_channels"] = ents.Channels
+	}
+	if ents.Usergroups != nil {
+		out["referenced_usergroups"] = ents.Usergroups
+	}
+	return out
+}
+
+// maybeWarmHint nudges toward `cache warm` when --resolve auto had to fetch on a
+// cold cache (cached/fresh/none are explicit choices, so no hint there).
+func maybeWarmHint(globals *GlobalFlags, mode resolveMode, fetched []string) {
+	if mode != resolveAuto || len(fetched) == 0 {
+		return
+	}
+	emitNotice(globals, "--resolve fetched "+strings.Join(fetched, ", ")+" via API (cold cache)",
+		"run 'cache warm' to make --resolve instant")
 }

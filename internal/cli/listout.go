@@ -31,9 +31,8 @@ func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, id
 			items = append(items, map[string]any{"id": id}) // profile fetch failed; keep the id
 		}
 	}
-	if mode == resolveAuto && fetched {
-		emitNotice(globals, "--resolve fetched member profiles via API (cold cache)",
-			"run 'cache warm users' to make this instant")
+	if fetched {
+		maybeWarmHint(globals, mode, []string{"users"})
 	}
 	return printList(globals, items, meta)
 }

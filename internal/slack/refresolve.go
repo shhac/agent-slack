@@ -10,7 +10,8 @@ import (
 type ResolvePolicy int
 
 const (
-	ResolveCacheOnly      ResolvePolicy = iota // read cache; never fetch a miss
+	ResolveOff            ResolvePolicy = iota // don't resolve at all (zero value)
+	ResolveCacheOnly                           // read cache; never fetch a miss
 	ResolveCacheThenFetch                      // read cache, fetch misses UNLESS the category is complete
 	ResolveBypassCache                         // ignore cached reads; refetch
 )
@@ -27,6 +28,41 @@ func (p ResolvePolicy) wantFetch(complete bool) bool {
 	default: // ResolveCacheOnly
 		return false
 	}
+}
+
+// ReferencedEntities is the resolved form of the users/channels/usergroups a set
+// of messages references, plus which categories required an API fetch (for the
+// cache-warm hint). Users is already in referenced_users shape.
+type ReferencedEntities struct {
+	Users      map[string]CompactUser
+	Channels   map[string]CompactChannel
+	Usergroups map[string]CompactUsergroup
+	Fetched    []string
+}
+
+// ResolveReferenced resolves every referenced user, channel, and usergroup under
+// one policy — the single orchestration shared by message reads and search.
+func ResolveReferenced(ctx context.Context, c *Client, refs render.ReferencedIDs, policy ResolvePolicy) ReferencedEntities {
+	if policy == ResolveOff {
+		return ReferencedEntities{}
+	}
+	users, uf := ResolveUsersByID(ctx, c, refs.Users, policy)
+	channels, cf := ResolveChannelsByID(ctx, c, refs.Channels, policy)
+	usergroups, gf := ResolveUsergroupsByID(ctx, c, refs.Usergroups, policy)
+	ent := ReferencedEntities{
+		Users:      ToReferencedUsers(refs.Users, users),
+		Channels:   channels,
+		Usergroups: usergroups,
+	}
+	for _, f := range []struct {
+		ok  bool
+		cat string
+	}{{uf, "users"}, {cf, "channels"}, {gf, "usergroups"}} {
+		if f.ok {
+			ent.Fetched = append(ent.Fetched, f.cat)
+		}
+	}
+	return ent
 }
 
 // Referenced-entity resolution: a rich_text mention carries only the bare id, so
