@@ -92,10 +92,10 @@ func buildEditParams(ctx context.Context, c *slack.Client, ref *render.MessageRe
 
 	if hasText {
 		resolved := slack.ResolveMentions(ctx, c, text)
-		rtBlocks, outboundText := render.RenderOutbound(resolved, slackMarkdown)
-		params["text"] = render.FormatOutboundText(outboundText)
-		if rtBlocks != nil {
-			params["blocks"] = toAnySlice(rtBlocks)
+		outboundText, blocks := outboundTextAndBlocks(resolved, slackMarkdown)
+		params["text"] = outboundText
+		if blocks != nil {
+			params["blocks"] = blocks
 		}
 	}
 

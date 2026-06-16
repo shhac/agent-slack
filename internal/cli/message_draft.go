@@ -189,49 +189,59 @@ func registerDraftSend(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			msg := slack.OutgoingMessage{ChannelID: d.ChannelID, Blocks: d.Blocks, FileIDs: d.FileIDs}
-			if postAt != 0 {
-				// Promote the plain draft to a scheduled message in place (same id);
-				// no separate post/delete — Slack delivers it (with its files) at
-				// post_at. UpdateDraft re-sends file_ids, so attachments survive.
-				promoted, err := slack.UpdateDraft(ctx, cc.Client, d.ID, msg, postAt)
-				if err != nil {
-					return err
-				}
-				// Prefer the time Slack echoes; fall back to the requested time when
-				// the update response omits date_scheduled.
-				scheduledAt := promoted.PostAt
-				if scheduledAt == 0 {
-					scheduledAt = postAt
-				}
-				payload := scheduleResultPayload(
-					slack.ScheduleResult{ChannelID: promoted.ChannelID, ScheduledMessageID: promoted.ID, PostAt: scheduledAt}, "")
-				payload["note"] = "promoted the draft to a scheduled message — manage it under 'message scheduled'"
-				return printSingle(globals, payload)
-			}
-			// A draft with attachments can't be re-posted via chat.postMessage
-			// (it can't attach already-uploaded files), so send it natively with
-			// files.share, which posts and removes the draft in one call.
-			if len(d.FileIDs) > 0 {
-				result, err := slack.ShareDraft(ctx, cc.Client, d)
-				if err != nil {
-					return err
-				}
-				return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
-			}
-			// A fileless draft posts via chat.postMessage; passing draft_id makes
-			// Slack remove the draft as part of the post (native, atomic — no
-			// separate delete to race or leave stale).
-			msg.DraftID = d.ID
-			result, err := slack.PostMessage(ctx, cc.Client, msg)
-			if err != nil {
-				return err
-			}
-			return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
+			return runDraftSend(ctx, globals, cc, d, postAt)
 		},
 	}
 	sched.register(cmd, "Promote to a scheduled message")
 	parent.AddCommand(cmd)
+}
+
+// runDraftSend dispatches a draft send across its three modes: a non-zero
+// postAt promotes the draft to a scheduled message in place; a draft with files
+// posts natively via files.share; a fileless draft posts via chat.postMessage.
+func runDraftSend(ctx context.Context, globals *GlobalFlags, cc *clientContext, d slack.Draft, postAt int64) error {
+	msg := slack.OutgoingMessage{ChannelID: d.ChannelID, Blocks: d.Blocks, FileIDs: d.FileIDs}
+	switch {
+	case postAt != 0:
+		// Promote the plain draft to a scheduled message in place (same id); no
+		// separate post/delete — Slack delivers it (with its files) at post_at.
+		// UpdateDraft re-sends file_ids, so attachments survive.
+		promoted, err := slack.UpdateDraft(ctx, cc.Client, d.ID, msg, postAt)
+		if err != nil {
+			return err
+		}
+		// Prefer the time Slack echoes; fall back to the requested time when the
+		// update response omits date_scheduled.
+		scheduledAt := promoted.PostAt
+		if scheduledAt == 0 {
+			scheduledAt = postAt
+		}
+		payload := scheduleResultPayload(
+			slack.ScheduleResult{ChannelID: promoted.ChannelID, ScheduledMessageID: promoted.ID, PostAt: scheduledAt}, "")
+		payload["note"] = "promoted the draft to a scheduled message — manage it under 'message scheduled'"
+		return printSingle(globals, payload)
+
+	case len(d.FileIDs) > 0:
+		// A draft with attachments can't be re-posted via chat.postMessage (it
+		// can't attach already-uploaded files), so send it natively with
+		// files.share, which posts and removes the draft in one call.
+		result, err := slack.ShareDraft(ctx, cc.Client, d)
+		if err != nil {
+			return err
+		}
+		return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
+
+	default:
+		// A fileless draft posts via chat.postMessage; passing draft_id makes
+		// Slack remove the draft as part of the post (native, atomic — no
+		// separate delete to race or leave stale).
+		msg.DraftID = d.ID
+		result, err := slack.PostMessage(ctx, cc.Client, msg)
+		if err != nil {
+			return err
+		}
+		return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, ""))
+	}
 }
 
 // --- shared draft helpers ---------------------------------------------------

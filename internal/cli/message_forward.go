@@ -33,8 +33,8 @@ func runForward(ctx context.Context, globals *GlobalFlags, cc *clientContext, de
 	// and it renders to the same rich_text blocks a normal send would carry.
 	caption = slack.ResolveMentions(ctx, cc.Client, caption)
 	caption = slack.ResolveChannelMentions(ctx, cc.Client, caption)
-	rtBlocks, outboundText := render.RenderOutbound(caption, flags.slackMarkdown)
-	capMsg := slack.OutgoingMessage{Text: render.FormatOutboundText(outboundText), Blocks: toAnySlice(rtBlocks)}
+	outboundText, blocks := outboundTextAndBlocks(caption, flags.slackMarkdown)
+	capMsg := slack.OutgoingMessage{Text: outboundText, Blocks: blocks}
 
 	res, err := slack.ForwardMessage(ctx, cc.Client, destChannelID, slack.ForwardSource{
 		ChannelID: ref.ChannelID,

@@ -75,6 +75,19 @@ func (f scheduleFlags) resolvePostAt(now time.Time) (int64, error) {
 	return slack.ResolveSchedulePostAt(f.schedule, f.scheduleIn, now)
 }
 
+// outboundTextAndBlocks renders authored text into the (text, blocks) pair an
+// outbound message carries: the mrkdwn-escaped fallback text and the rich_text
+// blocks, nil when the text is plain so callers omit the blocks field. Mentions
+// must already be resolved.
+func outboundTextAndBlocks(text string, slackMarkdown bool) (string, []any) {
+	rtBlocks, outboundText := render.RenderOutbound(text, slackMarkdown)
+	var blocks []any
+	if len(rtBlocks) > 0 {
+		blocks = toAnySlice(rtBlocks)
+	}
+	return render.FormatOutboundText(outboundText), blocks
+}
+
 // warnTruncatedURL nudges about shell-eaten permalinks (thread_ts without cid).
 func warnTruncatedURL(globals *GlobalFlags, ref *render.MessageRef) {
 	if ref.PossiblyTruncated {

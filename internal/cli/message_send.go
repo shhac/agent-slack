@@ -155,19 +155,16 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 		return sendRequest{}, err
 	}
 
-	rtBlocks, outboundText := render.RenderOutbound(text, flags.slackMarkdown)
-	var blocks []any
+	outboundText, blocks := outboundTextAndBlocks(text, flags.slackMarkdown)
 	if flags.blocksPath != "" {
 		blocks, err = loadBlocksFromPath(stdin, flags.blocksPath)
 		if err != nil {
 			return sendRequest{}, err
 		}
-	} else if len(rtBlocks) > 0 {
-		blocks = toAnySlice(rtBlocks)
 	}
 
 	return sendRequest{
-		text:           render.FormatOutboundText(outboundText),
+		text:           outboundText,
 		rawText:        text,
 		blocks:         blocks,
 		threadTS:       threadTS,
