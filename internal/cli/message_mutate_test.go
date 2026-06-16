@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/shhac/agent-slack/internal/mockslack"
 )
 
 func TestMessageEditRequiresYes(t *testing.T) {
@@ -61,6 +64,23 @@ func TestMessageEditDialectAndMentions(t *testing.T) {
 }
 
 const editPermalink = "https://acme.slack.com/archives/C1A2B3C4D/p1770165109628379"
+
+// An edit resolves #channel mentions in the new text the same way send/draft/
+// forward do (regression: edit previously ran only @-mention resolution).
+func TestMessageEditResolvesChannelMention(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleWhen("search.messages",
+		func(p url.Values) bool { return p.Get("query") == "in:#general" },
+		mockslack.Response{Body: mockslack.SearchMessages(mockslack.ChannelMatch("C0GENERAL"))})
+	f.server.HandleBody("chat.update", map[string]any{"ok": true})
+
+	if _, _, err := f.run(t, "message", "edit", editPermalink, "join #general now", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.server.CallsFor("chat.update")[0].Params.Get("text"); got != "join <#C0GENERAL> now" {
+		t.Errorf("text = %q, want resolved channel link", got)
+	}
+}
 
 // messageWithFiles builds a conversations.history message carrying file ids.
 func messageWithFiles(fileIDs ...string) map[string]any {
