@@ -145,7 +145,8 @@ these only when you need to:
 
 ```bash
 agent-slack cache info                         # what's cached, per workspace
-agent-slack cache warm                          # pre-fill users/channels/usergroups (JSONL progress)
+agent-slack cache warm                          # pre-fill users/channels/usergroups (JSONL progress); makes --resolve auto free
+agent-slack cache warm --stale-only             # re-warm only what's gone stale (cheap; good for a repeated/scheduled warm)
 agent-slack cache purge --workspace "#…"        # clear one workspace
 agent-slack cache purge --downloads             # clear downloaded files
 agent-slack config set cache.ttl.channels 30m   # persist a TTL

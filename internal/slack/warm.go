@@ -22,6 +22,9 @@ type WarmOptions struct {
 	// completeness sentinel (and lets `--resolve auto` trust a miss). Excluding
 	// them leaves the set incomplete, so the sentinel is not armed.
 	NoBots bool
+	// StaleOnly skips a category that is still complete within its sentinel
+	// window — only re-warm what has gone stale since the last warm.
+	StaleOnly bool
 	// Categories limits the sweep to the named categories; empty means all.
 	Categories []string
 }
@@ -44,6 +47,7 @@ type WarmEvent struct {
 	Category string `json:"category"` // users | channels | usergroups
 	Count    int    `json:"count"`    // entities warmed so far in this category
 	Done     bool   `json:"done,omitempty"`
+	Skipped  bool   `json:"skipped,omitempty"` // --stale-only: category was still complete
 }
 
 // WarmWorkspace pre-fetches the workspace's list endpoints (users, channels,
@@ -67,17 +71,31 @@ func WarmWorkspace(ctx context.Context, c *Client, opts WarmOptions, progress fu
 		return c.sleep(ctx, opts.PageDelay)
 	}
 
-	if opts.wants(WarmUsers) {
+	// warmable reports whether a category should be (re)warmed. With --stale-only
+	// a category that is still complete within its sentinel window is skipped (it
+	// would re-fetch the same set); the skip is emitted so the stream shows it.
+	warmable := func(category string, complete bool) bool {
+		if !opts.wants(category) {
+			return false
+		}
+		if opts.StaleOnly && complete {
+			emit(WarmEvent{Category: category, Skipped: true, Done: true})
+			return false
+		}
+		return true
+	}
+
+	if warmable(WarmUsers, c.usersComplete()) {
 		if err := warmUsers(ctx, c, opts, emit, pace); err != nil {
 			return err
 		}
 	}
-	if opts.wants(WarmChannels) {
+	if warmable(WarmChannels, c.channelsComplete()) {
 		if err := warmChannels(ctx, c, emit, pace); err != nil {
 			return err
 		}
 	}
-	if opts.wants(WarmUsergroups) {
+	if warmable(WarmUsergroups, c.usergroupsComplete()) {
 		// usergroups.list has no pagination; fetchUsergroups warms both the
 		// entity store and the handle index.
 		groups, err := fetchUsergroups(ctx, c, true)

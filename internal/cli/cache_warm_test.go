@@ -110,3 +110,52 @@ func TestCacheWarmNoBots(t *testing.T) {
 		}
 	}
 }
+
+// --stale-only re-warms only categories whose completeness sentinel has lapsed.
+// After a full warm arms all three, a second --stale-only run skips them all
+// (emitting skipped events) and makes no new list calls.
+func TestCacheWarmStaleOnly(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{
+		map[string]any{"id": "U0ALICEAA", "name": "alice"},
+	}})
+	f.server.HandleBody("conversations.list", mockslack.ConversationsList(
+		mockslack.Channel("C0GENERAL", "general"),
+	))
+	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList(
+		mockslack.Usergroup("S0MARKETIN", "marketing", "Marketing"),
+	))
+
+	// First warm arms every sentinel.
+	if _, _, err := f.run(t, "cache", "warm", "--page-delay", "0"); err != nil {
+		t.Fatal(err)
+	}
+	before := map[string]int{
+		"users.list":      len(f.server.CallsFor("users.list")),
+		"conversations":   len(f.server.CallsFor("conversations.list")),
+		"usergroups.list": len(f.server.CallsFor("usergroups.list")),
+	}
+
+	out, _, err := f.run(t, "cache", "warm", "--page-delay", "0", "--stale-only")
+	if err != nil {
+		t.Fatal(err)
+	}
+	skipped := 0
+	for _, line := range parseNDJSON(t, out) {
+		if s, _ := line["skipped"].(bool); s {
+			skipped++
+		}
+	}
+	if skipped != 3 {
+		t.Errorf("want 3 skipped categories, got %d: %s", skipped, out)
+	}
+	if n := len(f.server.CallsFor("users.list")); n != before["users.list"] {
+		t.Errorf("--stale-only re-fetched users.list (%d → %d)", before["users.list"], n)
+	}
+	if n := len(f.server.CallsFor("conversations.list")); n != before["conversations"] {
+		t.Errorf("--stale-only re-fetched conversations.list")
+	}
+	if n := len(f.server.CallsFor("usergroups.list")); n != before["usergroups.list"] {
+		t.Errorf("--stale-only re-fetched usergroups.list")
+	}
+}

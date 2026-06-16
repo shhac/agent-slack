@@ -27,7 +27,7 @@ func registerCache(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 	var pageDelay time.Duration
-	var noBots bool
+	var noBots, staleOnly bool
 	cmd := &cobra.Command{
 		Use:       "warm [users|channels|usergroups...]",
 		Short:     "Pre-fetch users, channels, and usergroups into the cache (paced for rate limits; streams JSONL progress)",
@@ -43,6 +43,7 @@ func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 			return slack.WarmWorkspace(cmd.Context(), cc.Client, slack.WarmOptions{
 				PageDelay:  pageDelay,
 				NoBots:     noBots,
+				StaleOnly:  staleOnly,
 				Categories: args,
 			}, func(e slack.WarmEvent) {
 				_ = w.WriteItem(e) // stream progress as we go; consumers can filter done:true for the summary
@@ -51,6 +52,7 @@ func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 	}
 	cmd.Flags().DurationVar(&pageDelay, "page-delay", time.Second, "Pause between paged API calls to stay under Slack rate limits (0 to disable)")
 	cmd.Flags().BoolVar(&noBots, "no-bots", false, "Exclude bot users (by default bots are warmed so the set is complete for resolution; excluding them leaves the completeness sentinel un-armed)")
+	cmd.Flags().BoolVar(&staleOnly, "stale-only", false, "Skip categories still complete within their sentinel window (re-warm only what has gone stale)")
 	parent.AddCommand(cmd)
 }
 

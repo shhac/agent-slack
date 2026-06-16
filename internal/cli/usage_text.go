@@ -56,9 +56,10 @@ CACHE
   AGENT_SLACK_CACHE_TTL[_<CATEGORY>], or 'config set cache.ttl.<cat>'.
   'cache info' / 'cache purge' inspect and clear it; 'cache warm
   [users|channels|usergroups]' pre-fetches list endpoints (paced, streams
-  JSONL) so completions/resolution are instant and offline, and arms a
-  completeness sentinel — within cache.ttl.*-complete (30m) a later miss is
-  authoritative (no remote lookup); --refresh-cache bypasses it.
+  JSONL) so completions/resolution are instant and offline (and --resolve auto
+  is free), and arms a completeness sentinel — within cache.ttl.*-complete (30m)
+  a later miss is authoritative (no remote lookup); --refresh-cache bypasses it.
+  'cache warm --stale-only' re-warms only categories whose sentinel has lapsed.
 
 ERRORS
   JSON on stderr: {"error","fixable_by","hint"}. fixable_by=agent → fix the
