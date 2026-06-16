@@ -35,7 +35,7 @@ for the raw Slack API payload.
 - **channel**: `id, name, is_private, is_im, is_mpim, is_archived, is_member, member_count, topic`
 - **user**: `id, name, real_name, display_name, is_bot, deleted, tz, email`
 - **usergroup**: `id, handle, name, description, user_count, channels, groups` — `channels`/`groups` are the group's *default* channels/subteams (members are auto-added); the CLI lists them all and takes no view on which is "best" to post in
-- **message**: `channel_id, ts, thread_ts?, author{user_id}, content, files?, reactions?`
+- **message**: `channel_id, ts, thread_ts?, author{user_id}, content, files?, reactions?` — each `files[]` entry has `id` (the `F…` to pass to `message edit --remove-attachment`), `name`, `mimetype`, and `path` once downloaded
 
 Message bodies are capped by `--max-body-chars` (defaults: 8000 for
 get/list, 4000 for search/later/unreads, 20000 for canvas; `-1` = unlimited).

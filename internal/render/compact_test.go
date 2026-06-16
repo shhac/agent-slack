@@ -20,7 +20,7 @@ func TestToCompactMessageFileDownloaded(t *testing.T) {
 	compact := ToCompactMessage(msg, CompactOptions{
 		DownloadedPaths: map[string]DownloadResult{"F1": {OK: true, Path: "/tmp/F1.png"}},
 	})
-	want := []CompactFile{{Name: "diagram.png", Mimetype: "image/png", Path: "/tmp/F1.png"}}
+	want := []CompactFile{{ID: "F1", Name: "diagram.png", Mimetype: "image/png", Path: "/tmp/F1.png"}}
 	if !reflect.DeepEqual(compact.Files, want) {
 		t.Errorf("Files = %+v, want %+v", compact.Files, want)
 	}
@@ -34,6 +34,7 @@ func TestToCompactMessageFileDownloadError(t *testing.T) {
 		},
 	})
 	want := []CompactFile{{
+		ID:       "F1",
 		Name:     "diagram.png",
 		Mimetype: "image/png",
 		Path:     "/tmp/F1.download-error.txt",
@@ -44,11 +45,14 @@ func TestToCompactMessageFileDownloadError(t *testing.T) {
 	}
 }
 
-func TestToCompactMessageFileWithoutDownloadEntryOmitted(t *testing.T) {
+func TestToCompactMessageFileWithoutDownloadStillReportsID(t *testing.T) {
 	msg := makeMessage(FileSummary{ID: "F1", Mimetype: "image/png", URLPrivate: "https://example.com/f1"})
 	compact := ToCompactMessage(msg, CompactOptions{DownloadedPaths: map[string]DownloadResult{}})
-	if compact.Files != nil {
-		t.Errorf("Files = %+v, want nil", compact.Files)
+	// Not downloaded → reported by id/metadata (so 'message edit
+	// --remove-attachment' can target it) but with no local path.
+	want := []CompactFile{{ID: "F1", Mimetype: "image/png"}}
+	if !reflect.DeepEqual(compact.Files, want) {
+		t.Errorf("Files = %+v, want %+v", compact.Files, want)
 	}
 }
 
@@ -91,7 +95,7 @@ func TestToCompactMessageNameDoesNotFallBackToTitle(t *testing.T) {
 	compact := ToCompactMessage(msg, CompactOptions{
 		DownloadedPaths: map[string]DownloadResult{"F2": {OK: true, Path: "/tmp/F2/doc.txt"}},
 	})
-	want := []CompactFile{{Mimetype: "text/plain", Path: "/tmp/F2/doc.txt"}}
+	want := []CompactFile{{ID: "F2", Mimetype: "text/plain", Path: "/tmp/F2/doc.txt"}}
 	if !reflect.DeepEqual(compact.Files, want) {
 		t.Errorf("Files = %+v, want %+v", compact.Files, want)
 	}

@@ -108,6 +108,7 @@ func AuthorRef(userID, botID string) *CompactAuthor {
 }
 
 type CompactFile struct {
+	ID       string `json:"id,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mimetype string `json:"mimetype,omitempty"`
 	Mode     string `json:"mode,omitempty"`
@@ -152,8 +153,8 @@ type CompactOptions struct {
 	// means DefaultMaxBodyChars; negative means unlimited.
 	MaxBodyChars     int
 	IncludeReactions bool
-	// DownloadedPaths maps file ID → download outcome; files without an
-	// entry are omitted entirely.
+	// DownloadedPaths maps file ID → download outcome; every message file is
+	// reported (id/name/mimetype/mode) and an entry here adds its local path.
 	DownloadedPaths map[string]DownloadResult
 	// SlackMarkdown keeps the native Slack mrkdwn in the rendered content
 	// instead of converting to standard Markdown.
@@ -171,13 +172,12 @@ func ToCompactMessage(msg MessageSummary, opts CompactOptions) CompactMessage {
 
 	var files []CompactFile
 	for _, f := range msg.Files {
-		entry, ok := opts.DownloadedPaths[f.ID]
-		if !ok {
-			continue
-		}
-		cf := CompactFile{Name: f.Name, Mimetype: f.Mimetype, Mode: f.Mode, Path: entry.Path}
-		if !entry.OK {
-			cf.Error = entry.Error
+		cf := CompactFile{ID: f.ID, Name: f.Name, Mimetype: f.Mimetype, Mode: f.Mode}
+		if entry, ok := opts.DownloadedPaths[f.ID]; ok {
+			cf.Path = entry.Path
+			if !entry.OK {
+				cf.Error = entry.Error
+			}
 		}
 		files = append(files, cf)
 	}

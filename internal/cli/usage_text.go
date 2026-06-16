@@ -120,7 +120,10 @@ DRAFT  message draft create <target> [text] [--blocks <file|->] [--forward <perm
        and send. create returns a draft id; drafts are many-per-target, so
        get/edit/delete/send take an id or a target (when it has just one).
        'send' posts the draft now (with files) then removes it.
-EDIT   message edit <target> <text> --yes     (destructive)
+EDIT   message edit <target> [text] --yes     (destructive)
+       add/remove attachments with --attach <path> / --remove-attachment <F…>
+       (repeatable); text becomes optional when only changing attachments.
+       Get attachment ids from 'message get' (files[].id).
 DELETE message delete <target> --yes          (destructive)
 REACT  message react add|remove <target> <emoji>   (:rocket:, rocket, or 🚀)
 SCHED  message scheduled list [--channel …] [--cursor …]

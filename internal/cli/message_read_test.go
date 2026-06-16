@@ -168,17 +168,26 @@ func TestMessageGetDownloadsFiles(t *testing.T) {
 	}
 	files := parseJSON(t, out)["message"].(map[string]any)["files"].([]any)
 	file := files[0].(map[string]any)
+	if file["id"] != "F77777777" {
+		t.Errorf("file id = %v, want F77777777 (needed so 'message edit --remove-attachment' has an id to target)", file["id"])
+	}
 	if !strings.HasSuffix(file["path"].(string), "F77777777.png") {
 		t.Errorf("file = %v", file)
 	}
 
-	// --no-download keeps it metadata-free (no downloadedPaths entry → no files key).
+	// --no-download still reports the attachment (id + metadata) so its id is
+	// discoverable; it just omits the local path (nothing was downloaded).
 	out2, _, err := f.run(t, "message", "get", "https://acme.slack.com/archives/C1A2B3C4D/p1770165109628379", "--no-download")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, has := parseJSON(t, out2)["message"].(map[string]any)["files"]; has {
-		t.Error("--no-download should omit files (no local paths to report)")
+	files2 := parseJSON(t, out2)["message"].(map[string]any)["files"].([]any)
+	file2 := files2[0].(map[string]any)
+	if file2["id"] != "F77777777" {
+		t.Errorf("--no-download file id = %v, want F77777777", file2["id"])
+	}
+	if _, has := file2["path"]; has {
+		t.Error("--no-download should omit the local path")
 	}
 }
 

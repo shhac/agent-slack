@@ -93,6 +93,8 @@ agent-slack message draft create "#general" "see attached" --attach ./report.pdf
 agent-slack message draft list                         # all drafts with ids + file_ids; get/edit/delete/send take a draft id (Dr…) or a target (when it has just one)
 agent-slack message react add "<permalink>" :eyes:
 agent-slack message edit "<permalink>" "fixed wording" --yes
+agent-slack message edit "<permalink>" --attach ./chart.png --yes              # add an attachment (text optional)
+agent-slack message edit "<permalink>" --remove-attachment F123 --yes          # remove one; get ids from 'message get' files[].id
 agent-slack message delete "<permalink>" --yes
 agent-slack channel mark "<permalink>"                       # mark read up to here
 ```

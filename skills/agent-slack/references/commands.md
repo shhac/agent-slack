@@ -33,7 +33,7 @@ without `--yes`; instead it returns a description of what *would* happen
 | `message draft list` | each row carries `id` + `file_ids` | |
 | `message draft get\|edit\|send <target\|id>` | `edit`: `--blocks`, `--slack-markdown`, `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | |
 | `message draft delete <target\|id>` | | `--yes` |
-| `message edit <target> <text>` | `--ts`, `--slack-markdown` | `--yes` |
+| `message edit <target> [text]` | `--ts`, `--slack-markdown`, `--attach <path>` (repeatable), `--remove-attachment <F…>` (repeatable; ids from `message get` `files[].id`) — text optional when only changing attachments | `--yes` |
 | `message delete <target>` | `--ts` | `--yes` |
 | `message react add\|remove <target> <emoji>` | `--ts` | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | |
