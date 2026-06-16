@@ -226,11 +226,11 @@ func TestMessageGetResolveWarmHintGate(t *testing.T) {
 		}
 		return stderr
 	}
-	if s := run(); !strings.Contains(s, "cold cache") || !strings.Contains(s, "cache warm") {
-		t.Errorf("auto (default) cold fetch should hint on stderr: %q", s)
+	if s := run(); !strings.Contains(s, "uncached users") || !strings.Contains(s, "cache warm users") {
+		t.Errorf("auto (default) uncached fetch should hint the specific category on stderr: %q", s)
 	}
 	for _, mode := range []string{"none", "cached", "fresh"} {
-		if s := run("--resolve", mode); strings.Contains(s, "cold cache") {
+		if s := run("--resolve", mode); strings.Contains(s, "uncached") {
 			t.Errorf("--resolve %s must not emit the warm hint: %q", mode, s)
 		}
 	}

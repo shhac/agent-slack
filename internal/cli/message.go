@@ -206,12 +206,14 @@ func referencedPayload(ents slack.ReferencedEntities) map[string]any {
 	return out
 }
 
-// maybeWarmHint nudges toward `cache warm` when --resolve auto had to fetch on a
-// cold cache (cached/fresh/none are explicit choices, so no hint there).
+// maybeWarmHint nudges toward `cache warm` when --resolve auto had to fetch
+// uncached ids (cached/fresh/none are explicit choices, so no hint there). It
+// names the specific categories that missed, so the hint is an exact command —
+// not a claim that the whole cache was cold (most ids may have been cache hits).
 func maybeWarmHint(globals *GlobalFlags, mode resolveMode, fetched []string) {
 	if mode != resolveAuto || len(fetched) == 0 {
 		return
 	}
-	emitNotice(globals, "--resolve fetched "+strings.Join(fetched, ", ")+" via API (cold cache)",
-		"run 'cache warm' to make --resolve instant")
+	emitNotice(globals, "--resolve fetched uncached "+strings.Join(fetched, ", ")+" via API",
+		"run 'cache warm "+strings.Join(fetched, " ")+"' to resolve these from cache next time")
 }
