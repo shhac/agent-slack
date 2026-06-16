@@ -26,7 +26,7 @@ without `--yes`; instead it returns a description of what *would* happen
 
 | Command | Key flags | Gate |
 |---|---|---|
-| `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--users none\|cached\|fresh`, `--no-download`, `--slack-markdown` | |
+| `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|fresh`, `--no-download`, `--slack-markdown` | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, `--slack-markdown`, + the resolve/reaction flags from `get` | |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post as one message, text = shared comment), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>`, `--slack-markdown`, `--forward <permalink>` | |
 | `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>`, `--attach <path>` (repeatable; keeps rich text, unlike a direct attachment send) — returns a draft id | |
@@ -81,7 +81,7 @@ the `draft` group (drafts are a client feature).
 |---|---|---|
 | `channel list` | `--user`, `--all`, `--limit` (100), `--cursor` | |
 | `channel get <channel…>` | `--full` | |
-| `channel members <channel>` | `--users none\|cached\|fresh`, `--limit` (100), `--cursor` | |
+| `channel members <channel>` | `--resolve none\|cached\|fresh`, `--limit` (100), `--cursor` | |
 | `channel new` | `--name`, `--private` | `--yes` |
 | `channel invite` | `--channel`, `--users`, `--external`, `--allow-external-user-invites` | `--yes` |
 | `channel mark <target>` | `--ts` | |
@@ -90,7 +90,7 @@ the `draft` group (drafts are a client feature).
 archive state; `--full` for the raw object). Pass several channels and it
 returns NDJSON instead, one per line, with a trailing `{"@unresolved": […]}`
 for any that didn't resolve. `channel members` lists the user IDs in a channel
-(chain into `user get`, or pass `--users cached`/`--users fresh` to expand to profiles inline).
+(chain into `user get`, or pass `--resolve cached`/`--resolve fresh` to expand to profiles inline).
 `channel invite --users` accepts user IDs and (with `--external`) email
 addresses, comma-separated. `channel mark` is personal read state, ungated.
 
@@ -110,7 +110,7 @@ Workspace user groups (subteams, the `@group` you @-mention). Aliased `usergroup
 |---|---|
 | `usergroup list` | `--include-disabled`; compact rows: `id` (S…), `handle`, `name`, `description`, `user_count`, and `channels`/`groups` (the group's **default** channels/subteams — members are auto-added) |
 | `usergroup get <usergroup…>` | accepts `S…` or `@handle`; one → object, several → NDJSON (+ `{"@unresolved": […]}`) |
-| `usergroup members <usergroup>` | user ids by default; `--users cached`/`fresh` for profiles, `--include-disabled` |
+| `usergroup members <usergroup>` | user ids by default; `--resolve cached`/`fresh` for profiles, `--include-disabled` |
 
 `channels` lists **all** the group's default channels — the CLI takes no view on
 which is "best" to post in; choose per your use case. To answer "which groups am

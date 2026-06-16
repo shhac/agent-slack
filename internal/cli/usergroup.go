@@ -65,16 +65,16 @@ func registerUsergroupGet(parent *cobra.Command, globals *GlobalFlags) {
 }
 
 func registerUsergroupMembers(parent *cobra.Command, globals *GlobalFlags) {
-	var users string
+	var resolveFlag string
 	var includeDisabled bool
 	cmd := &cobra.Command{
 		Use:               "members <usergroup>",
-		Short:             "List the users in a usergroup (ids by default; --users cached/fresh for profiles)",
+		Short:             "List the users in a usergroup (ids by default; --resolve cached/fresh for profiles)",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: usergroupArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			mode, err := parseUserMode(users)
+			mode, err := parseResolveMode(resolveFlag)
 			if err != nil {
 				return err
 			}
@@ -89,7 +89,7 @@ func registerUsergroupMembers(parent *cobra.Command, globals *GlobalFlags) {
 			return printMembers(ctx, globals, cc.Client, ids, mode, nil)
 		},
 	}
-	registerUserMode(cmd, &users)
+	registerResolveFlag(cmd, &resolveFlag)
 	cmd.Flags().BoolVar(&includeDisabled, "include-disabled", false, "Allow members of a deactivated usergroup")
 	parent.AddCommand(cmd)
 }

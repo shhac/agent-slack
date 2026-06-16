@@ -67,15 +67,15 @@ func getChannel(ctx context.Context, globals *GlobalFlags, arg string) (any, err
 func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {
 	var limit int
 	var cursor string
-	var users string
+	var resolveFlag string
 	cmd := &cobra.Command{
 		Use:               "members <channel>",
-		Short:             "List the users in a channel (ids by default; --users cached/fresh for profiles)",
+		Short:             "List the users in a channel (ids by default; --resolve cached/fresh for profiles)",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: channelArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			mode, err := parseUserMode(users)
+			mode, err := parseResolveMode(resolveFlag)
 			if err != nil {
 				return err
 			}
@@ -97,7 +97,7 @@ func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {
 	}
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max members per page")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
-	registerUserMode(cmd, &users)
+	registerResolveFlag(cmd, &resolveFlag)
 	parent.AddCommand(cmd)
 }
 

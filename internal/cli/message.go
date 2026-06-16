@@ -38,7 +38,7 @@ type readFlags struct {
 	threadTS         string
 	maxBodyChars     int
 	includeReactions bool
-	users            string // --users: none | cached | fresh
+	resolve          string // --resolve: none | cached | fresh
 	slackMarkdown    bool
 }
 
@@ -47,16 +47,16 @@ func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
 	cmd.Flags().StringVar(&f.threadTS, "thread-ts", "", "Thread root ts hint")
 	cmd.Flags().IntVar(&f.maxBodyChars, "max-body-chars", defaultMaxBody, "Max content chars per message (-1 = unlimited)")
 	cmd.Flags().BoolVar(&f.includeReactions, "include-reactions", false, "Include reactions and reacting users")
-	registerUserMode(cmd, &f.users)
+	registerResolveFlag(cmd, &f.resolve)
 	cmd.Flags().BoolVar(&f.slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 }
 
-// userMode returns the parsed --users value; callers validate(f) first so the
-// parse here cannot fail.
-func (f *readFlags) userMode() userMode { return userMode(f.users) }
+// resolveMode returns the parsed --resolve value; callers validate(f) first so
+// the parse here cannot fail.
+func (f *readFlags) resolveMode() resolveMode { return resolveMode(f.resolve) }
 
 func (f *readFlags) validate() error {
-	_, err := parseUserMode(f.users)
+	_, err := parseResolveMode(f.resolve)
 	return err
 }
 
@@ -173,12 +173,29 @@ func messageDownloadOptions(globals *GlobalFlags) slack.MessageDownloads {
 	}
 }
 
-func resolveReferencedUsers(ctx context.Context, cc *clientContext, flags *readFlags, messages []render.MessageSummary) map[string]slack.CompactUser {
-	mode := flags.userMode()
+// resolveReferencedEntities expands the users, channels, and usergroups a set of
+// messages references into referenced_* output maps, per --resolve. Returns nil
+// when resolution is off or nothing resolved; the caller merges the entries into
+// its payload/meta.
+func resolveReferencedEntities(ctx context.Context, cc *clientContext, flags *readFlags, messages []render.MessageSummary) map[string]any {
+	mode := flags.resolveMode()
 	if !mode.resolve() {
 		return nil
 	}
-	ids := render.CollectReferencedUserIDs(messages, flags.includeReactions)
-	users := slack.ResolveUsersByID(ctx, cc.Client, ids, mode.forceRefresh())
-	return slack.ToReferencedUsers(ids, users)
+	refs := render.CollectReferencedIDs(messages, flags.includeReactions)
+	fresh := mode.forceRefresh()
+	out := map[string]any{}
+	if users := slack.ToReferencedUsers(refs.Users, slack.ResolveUsersByID(ctx, cc.Client, refs.Users, fresh)); users != nil {
+		out["referenced_users"] = users
+	}
+	if chans := slack.ResolveChannelsByID(ctx, cc.Client, refs.Channels, fresh); chans != nil {
+		out["referenced_channels"] = chans
+	}
+	if groups := slack.ResolveUsergroupsByID(ctx, cc.Client, refs.Usergroups, fresh); groups != nil {
+		out["referenced_usergroups"] = groups
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

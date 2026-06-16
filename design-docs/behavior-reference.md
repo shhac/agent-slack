@@ -165,10 +165,16 @@ The broader behavior and output decisions (NDJSON lists, compact channel/user
 projections, download policy, no first-run browser auto-extraction, `--yes`
 scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
 
-## User resolution / caching
+## Referenced-entity resolution / caching
 
-- In-memory user map; `--users cached` expands IDs to profiles,
-  `--users fresh` clears the cache first.
+- A rich_text mention carries only the bare id (`{user_id}`/`{channel_id}`/
+  `{usergroup_id}`, no label — verified), so making `<@U…>`/`<#C…>`/`<!subteam^S…>`
+  mentions legible means resolving each id.
+- `--resolve cached` expands every referenced user, channel, and usergroup into
+  `referenced_users`/`referenced_channels`/`referenced_usergroups` maps from the
+  per-workspace caches; `--resolve fresh` bypasses cached reads (users via
+  users.info, channels via conversations.info, usergroups via a usergroups.list
+  refetch). Unresolved ids are omitted. (search currently resolves users only.)
 
 ## Workflow and update behavior
 

@@ -24,7 +24,7 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 	var user, after, before, contentType string
 	var limit, maxContentChars int
 	var download, slackMarkdown bool
-	var users string
+	var resolveFlag string
 
 	cmd := &cobra.Command{
 		Use:   name + " <query>",
@@ -41,7 +41,7 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 				return agenterrors.New("file search requires downloads (agents need local file paths)", agenterrors.FixableByAgent).
 					WithHint("drop --download=false or use 'search messages'")
 			}
-			mode, err := parseUserMode(users)
+			mode, err := parseResolveMode(resolveFlag)
 			if err != nil {
 				return err
 			}
@@ -95,7 +95,7 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max results")
 	cmd.Flags().IntVar(&maxContentChars, "max-content-chars", 4000, "Max message content chars (-1 = unlimited)")
 	cmd.Flags().BoolVar(&download, "download", kind != slack.SearchMessages, "Download matched files and report local paths")
-	registerUserMode(cmd, &users)
+	registerResolveFlag(cmd, &resolveFlag)
 	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 	parent.AddCommand(cmd)
 }

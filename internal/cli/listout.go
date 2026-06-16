@@ -14,7 +14,7 @@ import (
 // is cached/fresh — expands them to compact profiles, keeping the bare id when a
 // profile fetch fails. meta carries any trailing meta lines (channel_id,
 // pagination) the caller wants.
-func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, ids []string, mode userMode, meta map[string]any) error {
+func printMembers(ctx context.Context, globals *GlobalFlags, c *slack.Client, ids []string, mode resolveMode, meta map[string]any) error {
 	if !mode.resolve() {
 		items := make([]any, len(ids))
 		for i, id := range ids {

@@ -18,7 +18,9 @@
 | Line | Meaning |
 |---|---|
 | `{"@pagination": {"has_more", "next_cursor"}}` | more pages exist; pass `--cursor <next_cursor>` |
-| `{"@referenced_users": {"U…": {id, name, …}}}` | profile metadata for the `U…` ids in the items (only with `--users cached`/`fresh`) |
+| `{"@referenced_users": {"U…": {id, name, …}}}` | profile metadata for the `U…` ids in the items (only with `--resolve cached`/`fresh`) |
+| `{"@referenced_channels": {"C…": {id, name, …}}}` | metadata for the `C…` channel ids mentioned in content (only with `--resolve cached`/`fresh`) |
+| `{"@referenced_usergroups": {"S…": {id, handle, …}}}` | metadata for the `S…` usergroup ids mentioned in content (only with `--resolve cached`/`fresh`) |
 | `{"@channel_id": "C…"}` | the channel the listed messages came from |
 | `{"@thread_ts": "…"}` | the thread root, when listing a thread |
 | `{"@threads": {"has_unreads", "mention_count"}}` | unread thread-reply summary (`unreads`) |
@@ -49,10 +51,12 @@ Truncated content ends with `\n…`.
   (external, `--external`) → `{ channel_id, external: true, invited_emails, already_invited_emails?, invalid_external_targets? }`.
 - `auth list` → `{ default_workspace_url, credentials_path, workspaces: [{ workspace_url, auth_type, secrets: {token|xoxc|xoxd: "keychain"|"file"|"missing"}, hint? }] }`.
 
-User IDs stay canonical in payloads (`author.user_id`, reaction `users[]`,
-`@U…` mentions in rendered content). Pass `--users cached` to get an
-`@referenced_users` map of display metadata; the per-workspace user cache has
-a 24h TTL (`--users fresh` bypasses it).
+Entity IDs stay canonical in payloads (`author.user_id`, reaction `users[]`, and
+`@U…`/`<#C…>`/`<!subteam^S…>` mentions in rendered content — rich_text carries
+the bare id, no label). Pass `--resolve cached` to expand every referenced user,
+channel, and usergroup into `@referenced_users` / `@referenced_channels` /
+`@referenced_usergroups` maps of display metadata; `--resolve fresh` bypasses the
+caches.
 
 ## Attachment downloads
 
@@ -109,7 +113,7 @@ page.
   `AGENT_SLACK_CACHE_TTL_<CATEGORY>` > `AGENT_SLACK_CACHE_TTL` (all) >
   `config set cache.ttl.<category> <dur>` (persisted) > built-in default. `0`
   disables reads for a category. Categories include `get` and `list` (the 5m
-  serve windows). `--users fresh` still forces a profile re-fetch.
+  serve windows). `--resolve fresh` still forces a profile re-fetch.
 
 Individual rejections are never cached (a transient `trigger_not_found` won't
 stick), and the side-effecting `workflow run` path is never cached.

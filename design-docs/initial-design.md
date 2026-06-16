@@ -68,7 +68,7 @@ parsing splits `p<digits>` into seconds + microseconds and reads `?thread_ts=`.
 - `--max-body-chars` (default 8000; 4000 for search; `-1` = unlimited) truncates
   bodies with a `\n…` marker.
 - `--full` restores normally-omitted bulky payloads; `--include-reactions` and
-  `--users cached`/`fresh` opt into extra data.
+  `--resolve cached`/`fresh` opt into extra data.
 - Errors → JSON on stderr: `{error, fixable_by, hint?}`.
   - `agent`: bad args/flags/targets.
   - `human`: auth, permissions, missing secrets.

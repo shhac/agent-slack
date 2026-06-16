@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/shhac/agent-slack/internal/mockslack"
 )
 
 func TestMessageGetByPermalink(t *testing.T) {
@@ -177,5 +179,33 @@ func TestMessageGetDownloadsFiles(t *testing.T) {
 	}
 	if _, has := parseJSON(t, out2)["message"].(map[string]any)["files"]; has {
 		t.Error("--no-download should omit files (no local paths to report)")
+	}
+}
+
+// --resolve cached expands referenced channel + usergroup ids (which arrive as
+// bare ids in mentions) into referenced_channels / referenced_usergroups, the
+// channel/usergroup analogs of referenced_users.
+func TestMessageGetResolvesChannelsAndUsergroups(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.history", historyWith(
+		simpleMessage("1770165109.628379", "U12345678",
+			"see <#C0ABCDEF1|general> ping <!subteam^S0TEAM1234>")))
+	f.server.HandleBody("conversations.info", mockslack.ChannelInfo("C0ABCDEF1", "general-updates"))
+	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList(
+		mockslack.Usergroup("S0TEAM1234", "productteam", "Product Team")))
+
+	out, _, err := f.run(t, "message", "get",
+		"https://acme.slack.com/archives/C0123ABCD/p1770165109628379", "--resolve", "cached")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, out)
+	chans, _ := payload["referenced_channels"].(map[string]any)
+	if c, _ := chans["C0ABCDEF1"].(map[string]any); c == nil || c["name"] != "general-updates" {
+		t.Errorf("referenced_channels = %v", payload["referenced_channels"])
+	}
+	groups, _ := payload["referenced_usergroups"].(map[string]any)
+	if g, _ := groups["S0TEAM1234"].(map[string]any); g == nil || g["handle"] != "productteam" {
+		t.Errorf("referenced_usergroups = %v", payload["referenced_usergroups"])
 	}
 }
