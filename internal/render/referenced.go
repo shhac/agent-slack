@@ -8,63 +8,111 @@ import (
 
 var (
 	// Enterprise-grid W IDs count as users here, unlike target parsing.
-	referencedUserIDRe = regexp.MustCompile(`^[UW][A-Z0-9]{8,}$`)
-	mentionTokenRe     = regexp.MustCompile(`<@([UW][A-Z0-9]{8,})(?:\|[^>]+)?>`)
+	referencedUserIDRe      = regexp.MustCompile(`^[UW][A-Z0-9]{8,}$`)
+	referencedChannelIDRe   = regexp.MustCompile(`^[CG][A-Z0-9]{8,}$`)
+	referencedUsergroupIDRe = regexp.MustCompile(`^S[A-Z0-9]{8,}$`)
+
+	mentionTokenRe          = regexp.MustCompile(`<@([UW][A-Z0-9]{8,})(?:\|[^>]+)?>`)
+	channelMentionTokenRe   = regexp.MustCompile(`<#([CG][A-Z0-9]{8,})(?:\|[^>]+)?>`)
+	usergroupMentionTokenRe = regexp.MustCompile(`<!subteam\^([S][A-Z0-9]{8,})(?:\|[^>]+)?>`)
 )
 
 // IsReferencedUserID reports whether s is a user ID as referenced in message
 // payloads — including enterprise-grid "W…" IDs, unlike target parsing's
 // IsUserID (which accepts only "U…").
-func IsReferencedUserID(s string) bool {
-	return referencedUserIDRe.MatchString(s)
+func IsReferencedUserID(s string) bool { return referencedUserIDRe.MatchString(s) }
+
+// IsReferencedChannelID reports whether s is a channel/group ID (C…/G…).
+func IsReferencedChannelID(s string) bool { return referencedChannelIDRe.MatchString(s) }
+
+// IsReferencedUsergroupID reports whether s is a usergroup (subteam) ID (S…).
+func IsReferencedUsergroupID(s string) bool { return referencedUsergroupIDRe.MatchString(s) }
+
+// ReferencedIDs holds the distinct entity ids a set of messages refers to. A
+// rich_text mention element carries only the bare id (no label), so resolving
+// these is the only way to make <@U…>/<#C…>/<!subteam^S…> mentions legible.
+type ReferencedIDs struct {
+	Users      []string
+	Channels   []string
+	Usergroups []string
 }
 
-// CollectReferencedUserIDs gathers every user ID a set of messages mentions —
-// authorship, <@U…> tokens in text, user/user_id/users fields anywhere in
-// blocks and attachments, and (optionally) reaction user lists — so
-// --resolve-users knows what to expand. Order is first-seen; map walks are
-// key-sorted for determinism.
-func CollectReferencedUserIDs(messages []MessageSummary, includeReactions bool) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(id string) {
-		if IsReferencedUserID(id) && !seen[id] {
-			seen[id] = true
-			out = append(out, id)
+// CollectReferencedIDs gathers every user, channel, and usergroup id a set of
+// messages refers to — authorship, mention tokens in text, and id fields
+// anywhere in blocks and attachments (and, optionally, reaction user lists) —
+// in a single tree-walk. Order is first-seen; map walks are key-sorted for
+// determinism.
+func CollectReferencedIDs(messages []MessageSummary, includeReactions bool) ReferencedIDs {
+	var r ReferencedIDs
+	seenU, seenC, seenG := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	addU := func(id string) {
+		if IsReferencedUserID(id) && !seenU[id] {
+			seenU[id] = true
+			r.Users = append(r.Users, id)
 		}
 	}
+	addC := func(id string) {
+		if IsReferencedChannelID(id) && !seenC[id] {
+			seenC[id] = true
+			r.Channels = append(r.Channels, id)
+		}
+	}
+	addG := func(id string) {
+		if IsReferencedUsergroupID(id) && !seenG[id] {
+			seenG[id] = true
+			r.Usergroups = append(r.Usergroups, id)
+		}
+	}
+	refs := refCollector{addU: addU, addC: addC, addG: addG}
 
 	for _, msg := range messages {
-		add(msg.User)
-		collectMentionIDs(msg.Text, add)
+		addU(msg.User)
+		refs.fromText(msg.Text)
 		for _, b := range msg.Blocks {
-			collectUserIDsFromValue(b, add)
+			refs.fromValue(b)
 		}
 		for _, a := range msg.Attachments {
-			collectUserIDsFromValue(a, add)
+			refs.fromValue(a)
 		}
 		if includeReactions {
-			for _, r := range msg.Reactions {
-				collectUserIDsFromValue(r, add)
+			for _, rx := range msg.Reactions {
+				refs.fromValue(rx)
 			}
 		}
 	}
-	return out
+	return r
 }
 
-func collectMentionIDs(text string, add func(string)) {
+// CollectReferencedUserIDs is the user-only projection of CollectReferencedIDs,
+// kept for callers that resolve only users.
+func CollectReferencedUserIDs(messages []MessageSummary, includeReactions bool) []string {
+	return CollectReferencedIDs(messages, includeReactions).Users
+}
+
+// refCollector threads the three per-type add funcs through one recursive walk.
+type refCollector struct {
+	addU, addC, addG func(string)
+}
+
+func (r refCollector) fromText(text string) {
 	for _, m := range mentionTokenRe.FindAllStringSubmatch(text, -1) {
-		add(m[1])
+		r.addU(m[1])
+	}
+	for _, m := range channelMentionTokenRe.FindAllStringSubmatch(text, -1) {
+		r.addC(m[1])
+	}
+	for _, m := range usergroupMentionTokenRe.FindAllStringSubmatch(text, -1) {
+		r.addG(m[1])
 	}
 }
 
-func collectUserIDsFromValue(value any, add func(string)) {
+func (r refCollector) fromValue(value any) {
 	switch v := value.(type) {
 	case string:
-		collectMentionIDs(v, add)
+		r.fromText(v)
 	case []any:
 		for _, item := range v {
-			collectUserIDsFromValue(item, add)
+			r.fromValue(item)
 		}
 	case map[string]any:
 		for _, key := range slices.Sorted(maps.Keys(v)) {
@@ -72,18 +120,28 @@ func collectUserIDsFromValue(value any, add func(string)) {
 			switch key {
 			case "user", "user_id":
 				if id, ok := child.(string); ok {
-					add(id)
+					r.addU(id)
 					continue
 				}
 			case "users":
 				for _, u := range asSlice(child) {
 					if id, ok := u.(string); ok {
-						add(id)
+						r.addU(id)
 					}
 				}
 				continue
+			case "channel_id":
+				if id, ok := child.(string); ok {
+					r.addC(id)
+					continue
+				}
+			case "usergroup_id":
+				if id, ok := child.(string); ok {
+					r.addG(id)
+					continue
+				}
 			}
-			collectUserIDsFromValue(child, add)
+			r.fromValue(child)
 		}
 	}
 }

@@ -53,3 +53,28 @@ func TestCollectReferencedUserIDsIgnoresInvalid(t *testing.T) {
 		t.Errorf("got %v, want empty", got)
 	}
 }
+
+func TestCollectReferencedIDsChannelsAndUsergroups(t *testing.T) {
+	messages := []MessageSummary{
+		{
+			Text: "see <#C12345678|general> and ping <!subteam^S12345678|@team>",
+			Blocks: []any{map[string]any{
+				"type": "rich_text",
+				"elements": []any{map[string]any{
+					"type": "rich_text_section",
+					"elements": []any{
+						map[string]any{"type": "channel", "channel_id": "C87654321"},
+						map[string]any{"type": "usergroup", "usergroup_id": "S87654321"},
+					},
+				}},
+			}},
+		},
+	}
+	got := CollectReferencedIDs(messages, false)
+	if want := []string{"C12345678", "C87654321"}; !reflect.DeepEqual(got.Channels, want) {
+		t.Errorf("channels = %v, want %v", got.Channels, want)
+	}
+	if want := []string{"S12345678", "S87654321"}; !reflect.DeepEqual(got.Usergroups, want) {
+		t.Errorf("usergroups = %v, want %v", got.Usergroups, want)
+	}
+}
