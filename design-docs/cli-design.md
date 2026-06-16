@@ -45,7 +45,7 @@ global persistent flags.
 | `usergroup get <usergroup…>` | | | id `S…` or `@handle`; one→object, several→NDJSON |
 | `usergroup members <usergroup>` | `--resolve none\|cached\|auto\|fresh`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
 | `cache info` | | | reports cached categories/entries per workspace |
-| `cache warm` | `--page-delay` (1s), `--include-bots` | | paginates users/channels/usergroups, paced for rate limits, streams JSONL progress |
+| `cache warm` | `--page-delay` (1s), `--no-bots` | | paginates users/channels/usergroups (bots included by default for a complete set; `--no-bots` opts out), paced for rate limits, streams JSONL progress |
 | `cache purge` | `--workspace`, `--all-workspaces`, `--downloads` | | clears cached data |
 | `config get/set/list/unset` | | | persists settings (e.g. TTLs) in `config.json` |
 | `channel list` | `--user`, `--all`, `--limit` (100), `--cursor` | | NDJSON, compact projection |

@@ -120,8 +120,9 @@ Individual rejections are never cached (a transient `trigger_not_found` won't
 stick), and the side-effecting `workflow run` path is never cached.
 
 **Completeness sentinel (authoritative misses).** When a full enumeration of a
-category finishes — `cache warm` (channels/usergroups always; users only with
-`--include-bots`), or a resolution that paginated to the end — the category is
+category finishes — `cache warm` (channels/usergroups always; users too unless
+`--no-bots`, which leaves the set incomplete), or a resolution that paginated to
+the end — the category is
 stamped complete. Within a per-category **completeness window** (default
 **30m**, keys `cache.ttl.users-complete` / `channels-complete` /
 `usergroups-complete`) a later **miss is treated as authoritative**: the

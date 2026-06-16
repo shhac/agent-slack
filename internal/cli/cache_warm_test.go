@@ -67,8 +67,8 @@ func TestCacheWarm(t *testing.T) {
 			done[line["category"].(string)] = int(line["count"].(float64))
 		}
 	}
-	if done["users"] != 1 { // the bot is filtered out by default
-		t.Errorf("users warmed = %d, want 1", done["users"])
+	if done["users"] != 2 { // bots are included by default (complete set arms the sentinel)
+		t.Errorf("users warmed = %d, want 2 (alice + bot)", done["users"])
 	}
 	if done["channels"] != 2 {
 		t.Errorf("channels warmed = %d, want 2", done["channels"])
@@ -88,8 +88,8 @@ func TestCacheWarm(t *testing.T) {
 	}
 }
 
-// --include-bots warms bot users too.
-func TestCacheWarmIncludeBots(t *testing.T) {
+// --no-bots excludes bot users (opt out of the default complete warm).
+func TestCacheWarmNoBots(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{
 		map[string]any{"id": "U0ALICEAA", "name": "alice"},
@@ -98,14 +98,14 @@ func TestCacheWarmIncludeBots(t *testing.T) {
 	f.server.HandleBody("conversations.list", mockslack.ConversationsList())
 	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList())
 
-	out, _, err := f.run(t, "cache", "warm", "--page-delay", "0", "--include-bots")
+	out, _, err := f.run(t, "cache", "warm", "--page-delay", "0", "--no-bots")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, line := range parseNDJSON(t, out) {
 		if line["category"] == "users" {
-			if d, _ := line["done"].(bool); d && int(line["count"].(float64)) != 2 {
-				t.Errorf("users warmed = %v, want 2 with --include-bots", line["count"])
+			if d, _ := line["done"].(bool); d && int(line["count"].(float64)) != 1 {
+				t.Errorf("users warmed = %v, want 1 with --no-bots", line["count"])
 			}
 		}
 	}

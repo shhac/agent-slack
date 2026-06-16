@@ -16,8 +16,12 @@ const (
 type WarmOptions struct {
 	// PageDelay pauses between paged API calls to stay under Slack's rate
 	// limits (the client also backs off on a 429). Zero disables the pause.
-	PageDelay   time.Duration
-	IncludeBots bool // include bot users in the users warm
+	PageDelay time.Duration
+	// NoBots excludes bot users from the users warm. Bots are included by
+	// default so a warm enumerates the COMPLETE user set — that's what arms the
+	// completeness sentinel (and lets `--resolve auto` trust a miss). Excluding
+	// them leaves the set incomplete, so the sentinel is not armed.
+	NoBots bool
 	// Categories limits the sweep to the named categories; empty means all.
 	Categories []string
 }
@@ -92,7 +96,7 @@ func warmUsers(ctx context.Context, c *Client, opts WarmOptions, emit func(WarmE
 			if getStr(m, "id") == "" {
 				continue
 			}
-			if !opts.IncludeBots && getBool(m, "is_bot") {
+			if opts.NoBots && getBool(m, "is_bot") {
 				continue
 			}
 			users = append(users, ToCompactUser(m))
@@ -110,9 +114,10 @@ func warmUsers(ctx context.Context, c *Client, opts WarmOptions, emit func(WarmE
 			users[i].DMID = dmMap[users[i].ID]
 		}
 	}
-	// Complete only when bots were included — otherwise the set is missing the
-	// bot members and a bot-handle miss must not be trusted as authoritative.
-	c.warmUserCache(users, opts.IncludeBots)
+	// Complete only when bots were included (the default) — without them the set
+	// is missing the bot members and a bot-handle miss must not be trusted as
+	// authoritative.
+	c.warmUserCache(users, !opts.NoBots)
 	emit(WarmEvent{Category: "users", Count: len(users), Done: true})
 	return nil
 }

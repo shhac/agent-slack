@@ -27,7 +27,7 @@ func registerCache(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 	var pageDelay time.Duration
-	var includeBots bool
+	var noBots bool
 	cmd := &cobra.Command{
 		Use:       "warm [users|channels|usergroups...]",
 		Short:     "Pre-fetch users, channels, and usergroups into the cache (paced for rate limits; streams JSONL progress)",
@@ -41,16 +41,16 @@ func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 			}
 			w := output.NewNDJSONWriter(globals.stdout)
 			return slack.WarmWorkspace(cmd.Context(), cc.Client, slack.WarmOptions{
-				PageDelay:   pageDelay,
-				IncludeBots: includeBots,
-				Categories:  args,
+				PageDelay:  pageDelay,
+				NoBots:     noBots,
+				Categories: args,
 			}, func(e slack.WarmEvent) {
 				_ = w.WriteItem(e) // stream progress as we go; consumers can filter done:true for the summary
 			})
 		},
 	}
 	cmd.Flags().DurationVar(&pageDelay, "page-delay", time.Second, "Pause between paged API calls to stay under Slack rate limits (0 to disable)")
-	cmd.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot users")
+	cmd.Flags().BoolVar(&noBots, "no-bots", false, "Exclude bot users (by default bots are warmed so the set is complete for resolution; excluding them leaves the completeness sentinel un-armed)")
 	parent.AddCommand(cmd)
 }
 
