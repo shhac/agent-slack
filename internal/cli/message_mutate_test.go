@@ -148,6 +148,59 @@ func TestMessageEditAddAttachment(t *testing.T) {
 	}
 }
 
+// --attach and --remove-attachment in one edit: removals are validated and
+// applied first, then the uploaded id is appended (kept…, uploaded…).
+func TestMessageEditAddAndRemoveAttachment(t *testing.T) {
+	f := newCLIFixture(t)
+	host := okUploadHost(t)
+	f.server.HandleBody("conversations.history", historyWith(messageWithFiles("F1", "F2", "F3")))
+	f.server.HandleBody("files.getUploadURLExternal", map[string]any{
+		"ok": true, "upload_url": host.URL + "/u", "file_id": "F0NEW",
+	})
+	f.server.HandleBody("files.completeUploadExternal", map[string]any{"ok": true})
+	f.server.HandleBody("chat.update", map[string]any{"ok": true})
+
+	attachment := writeTempFile(t, "extra.txt")
+	if _, _, err := f.run(t, "message", "edit", editPermalink,
+		"--remove-attachment", "F2", "--attach", attachment, "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.server.CallsFor("chat.update")[0].Params.Get("file_ids"); got != "F1,F3,F0NEW" {
+		t.Errorf("file_ids = %q, want kept-minus-removed then uploaded", got)
+	}
+}
+
+// A failed upload during edit aborts before chat.update, so the message's
+// attachments are never partially rewritten.
+func TestMessageEditAttachUploadFailureAborts(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.history", historyWith(messageWithFiles("F1")))
+	f.server.HandleBody("files.getUploadURLExternal", map[string]any{"ok": false, "error": "upload_disabled"})
+	f.server.HandleBody("chat.update", map[string]any{"ok": true})
+
+	attachment := writeTempFile(t, "extra.txt")
+	if _, _, err := f.run(t, "message", "edit", editPermalink, "--attach", attachment, "--yes"); err == nil {
+		t.Fatal("a failed upload should abort the edit")
+	}
+	if n := len(f.server.CallsFor("chat.update")); n != 0 {
+		t.Errorf("chat.update must not run when an upload fails, got %d calls", n)
+	}
+}
+
+// Removal ids are whitespace-trimmed, so a padded id still matches.
+func TestMessageEditRemoveAttachmentTrimsWhitespace(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.history", historyWith(messageWithFiles("F1", "F2")))
+	f.server.HandleBody("chat.update", map[string]any{"ok": true})
+
+	if _, _, err := f.run(t, "message", "edit", editPermalink, "--remove-attachment", "  F2  ", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.server.CallsFor("chat.update")[0].Params.Get("file_ids"); got != "F1" {
+		t.Errorf("file_ids = %q, want F1 (padded id should still match F2)", got)
+	}
+}
+
 // Removing an id the message doesn't have fails loudly (agent-fixable) rather
 // than silently no-op'ing.
 func TestMessageEditRemoveUnknownAttachment(t *testing.T) {

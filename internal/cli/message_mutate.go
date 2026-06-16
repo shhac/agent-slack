@@ -39,44 +39,14 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-
-			params := map[string]any{
-				"channel": ref.ChannelID,
-				"ts":      ref.MessageTS,
-			}
-
-			// Attachment edits use chat.update file_ids, which replaces the whole
-			// set — so start from the message's current attachments, then add and
-			// remove. (Omitting file_ids entirely preserves them, the text path.)
-			if changingAttachments {
-				msg, err := slack.FetchMessage(ctx, cc.Client, ref, false)
-				if err != nil {
-					return err
-				}
-				fileIDs, err := editedFileIDs(ctx, cc.Client, msg, attach, removeAttachment)
-				if err != nil {
-					return err
-				}
-				params["file_ids"] = strings.Join(fileIDs, ",")
-				// Re-send the existing text/blocks so an attachment-only edit
-				// doesn't blank the message body.
-				if !hasText {
-					params["text"] = msg.Text
-					if len(msg.Blocks) > 0 {
-						params["blocks"] = msg.Blocks
-					}
-				}
-			}
-
+			text := ""
 			if hasText {
-				text := slack.ResolveMentions(ctx, cc.Client, args[1])
-				rtBlocks, outboundText := render.RenderOutbound(text, slackMarkdown)
-				params["text"] = render.FormatOutboundText(outboundText)
-				if rtBlocks != nil {
-					params["blocks"] = toAnySlice(rtBlocks)
-				}
+				text = args[1]
 			}
-
+			params, err := buildEditParams(ctx, cc.Client, ref, text, hasText, slackMarkdown, attach, removeAttachment)
+			if err != nil {
+				return err
+			}
 			if _, err := cc.Client.API(ctx, "chat.update", params); err != nil {
 				return err
 			}
@@ -89,6 +59,47 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringArrayVar(&attach, "attach", nil, "Path to a file to upload and add as an attachment (repeatable)")
 	cmd.Flags().StringArrayVar(&removeAttachment, "remove-attachment", nil, "File ID to remove from the message; see the file ids in 'message get' (repeatable)")
 	parent.AddCommand(cmd)
+}
+
+// buildEditParams assembles the chat.update params for an edit. Attachment
+// edits use file_ids, which replaces the whole set — so it reads the message's
+// current attachments and adds/removes against them, re-sending the existing
+// body when only attachments change so the text isn't blanked. A text-only edit
+// omits file_ids entirely, which preserves existing attachments.
+func buildEditParams(ctx context.Context, c *slack.Client, ref *render.MessageRef, text string, hasText, slackMarkdown bool, attach, removeAttachment []string) (map[string]any, error) {
+	params := map[string]any{
+		"channel": ref.ChannelID,
+		"ts":      ref.MessageTS,
+	}
+
+	if len(attach) > 0 || len(removeAttachment) > 0 {
+		msg, err := slack.FetchMessage(ctx, c, ref, false)
+		if err != nil {
+			return nil, err
+		}
+		fileIDs, err := editedFileIDs(ctx, c, msg, attach, removeAttachment)
+		if err != nil {
+			return nil, err
+		}
+		params["file_ids"] = strings.Join(fileIDs, ",")
+		if !hasText {
+			params["text"] = msg.Text
+			if len(msg.Blocks) > 0 {
+				params["blocks"] = msg.Blocks
+			}
+		}
+	}
+
+	if hasText {
+		resolved := slack.ResolveMentions(ctx, c, text)
+		rtBlocks, outboundText := render.RenderOutbound(resolved, slackMarkdown)
+		params["text"] = render.FormatOutboundText(outboundText)
+		if rtBlocks != nil {
+			params["blocks"] = toAnySlice(rtBlocks)
+		}
+	}
+
+	return params, nil
 }
 
 // describeEdit renders the --yes confirmation line for an edit's combination of

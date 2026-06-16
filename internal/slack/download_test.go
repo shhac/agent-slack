@@ -8,6 +8,29 @@ import (
 	"testing"
 )
 
+func TestDownloadURL(t *testing.T) {
+	cases := []struct {
+		name              string
+		isCanvas          bool
+		private, download string
+		want              string
+	}{
+		{"normal prefers download", false, "P", "D", "D"},
+		{"normal falls back to private", false, "P", "", "P"},
+		{"canvas prefers private", true, "P", "D", "P"},
+		{"canvas falls back to download", true, "", "D", "D"},
+		{"neither set", false, "", "", ""},
+		{"canvas neither set", true, "", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := downloadURL(tc.isCanvas, tc.private, tc.download); got != tc.want {
+				t.Errorf("downloadURL(%v, %q, %q) = %q, want %q", tc.isCanvas, tc.private, tc.download, got, tc.want)
+			}
+		})
+	}
+}
+
 // A DestDir whose parent is a regular file makes MkdirAll fail before any
 // network call, exercising the downloadErr wrapper (which once recursed
 // infinitely). The result must be a real *DownloadError.

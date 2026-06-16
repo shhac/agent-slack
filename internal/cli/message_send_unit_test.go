@@ -69,9 +69,7 @@ func TestBuildSendRequestFormatting(t *testing.T) {
 }
 
 func TestSendPayloadBuilders(t *testing.T) {
-	req := sendRequest{channelID: "C1", threadTS: "1.000001"}
-
-	posted := postedPayload(req, slack.PostResult{ChannelID: "D9", TS: "2.000002"}, "https://acme.slack.com")
+	posted := postedMessagePayload(slack.PostResult{ChannelID: "D9", TS: "2.000002"}, "https://acme.slack.com", "1.000001")
 	if posted["channel_id"] != "D9" || posted["ts"] != "2.000002" || posted["thread_ts"] != "1.000001" {
 		t.Errorf("posted = %v", posted)
 	}
@@ -80,12 +78,12 @@ func TestSendPayloadBuilders(t *testing.T) {
 	}
 
 	// No ts echoed → no permalink, no ts key.
-	bare := postedPayload(sendRequest{channelID: "C1"}, slack.PostResult{ChannelID: "C1"}, "https://acme.slack.com")
+	bare := postedMessagePayload(slack.PostResult{ChannelID: "C1"}, "https://acme.slack.com", "")
 	if _, has := bare["ts"]; has {
 		t.Errorf("bare = %v", bare)
 	}
 
-	scheduled := scheduledPayload(req, slack.ScheduleResult{ChannelID: "C1", ScheduledMessageID: "Q1", PostAt: 1781000000})
+	scheduled := scheduleResultPayload(slack.ScheduleResult{ChannelID: "C1", ScheduledMessageID: "Q1", PostAt: 1781000000}, "1.000001")
 	if scheduled["scheduled_message_id"] != "Q1" || scheduled["post_at"] != int64(1781000000) {
 		t.Errorf("scheduled = %v", scheduled)
 	}

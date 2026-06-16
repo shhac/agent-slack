@@ -196,7 +196,7 @@ func sendScheduled(ctx context.Context, globals *GlobalFlags, cc *clientContext,
 	if err != nil {
 		return err
 	}
-	return printSingle(globals, scheduledPayload(req, result))
+	return printSingle(globals, scheduleResultPayload(result, req.threadTS))
 }
 
 func sendPlain(ctx context.Context, globals *GlobalFlags, cc *clientContext, req sendRequest) error {
@@ -204,7 +204,7 @@ func sendPlain(ctx context.Context, globals *GlobalFlags, cc *clientContext, req
 	if err != nil {
 		return err
 	}
-	return printSingle(globals, postedPayload(req, result, cc.WorkspaceURL))
+	return printSingle(globals, postedMessagePayload(result, cc.WorkspaceURL, req.threadTS))
 }
 
 func sendAttachments(ctx context.Context, globals *GlobalFlags, cc *clientContext, req sendRequest) error {
@@ -228,10 +228,6 @@ func basePayload(req sendRequest, channelID string) map[string]any {
 	return payload
 }
 
-func scheduledPayload(req sendRequest, r slack.ScheduleResult) map[string]any {
-	return scheduleResultPayload(r, req.threadTS)
-}
-
 // scheduleResultPayload is the {ok, channel_id, post_at, scheduled_message_id}
 // shape every "we scheduled a message" result shares (message send and draft
 // promote). threadTS, when set, is added.
@@ -245,10 +241,6 @@ func scheduleResultPayload(r slack.ScheduleResult, threadTS string) map[string]a
 		payload["scheduled_message_id"] = r.ScheduledMessageID
 	}
 	return payload
-}
-
-func postedPayload(req sendRequest, r slack.PostResult, workspaceURL string) map[string]any {
-	return postedMessagePayload(r, workspaceURL, req.threadTS)
 }
 
 // postedMessagePayload is the ok/channel_id/ts/permalink shape every "we posted

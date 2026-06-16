@@ -200,6 +200,20 @@ type MessageDownloads struct {
 // DestDir, keyed by file ID. Canvas-mode files are converted to Markdown.
 // Failures never abort: they surface as error entries pointing at a
 // .download-error.txt.
+// downloadURL picks the URL to fetch a file from, with a fallback. Canvases
+// must use url_private (their download variant 404s); everything else prefers
+// the download URL. Returns "" when neither URL is set.
+func downloadURL(isCanvas bool, urlPrivate, urlPrivateDownload string) string {
+	primary, fallback := urlPrivateDownload, urlPrivate
+	if isCanvas {
+		primary, fallback = urlPrivate, urlPrivateDownload
+	}
+	if primary != "" {
+		return primary
+	}
+	return fallback
+}
+
 func DownloadMessageFiles(ctx context.Context, c *Client, messages []render.MessageSummary, opts MessageDownloads) map[string]render.DownloadResult {
 	warn := opts.Warn
 	if warn == nil {
@@ -212,18 +226,7 @@ func DownloadMessageFiles(ctx context.Context, c *Client, messages []render.Mess
 				continue
 			}
 			isCanvas := canvasModes[file.Mode]
-
-			// Canvases must use url_private (the download variant 404s);
-			// everything else prefers the download URL.
-			fileURL := file.URLPrivateDownload
-			if isCanvas {
-				fileURL = file.URLPrivate
-				if fileURL == "" {
-					fileURL = file.URLPrivateDownload
-				}
-			} else if fileURL == "" {
-				fileURL = file.URLPrivate
-			}
+			fileURL := downloadURL(isCanvas, file.URLPrivate, file.URLPrivateDownload)
 			if fileURL == "" {
 				continue
 			}
