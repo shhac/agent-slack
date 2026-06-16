@@ -30,3 +30,43 @@ func TestRichTextBlocksForText(t *testing.T) {
 		t.Error("structured text should produce blocks")
 	}
 }
+
+// The synthesized plain-text fallback block has an exact shape (one rich_text →
+// rich_text_section → single text element). Lock it: drafts have no text
+// fallback, so any change to this structure changes what users see.
+func TestRichTextBlocksForTextPlainShape(t *testing.T) {
+	const want = `[{"type":"rich_text","elements":[{"type":"rich_text_section","elements":[{"type":"text","text":"hello world"}]}]}]`
+	got, _ := json.Marshal(RichTextBlocksForText("hello world", RichTextOptions{}))
+	if string(got) != want {
+		t.Errorf("plain fallback shape:\n got %s\nwant %s", got, want)
+	}
+}
+
+// RenderOutbound is the one place the dialect→(blocks, text) rule lives for
+// send/edit. Pin all three contract cases directly (CLI tests only exercise it
+// indirectly): plain Markdown stays a plain text field; Markdown formatting
+// moves into blocks with a flattened fallback; Slack-mrkdwn keeps inline
+// formatting in the native text field (no blocks).
+func TestRenderOutbound(t *testing.T) {
+	// Plain Markdown → no blocks, fallback unchanged.
+	if blocks, fallback := RenderOutbound("Hello world", false); len(blocks) != 0 || fallback != "Hello world" {
+		t.Errorf("plain markdown: blocks=%v fallback=%q", blocks, fallback)
+	}
+
+	// Markdown formatting → blocks carry the style; fallback flattened (no **).
+	blocks, fallback := RenderOutbound("**bold**", false)
+	if len(blocks) == 0 {
+		t.Fatal("markdown bold should produce blocks")
+	}
+	if raw, _ := json.Marshal(blocks); !strings.Contains(string(raw), `"bold":true`) || strings.Contains(string(raw), "**") {
+		t.Errorf("markdown bold blocks = %s", raw)
+	}
+	if fallback != "bold" {
+		t.Errorf("markdown bold fallback = %q, want flattened 'bold'", fallback)
+	}
+
+	// Slack mrkdwn → inline formatting stays in the native text field, no blocks.
+	if blocks, fallback := RenderOutbound("*bold*", true); len(blocks) != 0 || fallback != "*bold*" {
+		t.Errorf("slack mrkdwn: blocks=%v fallback=%q", blocks, fallback)
+	}
+}
