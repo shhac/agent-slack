@@ -151,9 +151,62 @@ func TestRateLimitRetryCapAndExhaustion(t *testing.T) {
 		t.Errorf("retried %d times, want 3", len(*slept))
 	}
 	for _, d := range *slept {
-		if d != 30*time.Second {
-			t.Errorf("delay %v, want capped 30s", d)
+		if d != 60*time.Second {
+			t.Errorf("delay %v, want capped 60s", d)
 		}
+	}
+}
+
+// A Retry-After above the old 30s cap but within the new 60s ceiling must be
+// honoured verbatim — this is the conversations.history 1 req/min tier case.
+func TestRateLimitHonoursHeaderAboveOldCap(t *testing.T) {
+	server := mockslack.New()
+	server.Handle("conversations.history",
+		mockslack.Response{Status: 429, Header: map[string]string{"Retry-After": "60"}},
+		mockslack.Response{Body: map[string]any{"ok": true}},
+	)
+	sleep, slept := noSleep(t)
+	c := newBrowserClient(t, server, WithSleep(sleep))
+
+	if _, err := c.API(context.Background(), "conversations.history", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(*slept) != 1 || (*slept)[0] != 60*time.Second {
+		t.Errorf("slept = %v, want [60s] honoured verbatim", *slept)
+	}
+}
+
+func TestRateLimitNotice(t *testing.T) {
+	server := mockslack.New()
+	server.Handle("conversations.history",
+		mockslack.Response{Status: 429, Header: map[string]string{"Retry-After": "2"}},
+		mockslack.Response{Status: 429, Header: map[string]string{"Retry-After": "2"}},
+		mockslack.Response{Status: 429, Header: map[string]string{"Retry-After": "2"}},
+		mockslack.Response{Status: 429, Header: map[string]string{"Retry-After": "2"}},
+	)
+	sleep, _ := noSleep(t)
+	var notices []RateLimitNotice
+	c := newBrowserClient(t, server, WithSleep(sleep),
+		WithRateLimitNotice(func(n RateLimitNotice) { notices = append(notices, n) }))
+
+	if _, err := c.API(context.Background(), "conversations.history", nil); err == nil {
+		t.Fatal("expected exhaustion error")
+	}
+
+	// One notice per 429: three retried, one terminal.
+	if len(notices) != maxRateLimitRetry+1 {
+		t.Fatalf("got %d notices, want %d", len(notices), maxRateLimitRetry+1)
+	}
+	for i, n := range notices[:maxRateLimitRetry] {
+		if !n.WillRetry {
+			t.Errorf("notice %d: WillRetry = false, want true", i)
+		}
+		if n.Method != "conversations.history" || n.Attempt != i+1 || n.Delay != 2*time.Second {
+			t.Errorf("notice %d = %+v", i, n)
+		}
+	}
+	if last := notices[maxRateLimitRetry]; last.WillRetry {
+		t.Errorf("terminal notice WillRetry = true, want false: %+v", last)
 	}
 }
 

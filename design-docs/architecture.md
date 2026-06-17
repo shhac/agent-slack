@@ -37,7 +37,10 @@ defaults, projections, and the decisions behind them are in `cli-design.md`.
   standard token path (`xoxb`/`xoxp` Bearer against `https://slack.com`,
   overridable base URL). `APIMultipart` covers internal methods (`saved.*`)
   that ignore urlencoded params.
-- 429s retry up to 3× honouring `Retry-After`, clamped to [1s, 30s].
+- 429s retry up to 3× honouring `Retry-After`, clamped to [1s, 60s] (60s
+  covers Slack's strictest tier — 1 req/min on `conversations.history`/
+  `.replies` for non-Marketplace apps). Each 429 fires the
+  `WithRateLimitNotice` hook so the CLI emits a structured notice on stderr.
 - Structured error mapping to `internal/errors.APIError` with `fixable_by`;
   `ErrorCode`/`IsAuthError` expose the Slack code without string matching,
   and `response_metadata.messages` details become hints.

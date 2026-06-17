@@ -11,6 +11,7 @@ import (
 
 	"github.com/shhac/agent-slack/internal/credential"
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
+	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
@@ -158,7 +159,26 @@ func clientOptions(globals *GlobalFlags) []slack.Option {
 		opts = append(opts, slack.WithBaseURL(globals.BaseURL))
 	}
 	opts = append(opts, slack.WithCache(buildCache(globals)))
+	opts = append(opts, slack.WithRateLimitNotice(rateLimitNotice(globals)))
 	return opts
+}
+
+// rateLimitNotice surfaces Slack 429s on stderr as structured notices so an
+// agent (or human) sees why a command stalled or failed. The terminal hit adds
+// a hint about Slack's 1 req/min non-Marketplace tier on conversations.history
+// / conversations.replies — the most common reason reads get throttled.
+func rateLimitNotice(globals *GlobalFlags) slack.RateLimitFunc {
+	return func(n slack.RateLimitNotice) {
+		if n.WillRetry {
+			output.WriteNotice(globals.stderr,
+				fmt.Sprintf("rate limited by Slack on %s; waiting %s before retry (attempt %d)", n.Method, n.Delay, n.Attempt),
+				"")
+			return
+		}
+		output.WriteNotice(globals.stderr,
+			fmt.Sprintf("rate limited by Slack on %s; gave up after %d attempts", n.Method, n.Attempt),
+			"if this persists on conversations.history/replies, your token is likely on Slack's 1 req/min non-Marketplace tier — use an internal/custom app token to get the 50 req/min tier")
+	}
 }
 
 // desktopRefresh re-extracts credentials from Slack Desktop when a call hits

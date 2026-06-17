@@ -45,9 +45,12 @@ All collapse to one Markdown string. Forwarded content: extract
 
 ## Rate limiting
 
-- Browser path: retry 429 up to 3× with exponential backoff, cap ~30s.
+- Browser path: retry 429 up to 3× honouring `Retry-After`, cap 60s.
 - Standard path applies equivalent bounded retry and maps exhaustion to
   `fixable_by: retry`.
+- Every 429 emits a structured notice on stderr (`{"notice": ...}`); the
+  terminal hit adds a hint about Slack's 1 req/min non-Marketplace tier on
+  `conversations.history`/`.replies`.
 
 ## Credentials
 

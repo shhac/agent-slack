@@ -54,8 +54,25 @@ const (
 	defaultBaseURL    = "https://slack.com"
 	defaultTimeout    = 60 * time.Second
 	maxRateLimitRetry = 3
-	maxRetryDelay     = 30 * time.Second
+	// maxRetryDelay caps how long we honour a server Retry-After. 60s covers
+	// Slack's strictest documented tier — the 1 req/min limit on
+	// conversations.history / conversations.replies for non-Marketplace apps —
+	// while still bounding total wait so a pathological header can't hang the CLI.
+	maxRetryDelay = 60 * time.Second
 )
+
+// RateLimitNotice describes a single 429 the client received, handed to the
+// WithRateLimitNotice hook so the CLI can tell the user a request was throttled.
+type RateLimitNotice struct {
+	Method     string        // the Slack method that was throttled
+	RetryAfter time.Duration // wait the server asked for (or the 5s default)
+	Delay      time.Duration // wait we will actually perform (RetryAfter, capped)
+	Attempt    int           // 1-based attempt number that hit the limit
+	WillRetry  bool          // false once retries are exhausted
+}
+
+// RateLimitFunc observes rate-limit hits. It must not block.
+type RateLimitFunc func(RateLimitNotice)
 
 type Client struct {
 	mu        sync.Mutex
@@ -66,9 +83,10 @@ type Client struct {
 	sleep     func(ctx context.Context, d time.Duration) error
 	baseURL   string
 	userAgent string
-	debug     io.Writer
-	onRefresh RefreshFunc
-	cache     *Cache
+	debug       io.Writer
+	onRefresh   RefreshFunc
+	onRateLimit RateLimitFunc
+	cache       *Cache
 }
 
 type Option func(*Client)
@@ -79,6 +97,12 @@ func WithUserAgent(ua string) Option        { return func(c *Client) { c.userAge
 func WithDebug(w io.Writer) Option          { return func(c *Client) { c.debug = w } }
 func WithAuthRefresh(fn RefreshFunc) Option { return func(c *Client) { c.onRefresh = fn } }
 func WithCache(cache *Cache) Option         { return func(c *Client) { c.cache = cache } }
+
+// WithRateLimitNotice registers a hook invoked on every 429, so the caller can
+// surface throttling to the user (the client itself stays output-agnostic).
+func WithRateLimitNotice(fn RateLimitFunc) Option {
+	return func(c *Client) { c.onRateLimit = fn }
+}
 
 // WithSleep replaces the retry backoff sleep so tests run without delays.
 func WithSleep(fn func(ctx context.Context, d time.Duration) error) Option {
@@ -163,18 +187,34 @@ func (c *Client) currentAuth() Auth {
 	return c.auth
 }
 
+func (c *Client) notifyRateLimit(n RateLimitNotice) {
+	if c.onRateLimit != nil {
+		c.onRateLimit(n)
+	}
+}
+
 func (c *Client) call(ctx context.Context, method string, params map[string]any, enc bodyEncoder) (map[string]any, error) {
 	for attempt := 0; ; attempt++ {
 		resp, retryAfter, err := c.doRequest(ctx, method, params, enc)
-		if retryAfter > 0 && attempt < maxRateLimitRetry {
-			delay := min(max(retryAfter, time.Second), maxRetryDelay)
-			c.debugf("429 calling %s, retrying in %s (attempt %d)", method, delay, attempt+1)
-			if sleepErr := c.sleep(ctx, delay); sleepErr != nil {
-				return nil, mapNetworkError(method, sleepErr)
-			}
-			continue
+		if retryAfter <= 0 {
+			return resp, err
 		}
-		return resp, err
+		willRetry := attempt < maxRateLimitRetry
+		delay := min(max(retryAfter, time.Second), maxRetryDelay)
+		c.notifyRateLimit(RateLimitNotice{
+			Method:     method,
+			RetryAfter: retryAfter,
+			Delay:      delay,
+			Attempt:    attempt + 1,
+			WillRetry:  willRetry,
+		})
+		if !willRetry {
+			return resp, err
+		}
+		c.debugf("429 calling %s, retrying in %s (attempt %d)", method, delay, attempt+1)
+		if sleepErr := c.sleep(ctx, delay); sleepErr != nil {
+			return nil, mapNetworkError(method, sleepErr)
+		}
 	}
 }
 
