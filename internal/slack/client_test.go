@@ -210,6 +210,73 @@ func TestRateLimitNotice(t *testing.T) {
 	}
 }
 
+func TestRetryAfterDuration(t *testing.T) {
+	cases := []struct {
+		header string
+		want   time.Duration
+	}{
+		{"", 5 * time.Second},      // absent → default
+		{"abc", 5 * time.Second},   // unparseable → default
+		{"0", 5 * time.Second},     // non-positive → default
+		{"-5", 5 * time.Second},    // negative → default
+		{"  3  ", 3 * time.Second}, // whitespace trimmed
+		{"60", 60 * time.Second},
+		{"120", 120 * time.Second}, // capping happens later in call(), not here
+	}
+	for _, tc := range cases {
+		if got := retryAfterDuration(tc.header); got != tc.want {
+			t.Errorf("retryAfterDuration(%q) = %v, want %v", tc.header, got, tc.want)
+		}
+	}
+}
+
+// A context error from the backoff sleep (e.g. Retry-After exceeds --timeout)
+// must abort immediately with a mapped error and no further request.
+func TestRateLimitSleepCancellation(t *testing.T) {
+	server := mockslack.New()
+	server.Handle("conversations.history",
+		mockslack.Response{Status: 429, Header: map[string]string{"Retry-After": "2"}},
+		mockslack.Response{Body: map[string]any{"ok": true}},
+	)
+	var notices int
+	c := newBrowserClient(t, server,
+		WithSleep(func(context.Context, time.Duration) error { return context.DeadlineExceeded }),
+		WithRateLimitNotice(func(RateLimitNotice) { notices++ }))
+
+	_, err := c.API(context.Background(), "conversations.history", nil)
+	var apiErr *agenterrors.APIError
+	if !agenterrors.As(err, &apiErr) {
+		t.Fatalf("err = %v, want mapped APIError", err)
+	}
+	if calls := server.CallsFor("conversations.history"); len(calls) != 1 {
+		t.Errorf("made %d requests, want 1 (no retry after sleep failure)", len(calls))
+	}
+	if notices != 1 {
+		t.Errorf("notices = %d, want 1 (the 429 fires before the sleep fails)", notices)
+	}
+}
+
+// The notice must report the server's uncapped ask in RetryAfter and the
+// actual capped wait in Delay, so the CLI can show "asked X, waiting Y".
+func TestRateLimitNoticeReportsUncappedRetryAfter(t *testing.T) {
+	server := mockslack.New()
+	server.Handle("conversations.history",
+		mockslack.Response{Status: 429, Header: map[string]string{"Retry-After": "120"}},
+		mockslack.Response{Body: map[string]any{"ok": true}},
+	)
+	sleep, _ := noSleep(t)
+	var got RateLimitNotice
+	c := newBrowserClient(t, server, WithSleep(sleep),
+		WithRateLimitNotice(func(n RateLimitNotice) { got = n }))
+
+	if _, err := c.API(context.Background(), "conversations.history", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got.RetryAfter != 120*time.Second || got.Delay != 60*time.Second {
+		t.Errorf("notice RetryAfter=%v Delay=%v, want 120s/60s", got.RetryAfter, got.Delay)
+	}
+}
+
 func TestSlackErrorMapping(t *testing.T) {
 	cases := []struct {
 		code    string

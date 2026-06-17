@@ -11,7 +11,6 @@ import (
 
 	"github.com/shhac/agent-slack/internal/credential"
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
-	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
@@ -168,16 +167,21 @@ func clientOptions(globals *GlobalFlags) []slack.Option {
 // a hint about Slack's 1 req/min non-Marketplace tier on conversations.history
 // / conversations.replies — the most common reason reads get throttled.
 func rateLimitNotice(globals *GlobalFlags) slack.RateLimitFunc {
+	const tierHint = "if this persists on conversations.history/replies, your token is likely on Slack's 1 req/min non-Marketplace tier — use an internal/custom app token to get the 50 req/min tier"
 	return func(n slack.RateLimitNotice) {
-		if n.WillRetry {
-			output.WriteNotice(globals.stderr,
-				fmt.Sprintf("rate limited by Slack on %s; waiting %s before retry (attempt %d)", n.Method, n.Delay, n.Attempt),
-				"")
+		if !n.WillRetry {
+			emitNotice(globals,
+				fmt.Sprintf("rate limited by Slack on %s; gave up after %d attempts", n.Method, n.Attempt),
+				tierHint)
 			return
 		}
-		output.WriteNotice(globals.stderr,
-			fmt.Sprintf("rate limited by Slack on %s; gave up after %d attempts", n.Method, n.Attempt),
-			"if this persists on conversations.history/replies, your token is likely on Slack's 1 req/min non-Marketplace tier — use an internal/custom app token to get the 50 req/min tier")
+		msg := fmt.Sprintf("rate limited by Slack on %s; waiting %s before retry (attempt %d)", n.Method, n.Delay, n.Attempt)
+		// When Slack asks for longer than our cap, say so — otherwise a user who
+		// waited the reported time is surprised by an immediate re-throttle.
+		if n.RetryAfter > n.Delay {
+			msg += fmt.Sprintf(" (Slack asked for %s, capped to %s)", n.RetryAfter, n.Delay)
+		}
+		emitNotice(globals, msg, "")
 	}
 }
 
