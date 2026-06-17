@@ -28,6 +28,22 @@ GOCACHE=$(pwd)/.cache/go-build go vet ./...
 golangci-lint run ./...
 ```
 
+## Keeping docs in sync
+
+When you add or change commands, flags, output shapes, or notable behavior,
+update all of these in the same change — they drift silently otherwise:
+
+- **`internal/cli/usage_text.go`** — the top-level `usage` reference card
+  (compiled into the binary; a change here ships in the next release).
+- **`<domain> usage`** — the per-domain detail text for any affected domain.
+- **`skills/agent-slack/SKILL.md`** and **`skills/agent-slack/references/`** —
+  the LLM-facing skill (`output.md`, `commands.md`, `targets.md`,
+  `formatting.md`); keep the stderr/output contract here in step with `usage`.
+- **`design-docs/`** — record the design decision, not just the code. New
+  behavior or a contract change belongs in `cli-design.md`,
+  `behavior-reference.md`, or `architecture.md` as appropriate.
+- **`README.md`** — when the change is user-facing.
+
 ## References
 
 The full design and command surface live in `design-docs/`:

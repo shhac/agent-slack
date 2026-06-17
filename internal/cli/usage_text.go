@@ -64,7 +64,9 @@ CACHE
 ERRORS
   JSON on stderr: {"error","fixable_by","hint"}. fixable_by=agent → fix the
   input and retry; human → credentials/permissions need a person;
-  retry → wait and re-run.
+  retry → wait and re-run. Non-fatal notices also go to stderr as
+  {"notice","hint"} (e.g. Slack rate-limit throttling) — distinguish by key
+  ("error" vs "notice"), not by stream.
 
 AUTH
   Stored per workspace (OS keychain where available). Setup: 'auth

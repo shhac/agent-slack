@@ -12,6 +12,12 @@
   `agent` = fix the input and retry; `human` = a person must act
   (credentials/permissions/sharing); `retry` = transient, run again. A `hint`
   names the concrete next step when one exists.
+- **Notices → JSON on stderr**, exit unaffected: `{"notice": "...", "hint": …}`.
+  Non-fatal, informational — e.g. Slack rate-limit throttling (a 429 retry, or
+  the terminal hit with a hint about the 1 req/min non-Marketplace tier on
+  `conversations.history`/`.replies`) and credential auto-refresh. Distinguish
+  from errors by key (`notice` vs `error`), not by stream; a `notice` line is
+  not a failure.
 
 ## Meta lines (trailing `{"@key": …}` objects in NDJSON)
 
