@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/shhac/lib-agent-cli/xdg"
 )
 
 const (
@@ -22,27 +24,12 @@ const (
 // defaultPath follows the agent-* family convention (per lin):
 // $XDG_CONFIG_HOME, else ~/.config — on every platform, deliberately not
 // os.UserConfigDir (which would scatter macOS state into
-// ~/Library/Application Support).
+// ~/Library/Application Support). xdg.ConfigDir applies exactly that rule.
 func defaultPath() (string, error) {
 	if env := os.Getenv("AGENT_SLACK_CREDENTIALS"); env != "" {
 		return env, nil
 	}
-	base, err := configBase()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(base, configDirName, "credentials.json"), nil
-}
-
-func configBase() (string, error) {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return dir, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config"), nil
+	return filepath.Join(xdg.ConfigDir(configDirName), "credentials.json"), nil
 }
 
 // migrateLegacyFile seeds a missing store from the file the TS agent-slack
@@ -53,11 +40,7 @@ func migrateLegacyFile(path string) {
 	if _, err := os.Stat(path); err == nil {
 		return
 	}
-	base, err := configBase()
-	if err != nil {
-		return
-	}
-	raw, err := os.ReadFile(filepath.Join(base, legacyConfigDirName, "credentials.json"))
+	raw, err := os.ReadFile(filepath.Join(xdg.ConfigDir(legacyConfigDirName), "credentials.json"))
 	if err != nil {
 		return
 	}

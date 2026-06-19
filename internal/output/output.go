@@ -1,67 +1,75 @@
+// Package output re-exports the shared output contract from lib-agent-output,
+// keeping the internal/output import path while the wire mechanism (format
+// parsing, JSON/YAML encoding, error rendering) lives in one place. What stays
+// local is agent-slack policy: the explicit-writer Print signature, the
+// structured WriteNotice, the Slack-shaped Pagination/NDJSONWriter, and the YAML
+// number-normalization. (Migration shim.)
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"math"
 
-	agenterrors "github.com/shhac/agent-slack/internal/errors"
+	out "github.com/shhac/lib-agent-output"
 	"gopkg.in/yaml.v3"
 )
 
-type Format string
+// Format and its values come from the shared contract; ParseFormat is therefore
+// the family's lenient parser (accepts "ndjson"/"yml", case-insensitive). The
+// FormatNDJSON value is still the literal "jsonl" agent-slack has always used.
+type Format = out.Format
 
 const (
-	FormatJSON   Format = "json"
-	FormatYAML   Format = "yaml"
-	FormatNDJSON Format = "jsonl"
+	FormatJSON   = out.FormatJSON
+	FormatYAML   = out.FormatYAML
+	FormatNDJSON = out.FormatNDJSON
 )
 
-func ParseFormat(s string) (Format, error) {
-	switch s {
-	case "json":
-		return FormatJSON, nil
-	case "yaml":
-		return FormatYAML, nil
-	case "jsonl", "ndjson":
-		return FormatNDJSON, nil
-	default:
-		return "", agenterrors.Newf(agenterrors.FixableByAgent, "unknown format %q, expected: json, yaml, jsonl", s)
-	}
+var (
+	ParseFormat   = out.ParseFormat
+	ResolveFormat = out.ResolveFormat
+	WriteError    = out.WriteError
+)
+
+// init registers agent-slack's YAML encoder with lib-agent-output, so YAML
+// support (and its yaml.v3 dependency) stays in this CLI while the core library
+// remains dependency-free. The encoder keeps the number-normalization that
+// renders whole floats as integers in YAML output.
+func init() {
+	out.RegisterEncoder(out.FormatYAML, func(v any) ([]byte, error) {
+		var buf bytes.Buffer
+		enc := yaml.NewEncoder(&buf)
+		enc.SetIndent(2)
+		if err := enc.Encode(normalizeYAMLNumbers(v)); err != nil {
+			return nil, err
+		}
+		_ = enc.Close()
+		return buf.Bytes(), nil
+	})
 }
 
-func ResolveFormat(flagFormat string, defaultFormat Format) (Format, error) {
-	if flagFormat == "" {
-		return defaultFormat, nil
-	}
-	return ParseFormat(flagFormat)
-}
-
-// Print writes data to w in the given format, optionally pruning nulls.
+// Print writes data to w in the given format, optionally pruning nulls. JSON
+// prunes the typed value in place (a no-op for structs, matching the original);
+// YAML round-trips so the number-normalization in the registered encoder sees a
+// decoded tree.
 func Print(w io.Writer, data any, format Format, prune bool) {
-	switch format {
-	case FormatYAML:
-		printYAML(w, data, prune)
-	default:
-		printJSON(w, data, prune)
+	if format == FormatYAML {
+		decoded, ok := toDecoded(data)
+		if !ok {
+			return
+		}
+		if prune {
+			decoded = pruneNulls(decoded)
+		}
+		_ = out.Print(w, decoded, FormatYAML, nil)
+		return
 	}
-}
-
-func WriteError(w io.Writer, err error) {
-	var aerr *agenterrors.APIError
-	if !agenterrors.As(err, &aerr) {
-		aerr = agenterrors.Wrap(err, agenterrors.FixableByAgent)
+	if prune {
+		data = pruneNulls(data)
 	}
-	payload := map[string]any{
-		"error":      aerr.Message,
-		"fixable_by": string(aerr.FixableBy),
-	}
-	if aerr.Hint != "" {
-		payload["hint"] = aerr.Hint
-	}
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(payload)
+	_ = out.Print(w, data, FormatJSON, nil)
 }
 
 // WriteNotice emits a structured, non-fatal notice to w (typically stderr) —
@@ -98,38 +106,24 @@ func (n *NDJSONWriter) WriteMetaLine(key string, value any) error {
 	return n.enc.Encode(map[string]any{key: value})
 }
 
+// Pagination is Slack-shaped (an opaque next_cursor plus a total), so it stays
+// local rather than using out.Pagination.
 type Pagination struct {
 	HasMore    bool   `json:"has_more"`
 	TotalItems int    `json:"total_items,omitempty"`
 	NextCursor string `json:"next_cursor,omitempty"`
 }
 
-func printJSON(w io.Writer, data any, prune bool) {
-	if prune {
-		data = pruneNulls(data)
-	}
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(data)
-}
-
-func printYAML(w io.Writer, data any, prune bool) {
+func toDecoded(data any) (any, bool) {
 	b, err := json.Marshal(data)
 	if err != nil {
-		return
+		return nil, false
 	}
 	var decoded any
 	if err := json.Unmarshal(b, &decoded); err != nil {
-		return
+		return nil, false
 	}
-	if prune {
-		decoded = pruneNulls(decoded)
-	}
-	decoded = normalizeYAMLNumbers(decoded)
-	enc := yaml.NewEncoder(w)
-	enc.SetIndent(2)
-	_ = enc.Encode(decoded)
+	return decoded, true
 }
 
 func normalizeYAMLNumbers(v any) any {

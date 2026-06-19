@@ -12,8 +12,14 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/shhac/lib-agent-cli/xdg"
 )
 
+// configDirName deliberately uses a reverse-DNS name rather than the family's
+// plain tool name, because the TS stablyai-agent-slack already owns
+// ~/.config/agent-slack — a shared dir would mean two writers (see
+// internal/credential for the same rationale).
 const configDirName = "app.paulie.agent-slack"
 
 // Config is the on-disk settings (version 1).
@@ -44,15 +50,7 @@ func Path() (string, error) {
 	if env := os.Getenv("AGENT_SLACK_CONFIG"); env != "" {
 		return env, nil
 	}
-	base := os.Getenv("XDG_CONFIG_HOME")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		base = filepath.Join(home, ".config")
-	}
-	return filepath.Join(base, configDirName, "config.json"), nil
+	return filepath.Join(xdg.ConfigDir(configDirName), "config.json"), nil
 }
 
 // Load reads the settings, returning an empty (usable) config when the file is

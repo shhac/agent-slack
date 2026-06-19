@@ -1,30 +1,24 @@
-// Package dialog prompts the human for secrets via a native OS dialog, so a
-// token can be typed or pasted without ever passing through the agent's
-// conversation or shell history. Matches the --form pattern used across the
-// agent-* CLI family.
+// Package dialog delegates the native secret-entry boilerplate to
+// lib-agent-cli/dialog; this thin wrapper keeps agent-slack's existing
+// PromptSecret signature (with an initial value to edit). (Migration shim.)
 package dialog
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/ncruces/zenity"
+	clidialog "github.com/shhac/lib-agent-cli/dialog"
 )
 
-// entry is the secret-prompt backend — a package var so tests can swap the
-// native OS dialog for a fake and exercise PromptSecret over the boundary.
-var entry = zenity.Entry
-
+// PromptSecret opens a masked native prompt seeded with initial, so a token
+// never transits argv or the agent's conversation. It returns a structured
+// error on a headless host.
 func PromptSecret(ctx context.Context, title, label, initial string) (string, error) {
-	value, err := entry(
-		label,
-		zenity.Title(title),
-		zenity.EntryText(initial),
-		zenity.HideText(),
-		zenity.Context(ctx),
-	)
+	res, err := clidialog.Prompt(ctx, clidialog.Spec{
+		Title:  title,
+		Fields: []clidialog.Field{{ID: "secret", Label: label, Hidden: true, Initial: initial}},
+	})
 	if err != nil {
-		return "", fmt.Errorf("prompt for secret: %w", err)
+		return "", err
 	}
-	return value, nil
+	return res["secret"], nil
 }
