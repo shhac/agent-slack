@@ -51,8 +51,8 @@ github.com/sebdah/goldie/v2 v2.8.0 h1:dZb9wR8q5++oplmEiJT+U/5KyotVD+HNGCAc5gNr8r
 github.com/sebdah/goldie/v2 v2.8.0/go.mod h1:oZ9fp0+se1eapSRjfYbsV/0Hqhbuu3bJVvKI/NNtssI=
 github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
 github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
-github.com/shhac/lib-agent-cli v0.2.0 h1:O3qn3VJbnGaCbJijWu/IEGMWS4TAo0BMaaHkkSt7FS8=
-github.com/shhac/lib-agent-cli v0.2.0/go.mod h1:ybE6nb8sCZDX6wbYAxvhfjQSFNJCUj+7Vl25wMefp7c=
+github.com/shhac/lib-agent-cli v0.3.0 h1:BvDz4775VkBR8hQS0WrQdz+xLi6lGBshxiOhALnk2ZU=
+github.com/shhac/lib-agent-cli v0.3.0/go.mod h1:ybE6nb8sCZDX6wbYAxvhfjQSFNJCUj+7Vl25wMefp7c=
 github.com/shhac/lib-agent-output v0.4.3 h1:mKQnMzCEM+Z5KG6CUbzk4eqYGeeS7pxy4MHrUylJNV0=
 github.com/shhac/lib-agent-output v0.4.3/go.mod h1:YyO2KSKAZxRrCJGanfB6qAyV0DvG+GSsZNShQoLslT0=
 github.com/spf13/cobra v1.10.2 h1:DMTTonx5m65Ic0GOoRY2c16WCbHxOOw6xxezuLaBpcU=
