@@ -13,7 +13,7 @@ COMMANDS
   channel    list | get | members | new* | invite* | mark
   user       list | get | dm-open
   usergroup  list | get | members — workspace subteams (@group)
-  emoji      list | get — workspace custom emoji (:shortcode:)
+  emoji      list | get | search — workspace custom emoji (:shortcode:)
   search     all | messages | files
   workflow   list | preview | get | run
   canvas     get
@@ -192,6 +192,13 @@ GET      emoji get <name…> — :colons: optional; one arg → object, several 
          custom then standard emoji: custom → {custom:true, url|alias_for};
          alias → followed one hop (url or unicode); a standard name → {unicode}.
          Names are matched EXACTLY (case-folded only; -_+ not collapsed).
+SEARCH   emoji search <query> [--limit 20] [--cursor …] [--full]
+         Fuzzy-rank CUSTOM emoji by name. Tiers (high→low score): exact, prefix,
+         token_prefix (matches a -_+-delimited token, so 'parrot' finds
+         'party-parrot'), contains, fuzzy (edit distance). Each row carries
+         {match, score}. Unlike get, the query is folded (case + -_+ collapsed).
+         Paginated: a full page emits {"@pagination":{next_cursor}} — pass it to
+         --cursor for the next page.
 CACHE    Backed by the per-workspace 'emoji' cache (24h). 'cache warm emoji'
          pre-fills it; within the window a name miss is authoritative.`,
 

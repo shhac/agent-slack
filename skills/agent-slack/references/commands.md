@@ -127,6 +127,7 @@ emoji are built in and not listed here, but `emoji get` falls back to them.
 |---|---|
 | `emoji list` | `--full`; NDJSON sorted by name. Lean by default: `name` + `alias_for` (aliases). `--full` adds the image `url`. Custom set only |
 | `emoji get <name…>` | `:colons:` optional; one → object, several → NDJSON (+ `{"@unresolved": […]}`). Unified lookup: custom → `{custom:true, url\|alias_for}`; alias followed one hop (→ `url` or `unicode`); standard name → `{unicode}`. Matched exactly (case-folded only; `-_+` not collapsed) |
+| `emoji search <query>` | `--limit` (20, max 100), `--cursor`, `--full`; fuzzy-ranks **custom** emoji. Rows carry `match` (`exact\|prefix\|token_prefix\|contains\|fuzzy`) + `score`. Query is folded (case + `-_+` collapsed), so `parrot` finds `party-parrot`. Paginated via `{"@pagination":{next_cursor}}` |
 
 Backed by the per-workspace `emoji` cache (24h TTL). `cache warm emoji` pre-fills
 it; within the window a name miss is authoritative (no refetch).

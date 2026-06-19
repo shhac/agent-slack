@@ -95,3 +95,68 @@ func TestEmojiGetMultipleWithUnresolved(t *testing.T) {
 		t.Errorf("unresolved meta = %v", lines[1])
 	}
 }
+
+func emojiSearchFixture() map[string]any {
+	return map[string]any{"ok": true, "emoji": map[string]any{
+		"parrot":       "https://e/parrot.gif",
+		"party-parrot": "https://e/party-parrot.gif",
+		"sad_parrot":   "https://e/sad_parrot.gif",
+		"rocket":       "https://e/rocket.gif",
+	}}
+}
+
+func TestEmojiSearchRanked(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("emoji.list", emojiSearchFixture())
+
+	out, _, err := f.run(t, "emoji", "search", "parrot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	if len(lines) != 3 {
+		t.Fatalf("want 3 parrot matches, got %d: %v", len(lines), lines)
+	}
+	// Exact match ranks first and carries a score + tier; URL omitted (lean).
+	if lines[0]["name"] != "parrot" || lines[0]["match"] != "exact" {
+		t.Errorf("row 0 = %v, want exact parrot", lines[0])
+	}
+	if _, present := lines[0]["url"]; present {
+		t.Errorf("url should be omitted without --full, got %v", lines[0])
+	}
+	if _, present := lines[0]["score"]; !present {
+		t.Errorf("score should be present, got %v", lines[0])
+	}
+}
+
+func TestEmojiSearchPaginationMeta(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("emoji.list", emojiSearchFixture())
+
+	out, _, err := f.run(t, "emoji", "search", "parrot", "--limit", "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	// 2 rows + a trailing @pagination meta line carrying next_cursor.
+	if len(lines) != 3 {
+		t.Fatalf("want 2 rows + pagination meta, got %d: %v", len(lines), lines)
+	}
+	pg, ok := lines[2]["@pagination"].(map[string]any)
+	if !ok || pg["has_more"] != true || pg["next_cursor"] == nil {
+		t.Fatalf("pagination meta = %v", lines[2])
+	}
+
+	// Feed the cursor back: the next page has the remaining match and no cursor.
+	out2, _, err := f.run(t, "emoji", "search", "parrot", "--limit", "2", "--cursor", pg["next_cursor"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines2 := parseNDJSON(t, out2)
+	if len(lines2) != 1 {
+		t.Fatalf("page 2 = %d lines, want 1 row and no further cursor: %v", len(lines2), lines2)
+	}
+	if _, present := lines2[0]["@pagination"]; present {
+		t.Errorf("last page should not carry pagination meta, got %v", lines2[0])
+	}
+}

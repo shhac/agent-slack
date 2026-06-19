@@ -46,6 +46,7 @@ global persistent flags.
 | `usergroup members <usergroup>` | `--resolve none\|cached\|auto\|fresh`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
 | `emoji list` | `--full` | | NDJSON sorted by name; **custom** emoji only. Lean by default (`name` + `alias_for`); `--full` adds image `url` |
 | `emoji get <name…>` | | | `:colons:` optional; one→object, several→NDJSON (+ `{"@unresolved": […]}`). Unified lookup over custom then standard (emojilib) sets; aliases followed one hop; exact name match (case-folded only, `-_+` not collapsed) |
+| `emoji search <query>` | `--limit` (20, max 100), `--cursor`, `--full` | | fuzzy-ranks **custom** emoji over an in-memory set; rows carry `match` tier + `score`; query folded (case + `-_+`); opaque offset cursor in `@pagination` (mirrors Slack-cursor lists) |
 | `cache info` | | | reports cached categories/entries per workspace |
 | `cache warm` | `--page-delay` (1s), `--no-bots`, `--stale-only` | | paginates users/channels/usergroups/emoji (bots included by default for a complete set; `--no-bots` opts out; `--stale-only` re-warms only categories whose sentinel lapsed), paced for rate limits, streams JSONL progress |
 | `cache purge` | `--workspace`, `--all-workspaces`, `--downloads` | | clears cached data |
@@ -262,7 +263,12 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
   only a few MB. TTL is 24h (matching `users`): long enough to avoid re-fetching,
   short enough that a freshly-added emoji isn't reported missing for more than a
   day (there is no per-emoji lookup endpoint, so a `get` miss re-fetches the
-  whole list).
+  whole list). `emoji search` ranks this same in-memory set with a tiered
+  scorer (exact → prefix → token-prefix → substring → bounded edit-distance
+  fuzzy) and folds the query (case + `-_+` collapsed) so compound names match
+  loosely — distinct from `get`'s exact match. Results paginate with an opaque
+  offset cursor surfaced in the standard `@pagination` meta, mirroring how the
+  Slack-cursor lists hand back a `next_cursor`.
 - **`workflow list` validates + warms** (decision): the listing endpoints
   (`bookmarks.list`/`workflows.featured.list`) carry no liveness info, so a
   deleted-but-bookmarked trigger used to list fine and only fail on `preview`.
