@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
 	github.com/coder/websocket v1.8.14
-	github.com/shhac/lib-agent-cli v0.3.0
+	github.com/shhac/lib-agent-cli v0.3.1
 	github.com/shhac/lib-agent-output v0.4.3
 	github.com/spf13/cobra v1.10.2
 	github.com/syndtr/goleveldb v1.0.0
