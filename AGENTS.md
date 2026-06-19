@@ -37,8 +37,12 @@ update all of these in the same change — they drift silently otherwise:
   (compiled into the binary; a change here ships in the next release).
 - **`<domain> usage`** — the per-domain detail text for any affected domain.
 - **`skills/agent-slack/SKILL.md`** and **`skills/agent-slack/references/`** —
-  the LLM-facing skill (`output.md`, `commands.md`, `targets.md`,
-  `formatting.md`); keep the stderr/output contract here in step with `usage`.
+  the LLM-facing skill. SKILL.md is the always-loaded entry (contract + common
+  paths + a domain router); per-domain command detail lives in
+  `references/commands/<domain>.md` (indexed by `references/commands.md`), and
+  the cross-cutting contracts in `output.md`/`targets.md`/`formatting.md`. A
+  command/flag change touches the matching `commands/<domain>.md`; keep the
+  stderr/output contract in step with `usage`.
 - **`design-docs/`** — record the design decision, not just the code. New
   behavior or a contract change belongs in `cli-design.md`,
   `behavior-reference.md`, or `architecture.md` as appropriate.
