@@ -161,7 +161,7 @@ func fetchEmoji(ctx context.Context, c *Client) ([]CustomEmoji, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.warmEmojiCache(emoji, true)
+	c.warmEmojiCache(emoji)
 	return emoji, nil
 }
 

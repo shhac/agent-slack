@@ -27,10 +27,11 @@ func (c *Client) emojiComplete() bool {
 	return c.emojiCache().isComplete(cacheTTLOf(c.cache).EmojiComplete)
 }
 
-// warmEmojiCache records a fetched custom emoji set into the cache and, when
-// the set is complete (a full emoji.list sweep), arms the completeness
-// sentinel. Batched (one save) and best-effort.
-func (c *Client) warmEmojiCache(emoji []CustomEmoji, complete bool) {
+// warmEmojiCache records a fetched custom emoji set into the cache and arms the
+// completeness sentinel — the only thing that ever populates this cache is a
+// full emoji.list sweep, so the set is always complete. Batched (one save) and
+// best-effort.
+func (c *Client) warmEmojiCache(emoji []CustomEmoji) {
 	snap := c.emojiCache()
 	for _, e := range emoji {
 		if e.Name == "" {
@@ -38,9 +39,7 @@ func (c *Client) warmEmojiCache(emoji []CustomEmoji, complete bool) {
 		}
 		snap.set(e.Name, e)
 	}
-	if complete {
-		snap.markComplete()
-	}
+	snap.markComplete()
 	snap.save()
 }
 
