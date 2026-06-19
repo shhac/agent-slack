@@ -9,7 +9,7 @@ COMMANDS
   auth       list | test | add | set-default | remove | import-desktop |
              import-browser <name> | parse-curl
   message    get | list | send | edit* | delete* | react add/remove |
-             scheduled list/cancel*
+             draft create/list/get/edit/send/delete* | scheduled list/cancel*
   channel    list | get | members | new* | invite* | mark
   user       list | get | dm-open
   usergroup  list | get | members — workspace subteams (@group)
@@ -122,7 +122,9 @@ DRAFT  message draft create <target> [text] [--blocks <file|->] [--forward <perm
        LLM→human hand-off (browser auth): save a draft for the user to review
        and send. create returns a draft id; drafts are many-per-target, so
        get/edit/delete/send take an id or a target (when it has just one).
-       'send' posts the draft now (with files) then removes it.
+       'send' posts the draft now (with files) then removes it, or with
+       --schedule <iso8601|unix> / --schedule-in <30m|2d|…> promotes it to a
+       scheduled message instead.
 EDIT   message edit <target> [text] --yes     (destructive)
        add/remove attachments with --attach <path> / --remove-attachment <F…>
        (repeatable); text becomes optional when only changing attachments.
@@ -276,4 +278,45 @@ MANAGE  auth set-default <url> | auth remove <url>
 ENV     SLACK_TOKEN (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser
           tokens) override the stored credentials for one invocation.
 NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,
+
+	"unreads": `agent-slack unreads — unread messages across channels, DMs, threads.
+
+  unreads [--counts-only] [--max-messages 10] [--max-body-chars 4000] [--include-system]
+  One sweep of everything unread. --counts-only returns just per-conversation
+  counts (no bodies) — cheapest triage. --max-messages caps messages shown per
+  conversation; --max-body-chars truncates each body (-1 = unlimited).
+  --include-system keeps join/leave/topic system messages (dropped by default).`,
+
+	"cache": `agent-slack cache — inspect, pre-fill, and clear the resolution cache.
+
+Awkward resolutions (channel name→ID, @handle→ID, profiles, workflow metadata,
+custom emoji) are cached per workspace under ~/.cache/app.paulie.agent-slack/.
+Never message bodies. Transparent — it fills as you work; reach for these only
+when you want to control it.
+
+INFO   cache info — what's cached per workspace (entries, bytes, age).
+WARM   cache warm [users|channels|usergroups|emoji] [--page-delay 1s] [--no-bots] [--stale-only]
+       Pre-fetch list endpoints (all categories if none named) so resolution and
+       completions are instant and offline, and --resolve auto is free. Paginates
+       each, paced for rate limits, streams JSONL progress (filter done:true for
+       the per-category summary). Arms a completeness sentinel: within
+       cache.ttl.*-complete (30m) a later miss is authoritative (no remote
+       lookup). --no-bots excludes bots (leaves the user set incomplete, sentinel
+       un-armed). --stale-only re-warms only categories whose sentinel lapsed.
+PURGE  cache purge [--workspace <sel>] [--all-workspaces] [--downloads]
+       Delete cached data (local + regenerable): one workspace by default, or all
+       workspaces, and/or the downloaded-files cache.
+TUNE   per-invocation --no-cache / --refresh-cache / --cache-ttl <dur>; persist
+       via 'config set cache.ttl.<category>' or AGENT_SLACK_CACHE_TTL[_<CAT>].`,
+
+	"config": `agent-slack config — persistent settings in config.json.
+
+  config get <key> | set <key> <value> | list | unset <key>
+  Precedence: flag > env > config > built-in default.
+  Settable keys are cache TTLs: cache.ttl.{users, channels, channel-names,
+  handles, workflow-list, workflow-preview, workflow-schema} plus the serve
+  windows cache.ttl.{get, list}. Values are Go durations (30m, 2h, 24h; 0
+  disables reads for that category). Example: config set cache.ttl.channels 30m.
+  ('config list' prints the full key set; other TTLs use the per-invocation
+  --cache-ttl / AGENT_SLACK_CACHE_TTL overrides.)`,
 }
