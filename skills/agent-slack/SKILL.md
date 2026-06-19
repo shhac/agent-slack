@@ -84,9 +84,9 @@ File hits download automatically and report local `path`s you can Read.
 ## Writing
 
 ```bash
-agent-slack message send "#general" "ship it :rocket:"
+agent-slack message send "#general" "ship it :rocket: — [release notes](https://acme.com/releases/4.2)"
 agent-slack message send U05BRPTKL6A "ping"                  # DM auto-opens
-agent-slack message send "<permalink>" "replying in thread"
+agent-slack message send "<permalink>" "see the [run](https://ci.acme.com/123)"   # reply in thread
 agent-slack message send "#general" "see attached" --attach ./report.md
 agent-slack message react add "<permalink>" :eyes:
 agent-slack message edit "<permalink>" "fixed wording" --yes        # edit/delete gated
@@ -94,12 +94,16 @@ agent-slack message delete "<permalink>" --yes
 ```
 
 Message text is standard Markdown — `**bold**`, `*italic*`/`_italic_`,
-`~~strike~~`, `` `code` ``, fenced code, `[label](url)`, `- bullets`,
-`1. numbers`, `> quotes`. Two gotchas: `__text__` is **underline** (our
-extension, not bold) and `\*` escapes a literal marker. Mentions auto-resolve:
-`@here`/`@channel`, `@U…` ids, and bare `@name`/`@group` handles. Pass
-`--slack-markdown` for Slack's native mrkdwn (`*bold*`, `<url|label>`); reads
-return Markdown too. Full table: [references/formatting.md](references/formatting.md).
+`~~strike~~`, `` `code` ``, fenced code, `- bullets`, `1. numbers`, `> quotes`.
+**Links:** write `[label](https://…)` for a labeled hyperlink — don't drop a bare
+URL in and hope it renders nicely (it only ever auto-links as the raw URL).
+Two gotchas: `__text__` is **underline** (our extension, not bold) and `\*`
+escapes a literal marker. Mentions auto-resolve: `@here`/`@channel`, `@U…` ids,
+and bare `@name`/`@group` handles. Pass `--slack-markdown` for Slack's native
+mrkdwn (`*bold*`, `<url|label>`); reads return Markdown too. **Read
+[references/formatting.md](references/formatting.md) before composing any
+formatted message** — full table of links, mentions, escaping, and the
+`--slack-markdown` dialect.
 Scheduling, forwarding, and the draft hand-off flow: `agent-slack message usage`.
 
 ## Finding people & channels

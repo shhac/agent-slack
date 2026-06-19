@@ -21,10 +21,11 @@ In-binary version: `agent-slack message usage`. Formatting: [../formatting.md](.
 `message list` reaction filters (`--with-reaction`/`--without-reaction`) only
 apply to channel-history mode and require `--oldest` to bound the scan.
 
-Text I/O is **standard Markdown** by default (both sending and reading);
-`@name`/`@group` handles and `#channel` names resolve to real mentions/links;
-`--slack-markdown` switches to Slack's native mrkdwn dialect. Full table:
-[../formatting.md](../formatting.md).
+Text I/O is **standard Markdown** by default (both sending and reading): use
+`[label](https://…)` for links (don't paste a bare URL and expect a nice link),
+and `@name`/`@group` handles and `#channel` names resolve to real
+mentions/links; `--slack-markdown` switches to Slack's native mrkdwn dialect.
+Full table — links, mentions, escaping: [../formatting.md](../formatting.md).
 
 `message send --forward <permalink>` forwards a message: any `[text]` becomes a
 comment above it. **Same workspace only** — a permalink from another workspace

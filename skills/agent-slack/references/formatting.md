@@ -24,6 +24,14 @@ so outbound and inbound are independent).
 
 Nesting works: `**bold with _italic_ and `code`**` styles each span correctly.
 
+### Links
+
+Prefer a **labeled link** — `[release notes](https://acme.com/releases/4.2)` —
+over pasting a bare URL. A bare URL does auto-link, but only as the raw URL
+text (`https://acme.com/releases/4.2`), which reads worse and is what agents
+reach for by reflex. Reach for `[label](url)` whenever the link has a natural
+name. In `--slack-markdown` mode the equivalent is `<https://…|label>`.
+
 ## Mentions
 
 All of these resolve to real mentions at send time:
