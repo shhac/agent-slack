@@ -35,6 +35,33 @@ func TestEmojiListLeanByDefault(t *testing.T) {
 	}
 }
 
+func TestEmojiListPaginationMeta(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("emoji.list", emojiListFixture()) // 3 emoji
+
+	out, _, err := f.run(t, "emoji", "list", "--limit", "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	// 2 rows + a trailing @pagination meta line.
+	if len(lines) != 3 {
+		t.Fatalf("want 2 rows + pagination meta, got %d: %v", len(lines), lines)
+	}
+	pg, ok := lines[2]["@pagination"].(map[string]any)
+	if !ok || pg["next_cursor"] == nil {
+		t.Fatalf("pagination meta = %v", lines[2])
+	}
+	out2, _, err := f.run(t, "emoji", "list", "--limit", "2", "--cursor", pg["next_cursor"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines2 := parseNDJSON(t, out2)
+	if len(lines2) != 1 {
+		t.Fatalf("page 2 = %d lines, want 1 row no cursor: %v", len(lines2), lines2)
+	}
+}
+
 func TestEmojiListFull(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("emoji.list", emojiListFixture())

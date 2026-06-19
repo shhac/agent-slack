@@ -21,23 +21,31 @@ func registerEmoji(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerEmojiList(parent *cobra.Command, globals *GlobalFlags) {
 	var full bool
+	var limit int
+	var cursor string
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List the workspace's custom emoji (names + aliases; --full adds image URLs)",
+		Short: "List the workspace's custom emoji (names + aliases; --full adds image URLs); paginated",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc, err := getClient(globals)
 			if err != nil {
 				return err
 			}
-			emoji, err := slack.ListEmoji(cmd.Context(), cc.Client, slack.ListEmojiOptions{Full: full})
+			emoji, next, err := slack.ListEmoji(cmd.Context(), cc.Client, slack.ListEmojiOptions{
+				Full:   full,
+				Limit:  limit,
+				Cursor: cursor,
+			})
 			if err != nil {
 				return err
 			}
-			return printList(globals, toAnySlice(emoji), nil)
+			return printList(globals, toAnySlice(emoji), listMeta(next, nil))
 		},
 	}
 	cmd.Flags().BoolVar(&full, "full", false, "Include image URLs (omitted by default to keep output lean)")
+	cmd.Flags().IntVar(&limit, "limit", 200, "Max results per page (capped at 1000)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a prior page's @pagination.next_cursor")
 	parent.AddCommand(cmd)
 }
 

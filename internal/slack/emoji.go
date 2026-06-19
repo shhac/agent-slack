@@ -41,27 +41,57 @@ func toCustomEmoji(name, value string) CustomEmoji {
 
 // ListEmojiOptions controls ListEmoji.
 type ListEmojiOptions struct {
-	Full bool // include image URLs (omitted by default to keep list output lean)
+	Full   bool   // include image URLs (omitted by default to keep list output lean)
+	Limit  int    // page size; <=0 uses defaultEmojiListLimit, capped at maxEmojiListLimit
+	Cursor string // opaque offset cursor from a previous page
 }
 
-// ListEmoji returns every custom emoji in the workspace, sorted by name. It
-// serves the complete cached set when fresh, else fetches emoji.list (which
-// also warms the cache). Without opts.Full, image URLs are omitted — the lean
-// default surfaces which names exist and how aliases resolve.
-func ListEmoji(ctx context.Context, c *Client, opts ListEmojiOptions) ([]CustomEmoji, error) {
+const (
+	defaultEmojiListLimit = 200
+	maxEmojiListLimit     = 1000
+)
+
+// ListEmoji returns one page of the workspace's custom emoji, sorted by name,
+// plus the cursor for the next page (empty when exhausted). It serves the
+// complete cached set when fresh, else fetches emoji.list (which also warms the
+// cache). Without opts.Full, image URLs are omitted — the lean default surfaces
+// which names exist and how aliases resolve. Paginated (a busy workspace can
+// have thousands of custom emoji) with the same opaque offset cursor as search.
+func ListEmoji(ctx context.Context, c *Client, opts ListEmojiOptions) ([]CustomEmoji, string, error) {
+	offset, err := decodeOffsetCursor(opts.Cursor)
+	if err != nil {
+		return nil, "", err
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = defaultEmojiListLimit
+	}
+	if limit > maxEmojiListLimit {
+		limit = maxEmojiListLimit
+	}
+
 	byName, err := c.customEmojiMap(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	out := make([]CustomEmoji, 0, len(byName))
+	all := make([]CustomEmoji, 0, len(byName))
 	for _, e := range byName {
 		if !opts.Full {
 			e.URL = ""
 		}
-		out = append(out, e)
+		all = append(all, e)
 	}
-	slices.SortFunc(out, func(a, b CustomEmoji) int { return strings.Compare(a.Name, b.Name) })
-	return out, nil
+	slices.SortFunc(all, func(a, b CustomEmoji) int { return strings.Compare(a.Name, b.Name) })
+
+	if offset >= len(all) {
+		return nil, "", nil
+	}
+	end := min(offset+limit, len(all))
+	next := ""
+	if end < len(all) {
+		next = encodeOffsetCursor(end)
+	}
+	return all[offset:end], next, nil
 }
 
 // GetEmoji resolves one emoji name (with or without surrounding colons) over

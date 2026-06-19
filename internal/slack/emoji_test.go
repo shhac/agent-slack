@@ -23,9 +23,12 @@ func TestListEmojiSortedAndLean(t *testing.T) {
 	server.HandleBody("emoji.list", emojiListBody())
 	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
 
-	emoji, err := ListEmoji(context.Background(), c, ListEmojiOptions{})
+	emoji, next, err := ListEmoji(context.Background(), c, ListEmojiOptions{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if next != "" {
+		t.Errorf("small set should fit one page, got cursor %q", next)
 	}
 	if len(emoji) != 5 {
 		t.Fatalf("want 5 emoji, got %d: %+v", len(emoji), emoji)
@@ -53,7 +56,7 @@ func TestListEmojiFullKeepsURLs(t *testing.T) {
 	server.HandleBody("emoji.list", emojiListBody())
 	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
 
-	emoji, err := ListEmoji(context.Background(), c, ListEmojiOptions{Full: true})
+	emoji, _, err := ListEmoji(context.Background(), c, ListEmojiOptions{Full: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +68,37 @@ func TestListEmojiFullKeepsURLs(t *testing.T) {
 	}
 	if pp.URL == "" {
 		t.Errorf("--full should include URL, got empty for partyparrot")
+	}
+}
+
+func TestListEmojiPagination(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("emoji.list", emojiListBody()) // 5 emoji
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+
+	page1, next, err := ListEmoji(context.Background(), c, ListEmojiOptions{Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page1) != 2 || next == "" {
+		t.Fatalf("page1 = %d items, next = %q; want 2 + cursor", len(page1), next)
+	}
+	// Sorted across pages: page1 holds the first two names.
+	if page1[0].Name != "hmm" || page1[1].Name != "partyparrot" {
+		t.Errorf("page1 = %v, want [hmm partyparrot]", []string{page1[0].Name, page1[1].Name})
+	}
+	page2, _, err := ListEmoji(context.Background(), c, ListEmojiOptions{Limit: 2, Cursor: next})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page2[0].Name != "shipit" {
+		t.Errorf("page2 first = %q, want shipit (continues the sort)", page2[0].Name)
+	}
+	// Walking past the end yields nothing, no error.
+	beyond := encodeOffsetCursor(99)
+	tail, next3, err := ListEmoji(context.Background(), c, ListEmojiOptions{Cursor: beyond})
+	if err != nil || len(tail) != 0 || next3 != "" {
+		t.Errorf("beyond-end page = (%d items, %q, %v), want empty", len(tail), next3, err)
 	}
 }
 
@@ -161,7 +195,7 @@ func TestEmojiCacheServesWithoutRefetch(t *testing.T) {
 	server.HandleBody("emoji.list", emojiListBody())
 	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
 
-	if _, err := ListEmoji(context.Background(), c, ListEmojiOptions{}); err != nil {
+	if _, _, err := ListEmoji(context.Background(), c, ListEmojiOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := GetEmoji(context.Background(), c, "partyparrot"); err != nil {

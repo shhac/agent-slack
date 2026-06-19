@@ -183,10 +183,12 @@ special handling is needed in message bodies. These commands are for DISCOVERY:
 which custom names exist, and what an alias resolves to. The standard unicode
 set is handled separately (built in); 'emoji get' falls back to it.
 
-LIST     emoji list [--full]
+LIST     emoji list [--full] [--limit 200] [--cursor …]
          NDJSON of the workspace's CUSTOM emoji, sorted by name. Lean by
          default: name plus alias_for (for aliases). --full adds the image url.
-         Does NOT include the ~1.8k standard unicode emoji.
+         Does NOT include the ~1.8k standard unicode emoji. Paginated (a busy
+         workspace can have thousands): a full page emits
+         {"@pagination":{next_cursor}} — pass it to --cursor for the next page.
 GET      emoji get <name…> — :colons: optional; one arg → object, several →
          NDJSON with a trailing {"@unresolved": […]}. Unified lookup over
          custom then standard emoji: custom → {custom:true, url|alias_for};

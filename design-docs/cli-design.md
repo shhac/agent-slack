@@ -44,7 +44,7 @@ global persistent flags.
 | `usergroup list` | `--include-disabled` | | NDJSON, compact projection |
 | `usergroup get <usergroup…>` | | | id `S…` or `@handle`; one→object, several→NDJSON |
 | `usergroup members <usergroup>` | `--resolve none\|cached\|auto\|fresh`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
-| `emoji list` | `--full` | | NDJSON sorted by name; **custom** emoji only. Lean by default (`name` + `alias_for`); `--full` adds image `url` |
+| `emoji list` | `--full`, `--limit` (200, max 1000), `--cursor` | | NDJSON sorted by name; **custom** emoji only. Lean by default (`name` + `alias_for`); `--full` adds image `url`. Paginated with the same opaque offset cursor as search (a busy workspace can have thousands) |
 | `emoji get <name…>` | | | `:colons:` optional; one→object, several→NDJSON (+ `{"@unresolved": […]}`). Unified lookup over custom then standard (emojilib) sets; aliases followed one hop; exact name match (case-folded only, `-_+` not collapsed) |
 | `emoji search <query>` | `--limit` (20, max 100), `--cursor`, `--full` | | fuzzy-ranks **custom** emoji over an in-memory set; rows carry `match` tier + `score`; query folded (case + `-_+`); opaque offset cursor in `@pagination` (mirrors Slack-cursor lists) |
 | `cache info` | | | reports cached categories/entries per workspace |
