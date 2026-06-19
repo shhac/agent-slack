@@ -295,6 +295,16 @@ func (s *cacheSnapshot[T]) save() {
 	_ = os.WriteFile(s.path, raw, 0o600)
 }
 
+// forget deletes this category's cache file so the next load misses entirely
+// (used to invalidate after a mutation). Best-effort; a no-op when caching is
+// disabled or unconfigured.
+func (s *cacheSnapshot[T]) forget() {
+	if s.path == "" {
+		return
+	}
+	_ = os.Remove(s.path)
+}
+
 func (s *cacheSnapshot[T]) pruneExpired() bool {
 	if s.ttlMS <= 0 {
 		return false
