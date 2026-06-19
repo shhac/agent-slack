@@ -66,11 +66,7 @@ func ListUsergroups(ctx context.Context, c *Client, opts ListUsergroupsOptions) 
 	if err != nil {
 		return nil, "", err
 	}
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = defaultUsergroupListLimit
-	}
-	limit = clampInt(limit, 1, maxUsergroupListLimit)
+	limit := clampInt(orDefault(opts.Limit, defaultUsergroupListLimit), 1, maxUsergroupListLimit)
 
 	pages := c.usergroupsPageCache()
 	pageKey := usergroupsPageKey(opts)

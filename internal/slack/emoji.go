@@ -62,11 +62,7 @@ func ListEmoji(ctx context.Context, c *Client, opts ListEmojiOptions) ([]CustomE
 	if err != nil {
 		return nil, "", err
 	}
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = defaultEmojiListLimit
-	}
-	limit = clampInt(limit, 1, maxEmojiListLimit)
+	limit := clampInt(orDefault(opts.Limit, defaultEmojiListLimit), 1, maxEmojiListLimit)
 
 	byName, err := c.customEmojiMap(ctx)
 	if err != nil {

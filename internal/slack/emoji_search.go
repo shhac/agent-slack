@@ -40,11 +40,7 @@ func SearchEmoji(ctx context.Context, c *Client, query string, opts SearchEmojiO
 	if err != nil {
 		return nil, "", err
 	}
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = defaultEmojiSearchLimit
-	}
-	limit = clampInt(limit, 1, maxEmojiSearchLimit)
+	limit := clampInt(orDefault(opts.Limit, defaultEmojiSearchLimit), 1, maxEmojiSearchLimit)
 
 	byName, err := c.customEmojiMap(ctx)
 	if err != nil {
