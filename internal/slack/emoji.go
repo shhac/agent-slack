@@ -89,7 +89,7 @@ func ListEmoji(ctx context.Context, c *Client, opts ListEmojiOptions) ([]CustomE
 // both the workspace custom set and the static standard set. Aliases are
 // followed one hop. Returns a human-fixable not-found when nothing matches.
 func GetEmoji(ctx context.Context, c *Client, input string) (EmojiResult, error) {
-	name := normalizeEmojiLookup(input)
+	name := trimEmojiColons(input)
 	if name == "" {
 		return EmojiResult{}, agenterrors.New("emoji name is empty", agenterrors.FixableByAgent)
 	}
@@ -165,14 +165,16 @@ func fetchEmoji(ctx context.Context, c *Client) ([]CustomEmoji, error) {
 	return emoji, nil
 }
 
-// normalizeEmojiLookup prepares a get input for exact name lookup: trim space,
-// strip surrounding colons, lowercase. Separators (-_+) are NOT collapsed —
-// custom emoji names are exact, so thumbs-up and thumbsup are distinct.
-func normalizeEmojiLookup(input string) string {
-	return strings.ToLower(strings.Trim(strings.TrimSpace(input), ":"))
+// trimEmojiColons normalizes an emoji name for comparison: trim space, strip
+// surrounding colons, lowercase. It does NOT collapse separators (-_+) — for
+// exact lookup (get) and validation (add/remove) thumbs-up and thumbsup are
+// distinct names. The shared base under normalizeEmojiName and foldEmojiKey
+// (which folds separators further for loose search matching).
+func trimEmojiColons(s string) string {
+	return strings.ToLower(strings.Trim(strings.TrimSpace(s), ":"))
 }
 
 func errEmojiNotFound(input string) *agenterrors.APIError {
-	return errResolveFailed("emoji: "+normalizeEmojiLookup(input),
+	return errResolveFailed("emoji: "+trimEmojiColons(input),
 		"pass a known emoji name — 'agent-slack emoji list' shows custom emoji")
 }

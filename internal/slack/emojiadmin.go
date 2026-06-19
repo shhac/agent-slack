@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
@@ -24,7 +23,7 @@ import (
 var emojiNameRe = regexp.MustCompile(`^[a-z0-9_'+-]+$`)
 
 func normalizeEmojiName(input string) (string, error) {
-	name := strings.ToLower(strings.Trim(strings.TrimSpace(input), ":"))
+	name := trimEmojiColons(input)
 	if name == "" {
 		return "", agenterrors.New("emoji name is empty", agenterrors.FixableByAgent)
 	}

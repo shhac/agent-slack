@@ -140,13 +140,12 @@ func isEmojiSep(r rune) bool { return r == '-' || r == '_' || r == '+' }
 // foldEmojiKey collapses a name/query for fuzzy matching: trim, strip colons,
 // lowercase, and remove separators (-_+). Search-only — see scoreEmoji.
 func foldEmojiKey(s string) string {
-	s = strings.ToLower(strings.Trim(strings.TrimSpace(s), ":"))
 	return strings.Map(func(r rune) rune {
 		if isEmojiSep(r) {
 			return -1
 		}
 		return r
-	}, s)
+	}, trimEmojiColons(s))
 }
 
 // boundedLevenshtein returns the edit distance between a and b when it is <=
