@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
-	"strings"
 )
 
 // bodyEncoder turns string fields into a request body. Two implementations:
@@ -51,19 +50,9 @@ func encodeForm(fields map[string]string) ([]byte, string, error) {
 	return []byte(values.Encode()), "application/x-www-form-urlencoded", nil
 }
 
+// encodeMultipart is the field-only multipart case — no file parts.
 func encodeMultipart(fields map[string]string) ([]byte, string, error) {
-	var buf strings.Builder
-	w := multipart.NewWriter(&buf)
-	// Sorted for deterministic bodies (map iteration order is random).
-	for _, k := range slices.Sorted(maps.Keys(fields)) {
-		if err := w.WriteField(k, fields[k]); err != nil {
-			return nil, "", err
-		}
-	}
-	if err := w.Close(); err != nil {
-		return nil, "", err
-	}
-	return []byte(buf.String()), w.FormDataContentType(), nil
+	return encodeMultipartParts()(fields)
 }
 
 // filePart is one binary upload added to a multipart body alongside the string
@@ -75,27 +64,30 @@ type filePart struct {
 	data        []byte
 }
 
-// encodeMultipartFile returns a bodyEncoder that writes the string fields plus
-// one binary file part. bytes.Buffer (not strings.Builder) keeps the body
-// binary-safe.
-func encodeMultipartFile(file filePart) bodyEncoder {
+// encodeMultipartParts returns a bodyEncoder that writes the sorted string
+// fields followed by any binary file parts. bytes.Buffer keeps the body
+// binary-safe; with no files this is the plain multipart case (encodeMultipart).
+func encodeMultipartParts(files ...filePart) bodyEncoder {
 	return func(fields map[string]string) ([]byte, string, error) {
 		var buf bytes.Buffer
 		w := multipart.NewWriter(&buf)
+		// Sorted for deterministic bodies (map iteration order is random).
 		for _, k := range slices.Sorted(maps.Keys(fields)) {
 			if err := w.WriteField(k, fields[k]); err != nil {
 				return nil, "", err
 			}
 		}
-		h := textproto.MIMEHeader{}
-		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, file.field, file.filename))
-		h.Set("Content-Type", file.contentType)
-		part, err := w.CreatePart(h)
-		if err != nil {
-			return nil, "", err
-		}
-		if _, err := part.Write(file.data); err != nil {
-			return nil, "", err
+		for _, f := range files {
+			h := textproto.MIMEHeader{}
+			h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, f.field, f.filename))
+			h.Set("Content-Type", f.contentType)
+			part, err := w.CreatePart(h)
+			if err != nil {
+				return nil, "", err
+			}
+			if _, err := part.Write(f.data); err != nil {
+				return nil, "", err
+			}
 		}
 		if err := w.Close(); err != nil {
 			return nil, "", err

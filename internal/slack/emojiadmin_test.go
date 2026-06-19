@@ -125,7 +125,7 @@ func TestEmojiNameValidation(t *testing.T) {
 // The multipart encoder produces a body the standard parser can read back,
 // with the string fields and the file part intact.
 func TestEncodeMultipartFile(t *testing.T) {
-	enc := encodeMultipartFile(filePart{field: "image", filename: "a.png", contentType: "image/png", data: pngBytes})
+	enc := encodeMultipartParts(filePart{field: "image", filename: "a.png", contentType: "image/png", data: pngBytes})
 	body, contentType, err := enc(map[string]string{"name": "x", "mode": "data"})
 	if err != nil {
 		t.Fatal(err)
