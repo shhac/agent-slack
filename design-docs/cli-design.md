@@ -47,6 +47,8 @@ global persistent flags.
 | `emoji list` | `--full`, `--limit` (200, max 1000), `--cursor` | | NDJSON sorted by name; **custom** emoji only. Lean by default (`name` + `alias_for`); `--full` adds image `url`. Paginated with the same opaque offset cursor as search (a busy workspace can have thousands) |
 | `emoji get <name…>` | | | `:colons:` optional; one→object, several→NDJSON (+ `{"@unresolved": […]}`). Unified lookup over custom then standard (emojilib) sets; aliases followed one hop; exact name match (case-folded only, `-_+` not collapsed) |
 | `emoji search <query>` | `--limit` (20, max 100), `--cursor`, `--full` | | fuzzy-ranks **custom** emoji over an in-memory set; rows carry `match` tier + `score`; query folded (case + `-_+`); opaque offset cursor in `@pagination` (mirrors Slack-cursor lists) |
+| `emoji add <name>` | `--image <path>` or `--alias-for <name>` | `--yes` | creates a workspace custom emoji from an image upload (multipart `emoji.add` mode=data) or as an alias (mode=alias); needs a user/browser token; drops the `emoji` cache |
+| `emoji remove <name>` | | `--yes` | deletes a custom emoji (multipart `emoji.remove`); drops the `emoji` cache |
 | `cache info` | | | reports cached categories/entries per workspace |
 | `cache warm` | `--page-delay` (1s), `--no-bots`, `--stale-only` | | paginates users/channels/usergroups/emoji (bots included by default for a complete set; `--no-bots` opts out; `--stale-only` re-warms only categories whose sentinel lapsed), paced for rate limits, streams JSONL progress |
 | `cache purge` | `--workspace`, `--all-workspaces`, `--downloads` | | clears cached data |
@@ -80,6 +82,8 @@ the tool's purpose and run ungated (like `lin`, which gates nothing). Gated:
 - `message scheduled cancel` — destroys a pending send
 - `channel new`, `channel invite` — create org-visible structure / change
   membership (external invites especially)
+- `emoji add`, `emoji remove` — create/delete a workspace-wide custom emoji
+  (org-visible structure, like `channel new`)
 
 Ungated by decision: `message send`, `react add/remove`, `workflow run`,
 `later *`, `channel mark`, `user dm-open`, `api call`.

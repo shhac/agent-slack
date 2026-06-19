@@ -129,6 +129,8 @@ agent-slack usergroup members @marketing --resolve auto   # who's in the group
 agent-slack emoji list                        # workspace custom emoji (names + aliases; --full adds URLs)
 agent-slack emoji get :partyparrot:           # resolve one (custom or standard); several → NDJSON
 agent-slack emoji search parrot               # fuzzy-rank custom emoji (--limit 20, paginated)
+agent-slack emoji add facepalm --image ./facepalm.png --yes   # upload a custom emoji (destructive: --yes)
+agent-slack emoji remove facepalm --yes       # delete a custom emoji (destructive: --yes)
 agent-slack message send "#team" "worth a read" --forward <permalink>   # forward a message (same workspace)
 agent-slack workflow list "#ops"
 agent-slack workflow get Ft0001               # form fields + steps

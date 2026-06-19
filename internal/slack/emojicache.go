@@ -1,5 +1,7 @@
 package slack
 
+import "os"
+
 // Custom (workspace) emoji are addressed by name (:partyparrot:) and returned
 // by emoji.list as a name→value map, where value is either an image URL or
 // "alias:<other-name>". A single per-workspace cache ("emoji") backs `emoji
@@ -55,4 +57,16 @@ func (c *Client) cachedEmojiSet() (map[string]CustomEmoji, bool) {
 		out[name] = e.Value
 	}
 	return out, true
+}
+
+// forgetEmojiCache drops the workspace's emoji cache file so the next list/get
+// re-fetches. Called after a successful add/remove, which would otherwise leave
+// the cached set (and its completeness sentinel) stale. Best-effort.
+func (c *Client) forgetEmojiCache() {
+	if c == nil || c.cache == nil {
+		return
+	}
+	if path := cacheFilePath(c.cache.Dir, c.currentAuth().WorkspaceURL, "emoji"); path != "" {
+		_ = os.Remove(path)
+	}
 }

@@ -13,7 +13,7 @@ COMMANDS
   channel    list | get | members | new* | invite* | mark
   user       list | get | dm-open
   usergroup  list | get | members — workspace subteams (@group)
-  emoji      list | get | search — workspace custom emoji (:shortcode:)
+  emoji      list | get | search | add* | remove* — workspace custom emoji
   search     all | messages | files
   workflow   list | preview | get | run
   canvas     get
@@ -203,8 +203,14 @@ SEARCH   emoji search <query> [--limit 20] [--cursor …] [--full]
          {match, score}. Unlike get, the query is folded (case + -_+ collapsed).
          Paginated: a full page emits {"@pagination":{next_cursor}} — pass it to
          --cursor for the next page.
+ADD*     emoji add <name> --image <path> --yes      (png/gif/jpeg/webp)
+         emoji add <name> --alias-for <other> --yes  (alias an existing emoji)
+         Creates a workspace-wide custom emoji. Needs a user/browser token.
+REMOVE*  emoji remove <name> --yes — delete a custom emoji.
+         * destructive: without --yes returns what WOULD happen, no mutation.
 CACHE    Backed by the per-workspace 'emoji' cache (24h). 'cache warm emoji'
-         pre-fills it; within the window a name miss is authoritative.`,
+         pre-fills it; within the window a name miss is authoritative. add and
+         remove drop the cache so the next list/get reflects the change.`,
 
 	"search": `agent-slack search — messages and files.
 

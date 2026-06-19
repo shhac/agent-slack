@@ -11,7 +11,7 @@ Slack CLI for AI agents. Go + cobra.
   credentials file holds only non-secret metadata plus a `__KEYCHAIN__`
   placeholder.
 - Prefer read-only commands. Destructive mutations (`message edit`/`delete`,
-  `message scheduled cancel`, `channel new`/`invite`) must require `--yes` and
+  `message scheduled cancel`, `channel new`/`invite`, `emoji add`/`remove`) must require `--yes` and
   return a human-fixable JSON error without it. Plain sends, reactions, and
   personal-state writes are ungated by decision — see
   `design-docs/cli-design.md`.

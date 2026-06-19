@@ -1,9 +1,12 @@
 package slack
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"mime/multipart"
+	"net/textproto"
 	"net/url"
 	"slices"
 	"strconv"
@@ -61,4 +64,42 @@ func encodeMultipart(fields map[string]string) ([]byte, string, error) {
 		return nil, "", err
 	}
 	return []byte(buf.String()), w.FormDataContentType(), nil
+}
+
+// filePart is one binary upload added to a multipart body alongside the string
+// fields (e.g. the image for emoji.add).
+type filePart struct {
+	field       string // form field name (e.g. "image")
+	filename    string
+	contentType string
+	data        []byte
+}
+
+// encodeMultipartFile returns a bodyEncoder that writes the string fields plus
+// one binary file part. bytes.Buffer (not strings.Builder) keeps the body
+// binary-safe.
+func encodeMultipartFile(file filePart) bodyEncoder {
+	return func(fields map[string]string) ([]byte, string, error) {
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
+		for _, k := range slices.Sorted(maps.Keys(fields)) {
+			if err := w.WriteField(k, fields[k]); err != nil {
+				return nil, "", err
+			}
+		}
+		h := textproto.MIMEHeader{}
+		h.Set("Content-Disposition", fmt.Sprintf(`form-data; name=%q; filename=%q`, file.field, file.filename))
+		h.Set("Content-Type", file.contentType)
+		part, err := w.CreatePart(h)
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := part.Write(file.data); err != nil {
+			return nil, "", err
+		}
+		if err := w.Close(); err != nil {
+			return nil, "", err
+		}
+		return buf.Bytes(), w.FormDataContentType(), nil
+	}
 }

@@ -143,6 +143,17 @@ func (c *Client) APIMultipart(ctx context.Context, method string, params map[str
 	return c.apiWithRefresh(ctx, method, params, encodeMultipart)
 }
 
+// APIMultipartFile is APIMultipart with one binary file part alongside the
+// string params (e.g. the image for emoji.add).
+func (c *Client) APIMultipartFile(ctx context.Context, method string, params map[string]any, field, filename, contentType string, data []byte) (map[string]any, error) {
+	return c.apiWithRefresh(ctx, method, params, encodeMultipartFile(filePart{
+		field:       field,
+		filename:    filename,
+		contentType: contentType,
+		data:        data,
+	}))
+}
+
 func (c *Client) apiWithRefresh(ctx context.Context, method string, params map[string]any, enc bodyEncoder) (map[string]any, error) {
 	resp, err := c.call(ctx, method, params, enc)
 	if err == nil || !IsAuthError(err) {

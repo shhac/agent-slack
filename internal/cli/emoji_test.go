@@ -1,6 +1,10 @@
 package cli
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func emojiListFixture() map[string]any {
 	return map[string]any{"ok": true, "emoji": map[string]any{
@@ -120,6 +124,76 @@ func TestEmojiGetMultipleWithUnresolved(t *testing.T) {
 	unresolved, ok := lines[1]["@unresolved"].([]any)
 	if !ok || len(unresolved) != 1 || unresolved[0] != "no_such_emoji_xyz" {
 		t.Errorf("unresolved meta = %v", lines[1])
+	}
+}
+
+func writeCLITempPNG(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "emoji.png")
+	if err := os.WriteFile(path, []byte("\x89PNG\r\n\x1a\nrest"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestEmojiAddRequiresYes(t *testing.T) {
+	f := newCLIFixture(t)
+	img := writeCLITempPNG(t)
+
+	_, stderr, err := f.run(t, "emoji", "add", "facepalm", "--image", img)
+	if err == nil {
+		t.Fatal("expected error without --yes")
+	}
+	if errPayload(t, stderr)["fixable_by"] != "human" {
+		t.Errorf("payload = %v", errPayload(t, stderr))
+	}
+	// No API call should have happened.
+	if n := len(f.server.CallsFor("emoji.add")); n != 0 {
+		t.Errorf("emoji.add called %d times before confirmation", n)
+	}
+
+	f.server.HandleBody("emoji.add", map[string]any{"ok": true})
+	out, _, err := f.run(t, "emoji", "add", "facepalm", "--image", img, "--yes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseJSON(t, out)["added"] != "facepalm" {
+		t.Errorf("out = %s", out)
+	}
+}
+
+func TestEmojiAddRejectsBothModes(t *testing.T) {
+	f := newCLIFixture(t)
+	img := writeCLITempPNG(t)
+	_, stderr, err := f.run(t, "emoji", "add", "x", "--image", img, "--alias-for", "y", "--yes")
+	if err == nil {
+		t.Fatal("expected error when both --image and --alias-for are given")
+	}
+	if errPayload(t, stderr)["fixable_by"] != "agent" {
+		t.Errorf("payload = %v", errPayload(t, stderr))
+	}
+}
+
+func TestEmojiRemoveRequiresYes(t *testing.T) {
+	f := newCLIFixture(t)
+	_, stderr, err := f.run(t, "emoji", "remove", "facepalm")
+	if err == nil {
+		t.Fatal("expected error without --yes")
+	}
+	if errPayload(t, stderr)["fixable_by"] != "human" {
+		t.Errorf("payload = %v", errPayload(t, stderr))
+	}
+	if n := len(f.server.CallsFor("emoji.remove")); n != 0 {
+		t.Errorf("emoji.remove called %d times before confirmation", n)
+	}
+
+	f.server.HandleBody("emoji.remove", map[string]any{"ok": true})
+	out, _, err := f.run(t, "emoji", "remove", "facepalm", "--yes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseJSON(t, out)["removed"] != "facepalm" {
+		t.Errorf("out = %s", out)
 	}
 }
 
