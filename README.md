@@ -88,6 +88,7 @@ agent-slack message usage                  # per-domain detail pages
 | `channel`  | `list`, `get`, `members`, `new`*, `invite`*, `mark` |
 | `user`     | `list`, `get`, `dm-open` |
 | `usergroup`| `list`, `get`, `members` (subteams; surfaces each group's default channels) |
+| `emoji`    | `list`, `get` (workspace custom emoji; `get` falls back to standard unicode) |
 | `search`   | `all`, `messages`, `files` |
 | `workflow` | `list`, `preview`, `get`, `run` (incl. `--field` form submission) |
 | `canvas`   | `get` |

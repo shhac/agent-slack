@@ -126,6 +126,8 @@ agent-slack user dm-open @alice @bob          # group DM channel id
 agent-slack usergroup list                    # subteams + their default channels
 agent-slack usergroup get @marketing          # one → object; several → NDJSON
 agent-slack usergroup members @marketing --resolve auto   # who's in the group
+agent-slack emoji list                        # workspace custom emoji (names + aliases; --full adds URLs)
+agent-slack emoji get :partyparrot:           # resolve one (custom or standard); several → NDJSON
 agent-slack message send "#team" "worth a read" --forward <permalink>   # forward a message (same workspace)
 agent-slack workflow list "#ops"
 agent-slack workflow get Ft0001               # form fields + steps
@@ -147,7 +149,7 @@ these only when you need to:
 
 ```bash
 agent-slack cache info                         # what's cached, per workspace
-agent-slack cache warm                          # pre-fill users/channels/usergroups (JSONL progress); makes --resolve auto free
+agent-slack cache warm                          # pre-fill users/channels/usergroups/emoji (JSONL progress); makes --resolve auto free
 agent-slack cache warm --stale-only             # re-warm only what's gone stale (cheap; good for a repeated/scheduled warm)
 agent-slack cache purge --workspace "#…"        # clear one workspace
 agent-slack cache purge --downloads             # clear downloaded files

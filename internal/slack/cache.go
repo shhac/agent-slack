@@ -43,6 +43,7 @@ type CacheTTL struct {
 	WorkflowSchema  time.Duration
 	Scheduled       time.Duration
 	Drafts          time.Duration
+	Emoji           time.Duration
 
 	// Completeness windows: how long after a full enumeration a resolution miss
 	// is trusted as authoritative (skip the remote lookup). Separate from the
@@ -51,6 +52,7 @@ type CacheTTL struct {
 	UsersComplete      time.Duration
 	ChannelsComplete   time.Duration
 	UsergroupsComplete time.Duration
+	EmojiComplete      time.Duration
 
 	// Serve thresholds: how fresh a cached entity/page must be to be returned
 	// from a `get`/`list` (short), as opposed to the long warm TTLs above that
@@ -73,10 +75,12 @@ func DefaultCacheTTL() CacheTTL {
 		WorkflowSchema:  time.Hour,
 		Scheduled:       time.Hour,
 		Drafts:          time.Hour,
+		Emoji:           24 * time.Hour,
 
 		UsersComplete:      30 * time.Minute,
 		ChannelsComplete:   30 * time.Minute,
 		UsergroupsComplete: 30 * time.Minute,
+		EmojiComplete:      24 * time.Hour,
 
 		Get:  5 * time.Minute,
 		List: 5 * time.Minute,

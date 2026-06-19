@@ -29,11 +29,11 @@ func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 	var pageDelay time.Duration
 	var noBots, staleOnly bool
 	cmd := &cobra.Command{
-		Use:       "warm [users|channels|usergroups...]",
-		Short:     "Pre-fetch users, channels, and usergroups into the cache (paced for rate limits; streams JSONL progress)",
-		Long:      "Pre-fetch list endpoints into the cache. With no arguments all categories are warmed; pass one or more of users, channels, usergroups to scope it.",
+		Use:       "warm [users|channels|usergroups|emoji...]",
+		Short:     "Pre-fetch users, channels, usergroups, and custom emoji into the cache (paced for rate limits; streams JSONL progress)",
+		Long:      "Pre-fetch list endpoints into the cache. With no arguments all categories are warmed; pass one or more of users, channels, usergroups, emoji to scope it.",
 		Args:      cobra.OnlyValidArgs,
-		ValidArgs: []string{slack.WarmUsers, slack.WarmChannels, slack.WarmUsergroups},
+		ValidArgs: []string{slack.WarmUsers, slack.WarmChannels, slack.WarmUsergroups, slack.WarmEmoji},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc, err := getClient(globals)
 			if err != nil {

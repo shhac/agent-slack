@@ -10,6 +10,7 @@ const (
 	WarmUsers      = "users"
 	WarmChannels   = "channels"
 	WarmUsergroups = "usergroups"
+	WarmEmoji      = "emoji"
 )
 
 // WarmOptions configures a cache warm sweep.
@@ -44,7 +45,7 @@ func (o WarmOptions) wants(category string) bool {
 // WarmEvent is one progress record emitted as a warm sweep proceeds: a
 // running tally per page, then a Done record at each category boundary.
 type WarmEvent struct {
-	Category string `json:"category"` // users | channels | usergroups
+	Category string `json:"category"` // users | channels | usergroups | emoji
 	Count    int    `json:"count"`    // entities warmed so far in this category
 	Done     bool   `json:"done,omitempty"`
 	Skipped  bool   `json:"skipped,omitempty"` // --stale-only: category was still complete
@@ -103,6 +104,15 @@ func WarmWorkspace(ctx context.Context, c *Client, opts WarmOptions, progress fu
 			return err
 		}
 		emit(WarmEvent{Category: WarmUsergroups, Count: len(groups), Done: true})
+	}
+	if warmable(WarmEmoji, c.emojiComplete()) {
+		// emoji.list returns the whole custom set (paged when large); fetchEmoji
+		// warms the cache and arms the completeness sentinel.
+		emoji, err := fetchEmoji(ctx, c)
+		if err != nil {
+			return err
+		}
+		emit(WarmEvent{Category: WarmEmoji, Count: len(emoji), Done: true})
 	}
 	return nil
 }

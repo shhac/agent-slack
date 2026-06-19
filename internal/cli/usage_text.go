@@ -13,6 +13,7 @@ COMMANDS
   channel    list | get | members | new* | invite* | mark
   user       list | get | dm-open
   usergroup  list | get | members — workspace subteams (@group)
+  emoji      list | get — workspace custom emoji (:shortcode:)
   search     all | messages | files
   workflow   list | preview | get | run
   canvas     get
@@ -55,7 +56,7 @@ CACHE
   --refresh-cache re-fetches but still writes. Tune TTLs via --cache-ttl,
   AGENT_SLACK_CACHE_TTL[_<CATEGORY>], or 'config set cache.ttl.<cat>'.
   'cache info' / 'cache purge' inspect and clear it; 'cache warm
-  [users|channels|usergroups]' pre-fetches list endpoints (paced, streams
+  [users|channels|usergroups|emoji]' pre-fetches list endpoints (paced, streams
   JSONL) so completions/resolution are instant and offline (and --resolve auto
   is free), and arms a completeness sentinel — within cache.ttl.*-complete (30m)
   a later miss is authoritative (no remote lookup); --refresh-cache bypasses it.
@@ -174,6 +175,25 @@ MEMBERS  usergroup members <S…|@handle> [--resolve none|cached|auto|fresh] [--
          with --resolve cached/auto/fresh. To answer "which groups am I in?", scan
          'usergroup list' membership (or check 'auth test' user id against
          members).`,
+
+	"emoji": `agent-slack emoji — workspace custom emoji (:shortcode:).
+
+Custom emoji are sent as literal :shortcode: text — Slack renders them, so no
+special handling is needed in message bodies. These commands are for DISCOVERY:
+which custom names exist, and what an alias resolves to. The standard unicode
+set is handled separately (built in); 'emoji get' falls back to it.
+
+LIST     emoji list [--full]
+         NDJSON of the workspace's CUSTOM emoji, sorted by name. Lean by
+         default: name plus alias_for (for aliases). --full adds the image url.
+         Does NOT include the ~1.8k standard unicode emoji.
+GET      emoji get <name…> — :colons: optional; one arg → object, several →
+         NDJSON with a trailing {"@unresolved": […]}. Unified lookup over
+         custom then standard emoji: custom → {custom:true, url|alias_for};
+         alias → followed one hop (url or unicode); a standard name → {unicode}.
+         Names are matched EXACTLY (case-folded only; -_+ not collapsed).
+CACHE    Backed by the per-workspace 'emoji' cache (24h). 'cache warm emoji'
+         pre-fills it; within the window a name miss is authoritative.`,
 
 	"search": `agent-slack search — messages and files.
 

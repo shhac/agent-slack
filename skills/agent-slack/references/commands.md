@@ -116,6 +116,21 @@ Workspace user groups (subteams, the `@group` you @-mention). Aliased `usergroup
 which is "best" to post in; choose per your use case. To answer "which groups am
 I in?", check your user id (from `auth test`) against `usergroup members` output.
 
+## emoji
+
+Workspace **custom** emoji. These are for discovery — which custom names exist
+and what aliases resolve to. To *use* an emoji in a message, just type
+`:shortcode:`; Slack renders it (no command needed). The ~1.8k standard unicode
+emoji are built in and not listed here, but `emoji get` falls back to them.
+
+| Command | Notes |
+|---|---|
+| `emoji list` | `--full`; NDJSON sorted by name. Lean by default: `name` + `alias_for` (aliases). `--full` adds the image `url`. Custom set only |
+| `emoji get <name…>` | `:colons:` optional; one → object, several → NDJSON (+ `{"@unresolved": […]}`). Unified lookup: custom → `{custom:true, url\|alias_for}`; alias followed one hop (→ `url` or `unicode`); standard name → `{unicode}`. Matched exactly (case-folded only; `-_+` not collapsed) |
+
+Backed by the per-workspace `emoji` cache (24h TTL). `cache warm emoji` pre-fills
+it; within the window a name miss is authoritative (no refetch).
+
 ## search
 
 ```
@@ -167,7 +182,7 @@ wrapper exists.
 | Command | Notes |
 |---|---|
 | `cache info` | what's cached per workspace: categories, entry counts, size, age (all workspaces unless `--workspace`) |
-| `cache warm [users\|channels\|usergroups...] [--page-delay 1s] [--no-bots] [--stale-only]` | pre-fetch the named categories (all if none given) so completions + resolution are instant and offline, and arm the completeness sentinel (a later miss is authoritative within `cache.ttl.*-complete`, default 30m). Bots are warmed by default so the user set is complete; `--no-bots` excludes them but leaves the sentinel un-armed. `--stale-only` skips categories still complete within the sentinel window (re-warm only what has gone stale — ideal for a repeated/scheduled warm; emits `skipped:true` for skipped categories). Paginates each endpoint, paced (`--page-delay 0` to disable); streams JSONL progress (filter `done:true` for the per-category summary) |
+| `cache warm [users\|channels\|usergroups\|emoji...] [--page-delay 1s] [--no-bots] [--stale-only]` | pre-fetch the named categories (all if none given) so completions + resolution are instant and offline, and arm the completeness sentinel (a later miss is authoritative within `cache.ttl.*-complete`, default 30m). Bots are warmed by default so the user set is complete; `--no-bots` excludes them but leaves the sentinel un-armed. `--stale-only` skips categories still complete within the sentinel window (re-warm only what has gone stale — ideal for a repeated/scheduled warm; emits `skipped:true` for skipped categories). Paginates each endpoint, paced (`--page-delay 0` to disable); streams JSONL progress (filter `done:true` for the per-category summary) |
 | `cache purge [--workspace … \| --all-workspaces] [--downloads]` | clear cached data (local + regenerable; no `--yes`). `--downloads` clears the downloaded-files cache (global — see below) |
 | `config list` | persisted settings + the settable keys |
 | `config get <key>` / `config set <key> <value>` / `config unset <key>` | read/write persisted settings |

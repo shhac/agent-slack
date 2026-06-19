@@ -55,6 +55,10 @@ func TestCacheWarm(t *testing.T) {
 	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList(
 		mockslack.Usergroup("S0MARKETIN", "marketing", "Marketing", "C0GENERAL"),
 	))
+	f.server.HandleBody("emoji.list", map[string]any{"ok": true, "emoji": map[string]any{
+		"partyparrot": "https://emoji.slack-edge.com/T1/partyparrot/abc.gif",
+		"shipit":      "alias:partyparrot",
+	}})
 
 	out, _, err := f.run(t, "cache", "warm", "--page-delay", "0")
 	if err != nil {
@@ -75,6 +79,18 @@ func TestCacheWarm(t *testing.T) {
 	}
 	if done["usergroups"] != 1 {
 		t.Errorf("usergroups warmed = %d, want 1", done["usergroups"])
+	}
+	if done["emoji"] != 2 {
+		t.Errorf("emoji warmed = %d, want 2", done["emoji"])
+	}
+
+	// The warm populated the emoji cache: a follow-up `emoji get` serves from
+	// cache with no second emoji.list call.
+	if _, _, err := f.run(t, "emoji", "get", "partyparrot"); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(f.server.CallsFor("emoji.list")); n != 1 {
+		t.Errorf("emoji.list called %d times; warm should have made get a cache hit (want 1)", n)
 	}
 
 	// The warm populated the usergroup handle index AND entity store: a
@@ -97,6 +113,7 @@ func TestCacheWarmNoBots(t *testing.T) {
 	}})
 	f.server.HandleBody("conversations.list", mockslack.ConversationsList())
 	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList())
+	f.server.HandleBody("emoji.list", map[string]any{"ok": true, "emoji": map[string]any{}})
 
 	out, _, err := f.run(t, "cache", "warm", "--page-delay", "0", "--no-bots")
 	if err != nil {
@@ -112,7 +129,7 @@ func TestCacheWarmNoBots(t *testing.T) {
 }
 
 // --stale-only re-warms only categories whose completeness sentinel has lapsed.
-// After a full warm arms all three, a second --stale-only run skips them all
+// After a full warm arms all four, a second --stale-only run skips them all
 // (emitting skipped events) and makes no new list calls.
 func TestCacheWarmStaleOnly(t *testing.T) {
 	f := newCLIFixture(t)
@@ -125,6 +142,9 @@ func TestCacheWarmStaleOnly(t *testing.T) {
 	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList(
 		mockslack.Usergroup("S0MARKETIN", "marketing", "Marketing"),
 	))
+	f.server.HandleBody("emoji.list", map[string]any{"ok": true, "emoji": map[string]any{
+		"partyparrot": "https://emoji.slack-edge.com/T1/partyparrot/abc.gif",
+	}})
 
 	// First warm arms every sentinel.
 	if _, _, err := f.run(t, "cache", "warm", "--page-delay", "0"); err != nil {
@@ -134,6 +154,7 @@ func TestCacheWarmStaleOnly(t *testing.T) {
 		"users.list":      len(f.server.CallsFor("users.list")),
 		"conversations":   len(f.server.CallsFor("conversations.list")),
 		"usergroups.list": len(f.server.CallsFor("usergroups.list")),
+		"emoji.list":      len(f.server.CallsFor("emoji.list")),
 	}
 
 	out, _, err := f.run(t, "cache", "warm", "--page-delay", "0", "--stale-only")
@@ -146,8 +167,8 @@ func TestCacheWarmStaleOnly(t *testing.T) {
 			skipped++
 		}
 	}
-	if skipped != 3 {
-		t.Errorf("want 3 skipped categories, got %d: %s", skipped, out)
+	if skipped != 4 {
+		t.Errorf("want 4 skipped categories, got %d: %s", skipped, out)
 	}
 	if n := len(f.server.CallsFor("users.list")); n != before["users.list"] {
 		t.Errorf("--stale-only re-fetched users.list (%d → %d)", before["users.list"], n)
@@ -157,5 +178,8 @@ func TestCacheWarmStaleOnly(t *testing.T) {
 	}
 	if n := len(f.server.CallsFor("usergroups.list")); n != before["usergroups.list"] {
 		t.Errorf("--stale-only re-fetched usergroups.list")
+	}
+	if n := len(f.server.CallsFor("emoji.list")); n != before["emoji.list"] {
+		t.Errorf("--stale-only re-fetched emoji.list")
 	}
 }

@@ -44,8 +44,10 @@ global persistent flags.
 | `usergroup list` | `--include-disabled` | | NDJSON, compact projection |
 | `usergroup get <usergroup…>` | | | id `S…` or `@handle`; one→object, several→NDJSON |
 | `usergroup members <usergroup>` | `--resolve none\|cached\|auto\|fresh`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
+| `emoji list` | `--full` | | NDJSON sorted by name; **custom** emoji only. Lean by default (`name` + `alias_for`); `--full` adds image `url` |
+| `emoji get <name…>` | | | `:colons:` optional; one→object, several→NDJSON (+ `{"@unresolved": […]}`). Unified lookup over custom then standard (emojilib) sets; aliases followed one hop; exact name match (case-folded only, `-_+` not collapsed) |
 | `cache info` | | | reports cached categories/entries per workspace |
-| `cache warm` | `--page-delay` (1s), `--no-bots`, `--stale-only` | | paginates users/channels/usergroups (bots included by default for a complete set; `--no-bots` opts out; `--stale-only` re-warms only categories whose sentinel lapsed), paced for rate limits, streams JSONL progress |
+| `cache warm` | `--page-delay` (1s), `--no-bots`, `--stale-only` | | paginates users/channels/usergroups/emoji (bots included by default for a complete set; `--no-bots` opts out; `--stale-only` re-warms only categories whose sentinel lapsed), paced for rate limits, streams JSONL progress |
 | `cache purge` | `--workspace`, `--all-workspaces`, `--downloads` | | clears cached data |
 | `config get/set/list/unset` | | | persists settings (e.g. TTLs) in `config.json` |
 | `channel list` | `--user`, `--all`, `--limit` (100), `--cursor` | | NDJSON, compact projection |
@@ -238,12 +240,29 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
   human-debuggable. (`modernc.org/sqlite` stays in the binary for cookie DBs
   only.) The subdir groups a workspace's caches and makes per-workspace purge
   one rmdir.
-- **Categories + default TTL**: `users` ID→profile, `usergroups` handle→`S…`
-  (24h each); `handles` @handle/email→ID, `channel-names` name→ID, `channels`
-  ID→meta, `workflow-list` channelID→annotated workflows, `workflow-triggers`
-  Ft→preview, `workflow-schemas` Wf→schema, `scheduled` id→compact
-  scheduled-message (write-only, completion-only) (1h each). Stable data lasts
-  a day; volatile name/membership mappings an hour.
+- **Categories + default TTL**: `users` ID→profile, `usergroups` handle→`S…`,
+  `emoji` name→custom-emoji (24h each); `handles` @handle/email→ID,
+  `channel-names` name→ID, `channels` ID→meta, `workflow-list`
+  channelID→annotated workflows, `workflow-triggers` Ft→preview,
+  `workflow-schemas` Wf→schema, `scheduled` id→compact scheduled-message
+  (write-only, completion-only) (1h each). Stable data lasts a day; volatile
+  name/membership mappings an hour.
+- **Custom emoji** (decision): `emoji list`/`get` are backed by a single
+  `emoji` category (name is the key — unlike `usergroups`, no separate id, so
+  one store suffices, not the handle-index + entity-store pair). It holds the
+  workspace's **custom** set only and *complements* the static emojilib unicode
+  table in `internal/render` (which carries the ~1.8k standard emoji and is what
+  `get` falls back to). `emoji.list` returns the whole set in one (paged) sweep,
+  so a fetch arms the completeness sentinel and a later name miss is
+  authoritative. **We cache name→URL/alias metadata, never the image bytes** —
+  an agent consumes names and alias targets, not pixels, and bytes would violate
+  the "no bulky payloads" rule. **Not sharded** (e.g. by name prefix): the cache
+  is load-once-whole-file, `list` needs every entry anyway, and the per-file
+  completeness sentinel doesn't survive splitting; even a 20k-emoji workspace is
+  only a few MB. TTL is 24h (matching `users`): long enough to avoid re-fetching,
+  short enough that a freshly-added emoji isn't reported missing for more than a
+  day (there is no per-emoji lookup endpoint, so a `get` miss re-fetches the
+  whole list).
 - **`workflow list` validates + warms** (decision): the listing endpoints
   (`bookmarks.list`/`workflows.featured.list`) carry no liveness info, so a
   deleted-but-bookmarked trigger used to list fine and only fail on `preview`.

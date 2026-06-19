@@ -27,6 +27,14 @@ func EmojifyShortcodes(text string) string {
 	})
 }
 
+// EmojiUnicode returns the unicode character for a standard emoji shortcode
+// name (no surrounding colons), from the static emojilib dataset. Custom
+// workspace emoji are not in this set.
+func EmojiUnicode(name string) (string, bool) {
+	e, ok := emojiByName[name]
+	return e, ok
+}
+
 // NormalizeReactionName converts ":rocket:", "rocket", or "🚀" to the bare
 // name Slack's reactions API expects ("rocket").
 func NormalizeReactionName(input string) (string, error) {
