@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -159,5 +160,35 @@ func TestBoundedLevenshtein(t *testing.T) {
 		if ok != tc.within || (ok && d != tc.want) {
 			t.Errorf("levenshtein(%q,%q,%d) = (%d,%v), want (%d,%v)", tc.a, tc.b, tc.max, d, ok, tc.want, tc.within)
 		}
+	}
+}
+
+// The limit bounds: an over-cap limit clamps to the max page size, and a
+// negative limit clamps to the floor (1) — not the default — since a limit is
+// an upper bound and must never yield more rows than requested.
+func TestSearchEmojiLimitBounds(t *testing.T) {
+	emoji := map[string]any{}
+	for i := 0; i < 150; i++ { // > maxEmojiSearchLimit (100), all match "parrot"
+		emoji[fmt.Sprintf("parrot%03d", i)] = "https://e/p.gif"
+	}
+	server := mockslack.New()
+	server.HandleBody("emoji.list", map[string]any{"ok": true, "emoji": emoji})
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+	ctx := context.Background()
+
+	page, next, err := SearchEmoji(ctx, c, "parrot", SearchEmojiOptions{Limit: 10000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != maxEmojiSearchLimit || next == "" {
+		t.Errorf("over-cap limit: got %d items next=%q, want %d + a cursor", len(page), next, maxEmojiSearchLimit)
+	}
+
+	page, _, err = SearchEmoji(ctx, c, "parrot", SearchEmojiOptions{Limit: -5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page) != 1 {
+		t.Errorf("negative limit: got %d items, want 1 (clamped to floor, not default)", len(page))
 	}
 }
