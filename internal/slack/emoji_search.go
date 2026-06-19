@@ -1,7 +1,9 @@
 package slack
 
 import (
+	"cmp"
 	"context"
+	"math"
 	"slices"
 	"strings"
 )
@@ -75,7 +77,7 @@ func rankEmoji(query string, custom map[string]CustomEmoji, full bool) []EmojiMa
 	}
 	slices.SortFunc(matches, func(a, b EmojiMatch) int {
 		if a.Score != b.Score {
-			return cmpFloatDesc(a.Score, b.Score)
+			return cmp.Compare(b.Score, a.Score) // descending
 		}
 		if len(a.Name) != len(b.Name) {
 			return len(a.Name) - len(b.Name)
@@ -191,14 +193,7 @@ func abs(n int) int {
 	return n
 }
 
-func cmpFloatDesc(a, b float64) int {
-	if a > b {
-		return -1
-	}
-	return 1
-}
-
 // round to 3 decimals so scores compare cleanly and don't carry float noise.
 func round(f float64) float64 {
-	return float64(int(f*1000+0.5)) / 1000
+	return math.Round(f*1000) / 1000
 }
