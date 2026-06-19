@@ -28,8 +28,8 @@ family so conventions, output contract, and credential handling are shared.
 - **Keychain-first credentials**: browser (`xoxc`/`xoxd`) and bot (`xoxb`/`xoxp`)
   tokens stored in the macOS Keychain; secrets never printed.
 - **Mutation safety**: destructive commands (`message edit|delete`,
-  `scheduled cancel`, `channel new|invite`) require `--yes` and describe what
-  would happen without it.
+  `scheduled cancel`, `channel new|invite`, `emoji add|remove`) require `--yes`
+  and describe what would happen without it.
 - **Multi-workspace**: disambiguate with `--workspace <url-or-substring>`.
 
 ## Installation

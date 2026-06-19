@@ -22,8 +22,8 @@ boundaries. It mirrors the conventions of the sibling `agent-*` CLIs
   alongside.
 
 Destructive mutations (`message edit|delete`, `scheduled cancel`,
-`channel new|invite`) return a structured `fixable_by: human` error unless
-`--yes` is set; other writes are ungated. The full command tree, flag
+`channel new|invite`, `emoji add|remove`) return a structured `fixable_by: human`
+error unless `--yes` is set; other writes are ungated. The full command tree, flag
 defaults, projections, and the decisions behind them are in `cli-design.md`.
 
 ## Slack client (implemented)
