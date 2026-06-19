@@ -2,12 +2,8 @@ package slack
 
 import (
 	"context"
-	"encoding/base64"
 	"slices"
-	"strconv"
 	"strings"
-
-	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
 // EmojiMatch is one ranked hit from `emoji search`: a custom emoji plus the
@@ -46,25 +42,15 @@ func SearchEmoji(ctx context.Context, c *Client, query string, opts SearchEmojiO
 	if limit <= 0 {
 		limit = defaultEmojiSearchLimit
 	}
-	if limit > maxEmojiSearchLimit {
-		limit = maxEmojiSearchLimit
-	}
+	limit = clampInt(limit, 1, maxEmojiSearchLimit)
 
 	byName, err := c.customEmojiMap(ctx)
 	if err != nil {
 		return nil, "", err
 	}
 	ranked := rankEmoji(query, byName, opts.Full)
-
-	if offset >= len(ranked) {
-		return nil, "", nil
-	}
-	end := min(offset+limit, len(ranked))
-	next := ""
-	if end < len(ranked) {
-		next = encodeOffsetCursor(end)
-	}
-	return ranked[offset:end], next, nil
+	page, next := pageByOffset(ranked, offset, limit)
+	return page, next, nil
 }
 
 // rankEmoji scores every custom emoji against query, drops non-matches, and
@@ -196,27 +182,6 @@ func boundedLevenshtein(a, b string, maxDist int) (int, bool) {
 		return 0, false
 	}
 	return prev[lb], true
-}
-
-// encodeOffsetCursor / decodeOffsetCursor mint and read the opaque pagination
-// cursor for a local (in-memory) result set, mirroring how Slack-backed lists
-// hand back an opaque next_cursor the caller passes to --cursor.
-func encodeOffsetCursor(offset int) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
-}
-
-func decodeOffsetCursor(cursor string) (int, error) {
-	if cursor == "" {
-		return 0, nil
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(cursor)
-	if err == nil {
-		if n, cerr := strconv.Atoi(string(raw)); cerr == nil && n >= 0 {
-			return n, nil
-		}
-	}
-	return 0, agenterrors.New("invalid pagination cursor", agenterrors.FixableByAgent).
-		WithHint("omit --cursor to start from the first page, or pass a next_cursor from a prior page")
 }
 
 func abs(n int) int {

@@ -70,9 +70,7 @@ func ListUsergroups(ctx context.Context, c *Client, opts ListUsergroupsOptions) 
 	if limit <= 0 {
 		limit = defaultUsergroupListLimit
 	}
-	if limit > maxUsergroupListLimit {
-		limit = maxUsergroupListLimit
-	}
+	limit = clampInt(limit, 1, maxUsergroupListLimit)
 
 	pages := c.usergroupsPageCache()
 	pageKey := usergroupsPageKey(opts)
@@ -86,15 +84,8 @@ func ListUsergroups(ctx context.Context, c *Client, opts ListUsergroupsOptions) 
 		pages.save()
 	}
 
-	if offset >= len(groups) {
-		return nil, "", nil
-	}
-	end := min(offset+limit, len(groups))
-	next := ""
-	if end < len(groups) {
-		next = encodeOffsetCursor(end)
-	}
-	return groups[offset:end], next, nil
+	page, next := pageByOffset(groups, offset, limit)
+	return page, next, nil
 }
 
 // GetUsergroup fetches one usergroup by id (S…) or @handle. Slack has no

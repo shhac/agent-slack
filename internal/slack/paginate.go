@@ -2,12 +2,54 @@ package slack
 
 import (
 	"context"
+	"encoding/base64"
 	"maps"
+	"strconv"
+
+	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
 // NextCursor extracts response_metadata.next_cursor from a Slack response.
 func NextCursor(resp map[string]any) string {
 	return getStr(getRec(resp, "response_metadata"), "next_cursor")
+}
+
+// pageByOffset returns the page of items starting at offset (already decoded
+// from a cursor) limited to limit, plus the cursor for the next page ("" when
+// the slice is exhausted). It owns the boundary arithmetic shared by every
+// client-side (in-memory) list — emoji list/search and usergroup list — so the
+// off-by-one cases live in one place instead of being re-derived per caller.
+func pageByOffset[T any](items []T, offset, limit int) ([]T, string) {
+	if offset >= len(items) {
+		return nil, ""
+	}
+	end := min(offset+limit, len(items))
+	next := ""
+	if end < len(items) {
+		next = encodeOffsetCursor(end)
+	}
+	return items[offset:end], next
+}
+
+// encodeOffsetCursor / decodeOffsetCursor mint and read the opaque pagination
+// cursor for a local (in-memory) result set, mirroring how Slack-backed lists
+// hand back an opaque next_cursor the caller passes to --cursor.
+func encodeOffsetCursor(offset int) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
+}
+
+func decodeOffsetCursor(cursor string) (int, error) {
+	if cursor == "" {
+		return 0, nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err == nil {
+		if n, cerr := strconv.Atoi(string(raw)); cerr == nil && n >= 0 {
+			return n, nil
+		}
+	}
+	return 0, agenterrors.New("invalid pagination cursor", agenterrors.FixableByAgent).
+		WithHint("omit --cursor to start from the first page, or pass a next_cursor from a prior page")
 }
 
 // eachHistoryPage walks conversations.history newest-first: the `latest`

@@ -66,9 +66,7 @@ func ListEmoji(ctx context.Context, c *Client, opts ListEmojiOptions) ([]CustomE
 	if limit <= 0 {
 		limit = defaultEmojiListLimit
 	}
-	if limit > maxEmojiListLimit {
-		limit = maxEmojiListLimit
-	}
+	limit = clampInt(limit, 1, maxEmojiListLimit)
 
 	byName, err := c.customEmojiMap(ctx)
 	if err != nil {
@@ -83,15 +81,8 @@ func ListEmoji(ctx context.Context, c *Client, opts ListEmojiOptions) ([]CustomE
 	}
 	slices.SortFunc(all, func(a, b CustomEmoji) int { return strings.Compare(a.Name, b.Name) })
 
-	if offset >= len(all) {
-		return nil, "", nil
-	}
-	end := min(offset+limit, len(all))
-	next := ""
-	if end < len(all) {
-		next = encodeOffsetCursor(end)
-	}
-	return all[offset:end], next, nil
+	page, next := pageByOffset(all, offset, limit)
+	return page, next, nil
 }
 
 // GetEmoji resolves one emoji name (with or without surrounding colons) over
