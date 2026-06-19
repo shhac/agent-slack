@@ -15,13 +15,21 @@ allowed-tools: Bash(agent-slack *) Read
 
 # agent-slack
 
-JSON in, JSON out, no interactivity. Lists are NDJSON (one object per line,
-then `{"@pagination":…}` / `{"@referenced_users":…}` meta lines); single
-resources are pretty JSON. Errors are JSON on stderr with
-`fixable_by: agent|human|retry` and a `hint`.
+JSON in, JSON out, no interactivity. Lists are NDJSON (one object per line, then
+`{"@pagination":…}` / `{"@referenced_users":…}` meta lines); single resources
+are pretty JSON. Errors are JSON on stderr with `fixable_by: agent|human|retry`
+and a `hint` — read it, fix, retry.
 
-Safety: read and search freely. Do not send, edit, delete, react, schedule,
-invite, or create channels unless the user explicitly asked for that action.
+**Safety.** Read and search freely. Do not send, edit, delete, react, schedule,
+invite, create channels, or add/remove emoji unless the user explicitly asked
+for that action. Destructive commands — `message edit|delete`, `message draft
+delete`, `message scheduled cancel`, `channel new|invite`, `emoji add|remove` —
+require `--yes`; without it they return a description of what *would* happen.
+Show that to the user before retrying with `--yes`.
+
+This page covers the common paths inline. Every domain has complete, always-
+current detail in `agent-slack <domain> usage` — pull that (or the bundled
+references at the bottom) when a task needs a domain not shown here.
 
 ## Setup (once)
 
@@ -29,7 +37,8 @@ invite, or create channels unless the user explicitly asked for that action.
 agent-slack auth import-desktop            # from Slack Desktop — best, no need to quit
 # …or, if you don't run Slack Desktop:
 agent-slack auth import-browser firefox    # chrome|brave|firefox|zen|opera|safari
-agent-slack auth test                      # verify
+agent-slack auth test                      # am I set up? → who I am + which workspace
+agent-slack auth list                      # which workspaces are configured
 agent-slack auth set-default https://acme.slack.com   # if several workspaces
 ```
 
@@ -37,37 +46,31 @@ If no import works, `agent-slack auth add --workspace-url <url> --form` opens a
 native OS dialog so the human enters the token without it appearing in chat.
 Never ask the user to paste a token into the conversation, and never read
 credentials out of the store yourself; every command authenticates internally.
-For the full menu (per-browser caveats, bot tokens, cURL import) run
-`agent-slack auth usage`.
-
-Env override: `SLACK_TOKEN` (+ `SLACK_COOKIE_D` + `SLACK_WORKSPACE_URL` for
-xoxc browser tokens). Expired browser tokens self-heal from Slack Desktop.
-
-With multiple workspaces configured, commands use the default workspace;
-pass `--workspace <unique-substring>` to target another. Message permalinks
-carry their own workspace and override both.
+Env override: `SLACK_TOKEN` (+ `SLACK_COOKIE_D` + `SLACK_WORKSPACE_URL` for xoxc
+browser tokens); expired browser tokens self-heal from Slack Desktop. With
+several workspaces, commands use the default; pass `--workspace <substring>` to
+target another (a message permalink carries its own workspace and overrides it).
+Full menu — per-browser caveats, bot tokens, cURL import: `agent-slack auth usage`.
 
 ## Reading
 
 ```bash
-agent-slack message get "https://acme.slack.com/archives/C…/p1770165109628379"
+agent-slack message get "https://acme.slack.com/archives/C…/p1770165109628379"   # quote it — a bare & truncates in the shell
 agent-slack message get "#general" --ts "1770165109.628379"
 agent-slack message list "#general" --limit 25
 agent-slack message list "#general" --thread-ts "1770165109.628379"   # whole thread
 agent-slack unreads --counts-only
-agent-slack later list
-agent-slack canvas get F08012345AB
 ```
 
-Always quote permalinks — unquoted `&` truncates them in the shell.
-`message get` includes a `permalink`, a `thread` summary `{ts,length}`, and
-downloads attachments (local paths in `files[].path`; `--no-download` to
-skip). Lists keep attachments metadata-only; add `--download` or
-`agent-slack file download F…` for point pulls. Reads resolve referenced users,
-channels, and usergroups to profiles **by default** (`referenced_users`/
-`referenced_channels`/`referenced_usergroups` maps) via `--resolve auto` (cache,
-then fetch misses); pass `--resolve none` to skip it, `cached` for cache-only, or
-`fresh` to refetch. `--include-reactions` adds reactions.
+`message get` returns a `permalink`, a `thread` summary `{ts,length}`, and
+downloads attachments (local paths in `files[].path`; `--no-download` to skip;
+lists stay metadata-only — add `--download` or `agent-slack file download F…`).
+Reads resolve referenced users/channels/usergroups to profiles **by default**
+(`referenced_*` maps); tune with `--resolve none|cached|auto|fresh`.
+`--include-reactions` adds reactions. Targeting rules (permalink vs `#channel`
+vs `U…` DM, `--ts`): [references/targets.md](references/targets.md). These are
+the common reads; reaction filters, body-length caps, and the full flag set are
+in `agent-slack message usage`.
 
 ## Searching
 
@@ -85,91 +88,58 @@ agent-slack message send "#general" "ship it :rocket:"
 agent-slack message send U05BRPTKL6A "ping"                  # DM auto-opens
 agent-slack message send "<permalink>" "replying in thread"
 agent-slack message send "#general" "see attached" --attach ./report.md
-agent-slack message send "#general" "later" --schedule-in "tomorrow 9am"
-agent-slack message scheduled list
-agent-slack message scheduled cancel <id> --yes        # browser auth; add --channel for bot tokens
-agent-slack message draft create "#general" "Draft for you to review"   # hand-off: returns a draft id; user reviews/sends in-app (browser auth)
-agent-slack message draft create "#general" "see attached" --attach ./report.pdf   # draft keeps rich text + files
-agent-slack message draft list                         # all drafts with ids + file_ids; get/edit/delete/send take a draft id (Dr…) or a target (when it has just one)
 agent-slack message react add "<permalink>" :eyes:
-agent-slack message edit "<permalink>" "fixed wording" --yes
-agent-slack message edit "<permalink>" --attach ./chart.png --yes              # add an attachment (text optional)
-agent-slack message edit "<permalink>" --remove-attachment F123 --yes          # remove one; get ids from 'message get' files[].id
+agent-slack message edit "<permalink>" "fixed wording" --yes        # edit/delete gated
 agent-slack message delete "<permalink>" --yes
-agent-slack channel mark "<permalink>"                       # mark read up to here
 ```
 
-**Formatting (standard Markdown).** Write message text as ordinary Markdown —
-`**bold**`, `*italic*` or `_italic_`, `~~strike~~`, `` `code` ``, ```` ```fences``` ````,
-`[label](url)`, `- bullets`, `1. numbers`, `> quotes`. Two things to know:
-`__text__` means **underline** (our extension, not bold), and `\*` escapes a
-literal marker. Mentions auto-resolve: `@here`/`@channel`, `@U…` ids, and bare
-`@name` / `@group` handles all become real mentions. Pass `--slack-markdown` to
-send/read in Slack's native mrkdwn dialect instead (`*bold*`, `<url|label>`).
-Reading messages (`get`/`list`/`search`/`unreads`/`later`) returns Markdown too.
-See [references/formatting.md](references/formatting.md) for the full table.
+Message text is standard Markdown — `**bold**`, `*italic*`/`_italic_`,
+`~~strike~~`, `` `code` ``, fenced code, `[label](url)`, `- bullets`,
+`1. numbers`, `> quotes`. Two gotchas: `__text__` is **underline** (our
+extension, not bold) and `\*` escapes a literal marker. Mentions auto-resolve:
+`@here`/`@channel`, `@U…` ids, and bare `@name`/`@group` handles. Pass
+`--slack-markdown` for Slack's native mrkdwn (`*bold*`, `<url|label>`); reads
+return Markdown too. Full table: [references/formatting.md](references/formatting.md).
+Scheduling, forwarding, and the draft hand-off flow: `agent-slack message usage`.
 
-Destructive commands need `--yes` (`message edit|delete`, `message scheduled
-cancel`, `channel new|invite`); without it they return a description of what
-would happen — show it to the user before retrying with `--yes`.
-
-## Channels, users, workflows
+## Finding people & channels
 
 ```bash
 agent-slack channel list                      # compact; --full for raw
-agent-slack channel get "#general"            # one → object; several → NDJSON
-agent-slack channel get "#general" "#ops"     # batch; --full for raw
+agent-slack channel get "#general" "#ops"     # one → object; several → NDJSON
 agent-slack channel members "#general" --resolve auto   # who's in it
-agent-slack user get @alice                   # one → object
-agent-slack user get @alice @bob @carol       # several → NDJSON (+ @unresolved for misses)
+agent-slack user get @alice @bob              # @handle or U…; several → NDJSON (+ @unresolved)
 agent-slack user dm-open @alice @bob          # group DM channel id
-agent-slack usergroup list                    # subteams + their default channels
-agent-slack usergroup get @marketing          # one → object; several → NDJSON
-agent-slack usergroup members @marketing --resolve auto   # who's in the group
-agent-slack emoji list                        # workspace custom emoji (names + aliases; --full adds URLs)
-agent-slack emoji get :partyparrot:           # resolve one (custom or standard); several → NDJSON
-agent-slack emoji search parrot               # fuzzy-rank custom emoji (--limit 20, paginated)
-agent-slack emoji add facepalm --image ./facepalm.png --yes   # upload a custom emoji (destructive: --yes)
-agent-slack emoji remove facepalm --yes       # delete a custom emoji (destructive: --yes)
-agent-slack message send "#team" "worth a read" --forward <permalink>   # forward a message (same workspace)
-agent-slack workflow list "#ops"
-agent-slack workflow get Ft0001               # form fields + steps
-agent-slack workflow run Ft0001 --channel "#ops" --field "Summary=EU deploy failed"
 ```
 
-## Escape hatch
+## Other domains
 
-```bash
-agent-slack api call team.info
-agent-slack api call conversations.history --params '{"channel":"C…","limit":5}'
-```
+Each has full detail in `agent-slack <domain> usage` — read it only when the
+task needs that domain (so finding a user never makes you load emoji, etc.):
 
-## Cache
+| Domain | For | Detail |
+|---|---|---|
+| `usergroup` | subteams (`@group`): `list` / `get` / `members` | `agent-slack usergroup usage` |
+| `emoji` | custom emoji: `list` / `get` / `search`; `add` / `remove` (`--yes`) | `agent-slack emoji usage` |
+| `message draft` · `scheduled` | hand-off drafts for a human; scheduled sends | `agent-slack message usage` |
+| `workflow` | discover and run Slack workflows | `agent-slack workflow usage` |
+| `canvas` | fetch a canvas as Markdown | `agent-slack canvas usage` |
+| `later` | saved-for-later (Slack's Later tab) | `agent-slack later usage` |
+| `file` | point-pull a file (`F…`) seen in any output | `agent-slack file usage` |
+| `cache` · `config` | inspect / warm / purge the cache; persist TTLs | `agent-slack cache usage` |
+| `api` | raw Slack API escape hatch (`api call <method>`) | `agent-slack api usage` |
 
-Channel/user/workflow lookups are cached per workspace and fill as you work, so
-repeat reads are fast and completions populate. It's transparent; reach for
-these only when you need to:
-
-```bash
-agent-slack cache info                         # what's cached, per workspace
-agent-slack cache warm                          # pre-fill users/channels/usergroups/emoji (JSONL progress); makes --resolve auto free
-agent-slack cache warm --stale-only             # re-warm only what's gone stale (cheap; good for a repeated/scheduled warm)
-agent-slack cache purge --workspace "#…"        # clear one workspace
-agent-slack cache purge --downloads             # clear downloaded files
-agent-slack config set cache.ttl.channels 30m   # persist a TTL
-```
-
-Per-invocation: `--no-cache`, `--refresh-cache`, `--cache-ttl <dur>`.
+The resolution cache (channel/user/handle/workflow/emoji lookups) fills
+automatically as you work and is transparent — reach for `cache` only to
+pre-warm (`cache warm`) or clear it.
 
 ## More detail
 
-For anything beyond the examples above, read the bundled references:
-
-- [references/commands.md](references/commands.md) — full command map, flags, and which commands are `--yes`-gated
-- [references/targets.md](references/targets.md) — permalink vs channel URL vs name/ID vs user-ID targeting, and multi-workspace rules
-- [references/formatting.md](references/formatting.md) — the full Markdown table, mention/`#channel` resolution, and the `--slack-markdown` dialect
-- [references/output.md](references/output.md) — NDJSON + meta-line contract, compact vs `--full`, payload shapes, download paths, and the resolution cache
-
-Live docs from the binary: `agent-slack usage` is the overview;
-`agent-slack <domain> usage` (message, channel, search, workflow, later, …)
-has per-domain docs.
+- **Live, always-current:** `agent-slack usage` (overview) and
+  `agent-slack <domain> usage` (per-domain — the authoritative source).
+- **Bundled deep-dives:**
+  [references/commands.md](references/commands.md) — full command map, split per
+  domain, with flags and `--yes` gates ·
+  [references/targets.md](references/targets.md) — targeting and multi-workspace ·
+  [references/formatting.md](references/formatting.md) — Markdown, mentions, `--slack-markdown` ·
+  [references/output.md](references/output.md) — NDJSON/meta contract, `--full`, payload shapes, cache.
