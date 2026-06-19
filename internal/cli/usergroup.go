@@ -22,25 +22,31 @@ func registerUsergroup(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerUsergroupList(parent *cobra.Command, globals *GlobalFlags) {
 	var includeDisabled bool
+	var limit int
+	var cursor string
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List usergroups (compact projection incl. default channels/groups)",
+		Short: "List usergroups (compact projection incl. default channels/groups); paginated",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cc, err := getClient(globals)
 			if err != nil {
 				return err
 			}
-			groups, err := slack.ListUsergroups(cmd.Context(), cc.Client, slack.ListUsergroupsOptions{
+			groups, next, err := slack.ListUsergroups(cmd.Context(), cc.Client, slack.ListUsergroupsOptions{
 				IncludeDisabled: includeDisabled,
+				Limit:           limit,
+				Cursor:          cursor,
 			})
 			if err != nil {
 				return err
 			}
-			return printList(globals, toAnySlice(groups), nil)
+			return printList(globals, toAnySlice(groups), listMeta(next, nil))
 		},
 	}
 	cmd.Flags().BoolVar(&includeDisabled, "include-disabled", false, "Include deactivated usergroups")
+	cmd.Flags().IntVar(&limit, "limit", 200, "Max results per page (capped at 1000)")
+	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a prior page's @pagination.next_cursor")
 	parent.AddCommand(cmd)
 }
 

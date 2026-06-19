@@ -108,7 +108,7 @@ Workspace user groups (subteams, the `@group` you @-mention). Aliased `usergroup
 
 | Command | Notes |
 |---|---|
-| `usergroup list` | `--include-disabled`; compact rows: `id` (S…), `handle`, `name`, `description`, `user_count`, and `channels`/`groups` (the group's **default** channels/subteams — members are auto-added) |
+| `usergroup list` | `--include-disabled`, `--limit` (200, max 1000), `--cursor`; compact rows: `id` (S…), `handle`, `name`, `description`, `user_count`, and `channels`/`groups` (the group's **default** channels/subteams — members are auto-added); paginated via `{"@pagination":{next_cursor}}` |
 | `usergroup get <usergroup…>` | accepts `S…` or `@handle`; one → object, several → NDJSON (+ `{"@unresolved": […]}`) |
 | `usergroup members <usergroup>` | user ids by default; `--resolve cached`/`fresh` for profiles, `--include-disabled` |
 

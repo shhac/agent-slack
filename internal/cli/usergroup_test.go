@@ -37,6 +37,43 @@ func TestUsergroupList(t *testing.T) {
 	}
 }
 
+func TestUsergroupListPaginationMeta(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList(
+		mockslack.Usergroup("S0MARKETIN", "marketing", "Marketing"),
+		mockslack.Usergroup("S0ENGINEER", "eng", "Engineering"),
+		mockslack.Usergroup("S0DESIGNNN", "design", "Design"),
+	))
+
+	out, _, err := f.run(t, "usergroup", "list", "--limit", "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, out)
+	// 2 rows + a trailing @pagination meta line.
+	if len(lines) != 3 {
+		t.Fatalf("want 2 rows + pagination meta, got %d: %v", len(lines), lines)
+	}
+	pg, ok := lines[2]["@pagination"].(map[string]any)
+	if !ok || pg["next_cursor"] == nil {
+		t.Fatalf("pagination meta = %v", lines[2])
+	}
+
+	// Page 2 reads the cached full set (no second usergroups.list) and returns
+	// the remaining group with no further cursor.
+	out2, _, err := f.run(t, "usergroup", "list", "--limit", "2", "--cursor", pg["next_cursor"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines2 := parseNDJSON(t, out2)
+	if len(lines2) != 1 {
+		t.Fatalf("page 2 = %d lines, want 1 row no cursor: %v", len(lines2), lines2)
+	}
+	if n := len(f.server.CallsFor("usergroups.list")); n != 1 {
+		t.Errorf("usergroups.list called %d times; paging should reuse the cached full set (want 1)", n)
+	}
+}
+
 func TestUsergroupGetByHandle(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList(

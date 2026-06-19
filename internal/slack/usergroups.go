@@ -43,26 +43,58 @@ func ToCompactUsergroup(g map[string]any) CompactUsergroup {
 
 // ListUsergroupsOptions controls ListUsergroups.
 type ListUsergroupsOptions struct {
-	IncludeDisabled bool // include groups whose date_delete != 0
+	IncludeDisabled bool   // include groups whose date_delete != 0
+	Limit           int    // page size; <=0 uses defaultUsergroupListLimit, capped at maxUsergroupListLimit
+	Cursor          string // opaque offset cursor from a previous page
 }
 
-// ListUsergroups returns every usergroup in the workspace. usergroups.list has
-// no pagination — it returns the whole set in one call — so list and get share
-// the same fetch (and warm the same caches). The page is cached on the short
-// List TTL so a workflow listing repeatedly within the window doesn't refetch.
-func ListUsergroups(ctx context.Context, c *Client, opts ListUsergroupsOptions) ([]CompactUsergroup, error) {
+const (
+	defaultUsergroupListLimit = 200
+	maxUsergroupListLimit     = 1000
+)
+
+// ListUsergroups returns one page of the workspace's usergroups plus the cursor
+// for the next (empty when exhausted). usergroups.list has no server pagination
+// — it returns the whole set in one call — so the full set is fetched once
+// (cached on the short List TTL, shared with get and the warm caches) and then
+// sliced client-side with the same opaque offset cursor as channel/user/emoji
+// lists. The slice order is the API's, stable within the cache window. Limit
+// and Cursor are deliberately NOT part of the page-cache key (usergroupsPageKey)
+// — every page reads the one cached full set.
+func ListUsergroups(ctx context.Context, c *Client, opts ListUsergroupsOptions) ([]CompactUsergroup, string, error) {
+	offset, err := decodeOffsetCursor(opts.Cursor)
+	if err != nil {
+		return nil, "", err
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = defaultUsergroupListLimit
+	}
+	if limit > maxUsergroupListLimit {
+		limit = maxUsergroupListLimit
+	}
+
 	pages := c.usergroupsPageCache()
 	pageKey := usergroupsPageKey(opts)
-	if page, ok := pages.get(pageKey); ok {
-		return page, nil
+	groups, ok := pages.get(pageKey)
+	if !ok {
+		groups, err = fetchUsergroups(ctx, c, opts.IncludeDisabled)
+		if err != nil {
+			return nil, "", err
+		}
+		pages.set(pageKey, groups)
+		pages.save()
 	}
-	groups, err := fetchUsergroups(ctx, c, opts.IncludeDisabled)
-	if err != nil {
-		return nil, err
+
+	if offset >= len(groups) {
+		return nil, "", nil
 	}
-	pages.set(pageKey, groups)
-	pages.save()
-	return groups, nil
+	end := min(offset+limit, len(groups))
+	next := ""
+	if end < len(groups) {
+		next = encodeOffsetCursor(end)
+	}
+	return groups[offset:end], next, nil
 }
 
 // GetUsergroup fetches one usergroup by id (S…) or @handle. Slack has no

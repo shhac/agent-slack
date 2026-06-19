@@ -41,7 +41,7 @@ global persistent flags.
 | `message draft create <target> [text]` | `--blocks`, `--slack-markdown`, `--forward <permalink>`, `--attach` | | browser-only; many drafts per target — returns the new draft id |
 | `message draft list` | | | NDJSON; unscheduled drafts (`date_scheduled == 0`), each with `id` + `file_ids` |
 | `message draft get/edit/delete/send <target\|id>` | `edit`: `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | | address by draft id, or by target when it has exactly one (else error with the ids); `send` posts (files via `files.share`), or promotes to scheduled |
-| `usergroup list` | `--include-disabled` | | NDJSON, compact projection |
+| `usergroup list` | `--include-disabled`, `--limit` (200, max 1000), `--cursor` | | NDJSON, compact projection. Full set fetched once (one `usergroups.list`, cached) then sliced client-side with the same opaque offset cursor as channel/user/emoji lists |
 | `usergroup get <usergroup…>` | | | id `S…` or `@handle`; one→object, several→NDJSON |
 | `usergroup members <usergroup>` | `--resolve none\|cached\|auto\|fresh`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
 | `emoji list` | `--full`, `--limit` (200, max 1000), `--cursor` | | NDJSON sorted by name; **custom** emoji only. Lean by default (`name` + `alias_for`); `--full` adds image `url`. Paginated with the same opaque offset cursor as search (a busy workspace can have thousands) |

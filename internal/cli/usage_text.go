@@ -163,11 +163,13 @@ DM-OPEN  user dm-open <users…> — open a DM or group DM (max 8); returns
 
 	"usergroup": `agent-slack usergroup — user groups (subteams, @group).
 
-LIST     usergroup list [--include-disabled]
+LIST     usergroup list [--include-disabled] [--limit 200] [--cursor …]
          Compact rows: id (S…), handle, name, description, user_count, and
          channels/groups (the group's DEFAULT channels/subteams — members are
          auto-added to them). The CLI surfaces all default channels and takes
          no view on which is "best" to post in; pick per your use case.
+         Paginated: a full page emits {"@pagination":{next_cursor}} — pass it
+         to --cursor for the next page.
 GET      usergroup get <S…|@handle …> — one arg → object; several → NDJSON,
          with a trailing {"@unresolved": […]} for inputs that didn't resolve.
 MEMBERS  usergroup members <S…|@handle> [--resolve none|cached|auto|fresh] [--include-disabled]
