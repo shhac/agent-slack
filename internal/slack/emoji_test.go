@@ -205,3 +205,39 @@ func TestEmojiCacheServesWithoutRefetch(t *testing.T) {
 		t.Errorf("want exactly 1 emoji.list call, got %d", n)
 	}
 }
+
+// The alias one-hop guarantee: get follows an alias exactly one hop. An alias
+// pointing at another alias is NOT chased to the second hop, and a dangling
+// target resolves to neither a URL nor a unicode char.
+func TestGetEmojiAliasOneHop(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("emoji.list", map[string]any{"ok": true, "emoji": map[string]any{
+		"squirrel": "https://e/squirrel.png",
+		"shipit":   "alias:squirrel",           // alias → custom (one hop, resolves)
+		"chain":    "alias:shipit",             // alias → alias (must NOT chase second hop)
+		"dangling": "alias:does_not_exist_xyz", // alias → nothing
+	}})
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+	ctx := context.Background()
+
+	chain, err := GetEmoji(ctx, c, "chain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chain.AliasFor != "shipit" || chain.URL != "" || chain.Unicode != "" {
+		t.Errorf("chain = %+v; want alias_for=shipit, no URL/Unicode (one hop only)", chain)
+	}
+
+	dangling, err := GetEmoji(ctx, c, "dangling")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dangling.AliasFor != "does_not_exist_xyz" || dangling.URL != "" || dangling.Unicode != "" {
+		t.Errorf("dangling = %+v; want alias_for set, no URL/Unicode", dangling)
+	}
+
+	// Sanity: the single-hop alias still resolves to its target's image.
+	if shipit, _ := GetEmoji(ctx, c, "shipit"); shipit.URL == "" {
+		t.Errorf("shipit = %+v; want resolved image URL", shipit)
+	}
+}

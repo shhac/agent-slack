@@ -154,3 +154,87 @@ func TestEncodeMultipartFile(t *testing.T) {
 		t.Errorf("file bytes round-tripped wrong")
 	}
 }
+
+// Every mutation must drop the cached set on success — not just AddEmoji
+// (TestAddEmojiInvalidatesCache). A stale "complete" cache after a remove/alias
+// would make get/list lie until the TTL expires.
+func TestEmojiMutationInvalidatesCache(t *testing.T) {
+	img := writeTempImage(t, "new.png", pngBytes)
+	cases := []struct {
+		name   string
+		method string
+		mutate func(ctx context.Context, c *Client) error
+	}{
+		{"remove", "emoji.remove", func(ctx context.Context, c *Client) error { _, e := RemoveEmoji(ctx, c, "old"); return e }},
+		{"alias", "emoji.add", func(ctx context.Context, c *Client) error { _, e := AddEmojiAlias(ctx, c, "shipit", "old"); return e }},
+		{"add", "emoji.add", func(ctx context.Context, c *Client) error { _, e := AddEmoji(ctx, c, "fresh", img); return e }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := mockslack.New()
+			server.HandleBody("emoji.list", map[string]any{"ok": true, "emoji": map[string]any{"old": "https://e/old.png"}})
+			server.HandleBody(tc.method, map[string]any{"ok": true})
+			c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+			ctx := context.Background()
+
+			if _, _, err := ListEmoji(ctx, c, ListEmojiOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := tc.mutate(ctx, c); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := ListEmoji(ctx, c, ListEmojiOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			if n := len(server.CallsFor("emoji.list")); n != 2 {
+				t.Errorf("emoji.list calls = %d, want 2 (cache dropped after %s)", n, tc.name)
+			}
+		})
+	}
+}
+
+// A FAILED mutation must propagate a structured error AND leave the cache
+// intact — no spurious invalidation forcing a needless refetch.
+func TestEmojiMutationFailureKeepsCache(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("emoji.list", map[string]any{"ok": true, "emoji": map[string]any{"old": "https://e/old.png"}})
+	server.HandleBody("emoji.remove", map[string]any{"ok": false, "error": "not_authed"})
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+	ctx := context.Background()
+
+	if _, _, err := ListEmoji(ctx, c, ListEmojiOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RemoveEmoji(ctx, c, "old"); err == nil {
+		t.Fatal("want error from a failed emoji.remove")
+	}
+	if _, _, err := ListEmoji(ctx, c, ListEmojiOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(server.CallsFor("emoji.list")); n != 1 {
+		t.Errorf("emoji.list calls = %d, want 1 (failed mutation must not invalidate)", n)
+	}
+}
+
+// readEmojiImage accepts the four Slack image types (sniffed from bytes) and
+// rejects empty/non-image content before any API call.
+func TestReadEmojiImageTypes(t *testing.T) {
+	accept := map[string][]byte{
+		"image/png":  []byte("\x89PNG\r\n\x1a\nrest"),
+		"image/gif":  []byte("GIF89a-rest"),
+		"image/jpeg": []byte("\xff\xd8\xff\xe0rest"),
+		"image/webp": []byte("RIFF\x00\x00\x00\x00WEBPVP8 rest"),
+	}
+	for want, data := range accept {
+		_, ct, err := readEmojiImage(writeTempImage(t, "img", data))
+		if err != nil || ct != want {
+			t.Errorf("want %s, got ct=%q err=%v", want, ct, err)
+		}
+	}
+	if _, _, err := readEmojiImage(writeTempImage(t, "empty", []byte{})); err == nil {
+		t.Error("empty file should be rejected")
+	}
+	if _, _, err := readEmojiImage(writeTempImage(t, "text", []byte("just plain text, not an image"))); err == nil {
+		t.Error("non-image should be rejected")
+	}
+}

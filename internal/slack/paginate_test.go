@@ -59,3 +59,55 @@ func TestEachPageEarlyStop(t *testing.T) {
 		t.Errorf("pages = %d, err = %v", pages, err)
 	}
 }
+
+func TestPageByOffset(t *testing.T) {
+	items := []int{0, 1, 2, 3, 4}
+
+	// Mid-page with more remaining → a next cursor pointing at offset+limit.
+	page, next := pageByOffset(items, 0, 2)
+	if len(page) != 2 || page[0] != 0 || next == "" {
+		t.Fatalf("page1 = %v next=%q", page, next)
+	}
+	if off, _ := decodeOffsetCursor(next); off != 2 {
+		t.Errorf("next cursor decodes to %d, want 2", off)
+	}
+
+	// Exact-end boundary: offset+limit == len → page filled, no next.
+	page, next = pageByOffset(items, 3, 2)
+	if len(page) != 2 || next != "" {
+		t.Errorf("end-boundary page = %v next=%q, want full page no cursor", page, next)
+	}
+
+	// Last partial page → no next.
+	page, next = pageByOffset(items, 4, 2)
+	if len(page) != 1 || next != "" {
+		t.Errorf("last page = %v next=%q", page, next)
+	}
+
+	// Offset at/past end → empty, no next, no panic.
+	if page, next = pageByOffset(items, 5, 2); page != nil || next != "" {
+		t.Errorf("at-end = %v %q, want empty", page, next)
+	}
+	if page, next = pageByOffset(items, 99, 2); page != nil || next != "" {
+		t.Errorf("past-end = %v %q, want empty", page, next)
+	}
+}
+
+func TestOffsetCursorRoundTrip(t *testing.T) {
+	for _, n := range []int{0, 1, 42, 1000} {
+		got, err := decodeOffsetCursor(encodeOffsetCursor(n))
+		if err != nil || got != n {
+			t.Errorf("round-trip %d = (%d, %v)", n, got, err)
+		}
+	}
+	if got, err := decodeOffsetCursor(""); got != 0 || err != nil {
+		t.Errorf("empty cursor = (%d, %v), want (0, nil)", got, err)
+	}
+	if _, err := decodeOffsetCursor("!!!not-base64"); err == nil {
+		t.Error("malformed cursor should error")
+	}
+	// A negative offset must not decode to a usable cursor.
+	if _, err := decodeOffsetCursor(encodeOffsetCursor(-1)); err == nil {
+		t.Error("negative offset cursor should be rejected")
+	}
+}
