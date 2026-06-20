@@ -269,7 +269,7 @@ func promptAddSecrets(ctx context.Context, globals *GlobalFlags, workspaceURL, t
 	if token == "" && xoxc == "" {
 		v, err := globals.promptSecret(ctx, title, "Slack token (xoxb-, xoxp-, or xoxc-)", "")
 		if err != nil {
-			return "", "", "", agenterrors.Wrap(err, agenterrors.FixableByHuman)
+			return "", "", "", err
 		}
 		if v = strings.TrimSpace(v); strings.HasPrefix(v, "xoxc-") {
 			xoxc = v
@@ -280,7 +280,7 @@ func promptAddSecrets(ctx context.Context, globals *GlobalFlags, workspaceURL, t
 	if xoxc != "" && xoxd == "" {
 		v, err := globals.promptSecret(ctx, title, "Slack 'd' cookie (xoxd-...)", "")
 		if err != nil {
-			return "", "", "", agenterrors.Wrap(err, agenterrors.FixableByHuman)
+			return "", "", "", err
 		}
 		xoxd = strings.TrimSpace(v)
 	}

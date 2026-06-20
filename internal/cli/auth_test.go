@@ -11,8 +11,11 @@ import (
 	"strings"
 	"testing"
 
+	clidialog "github.com/shhac/lib-agent-cli/dialog"
+
 	"github.com/shhac/agent-slack/internal/auth"
 	"github.com/shhac/agent-slack/internal/credential"
+	"github.com/shhac/agent-slack/internal/dialog"
 )
 
 // testEnv carries the hermetic deps a test root is built with — a temp-file
@@ -33,8 +36,10 @@ func newTestEnv(t *testing.T) *testEnv {
 		desktopExtract: func() (*auth.Extracted, error) {
 			return nil, errors.New("desktop extraction unavailable in tests")
 		},
+		// Mirror what the real dialog wrapper yields on a headless host: a
+		// classified human-fixable error wrapping the library's ErrNoGUI.
 		promptSecret: func(context.Context, string, string, string) (string, error) {
-			return "", errors.New("no dialog available in tests")
+			return "", dialog.Classify(fmt.Errorf("%w: no GUI in tests", clidialog.ErrNoGUI))
 		},
 	}
 }
