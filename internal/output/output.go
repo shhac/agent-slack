@@ -2,18 +2,17 @@
 // keeping the internal/output import path while the wire mechanism (format
 // parsing, JSON/YAML encoding, error rendering) lives in one place. What stays
 // local is agent-slack policy: the explicit-writer Print signature, the
-// structured WriteNotice, the Slack-shaped Pagination/NDJSONWriter, and the YAML
-// number-normalization. (Migration shim.)
+// structured WriteNotice, and the Slack-shaped Pagination/NDJSONWriter. The YAML
+// encoder (with its whole-float-to-int normalization) comes from the shared
+// lib-agent-cli/yaml package, blank-imported below. (Migration shim.)
 package output
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
-	"math"
 
+	_ "github.com/shhac/lib-agent-cli/yaml"
 	out "github.com/shhac/lib-agent-output"
-	"gopkg.in/yaml.v3"
 )
 
 // Format and its values come from the shared contract; ParseFormat is therefore
@@ -32,23 +31,6 @@ var (
 	ResolveFormat = out.ResolveFormat
 	WriteError    = out.WriteError
 )
-
-// init registers agent-slack's YAML encoder with lib-agent-output, so YAML
-// support (and its yaml.v3 dependency) stays in this CLI while the core library
-// remains dependency-free. The encoder keeps the number-normalization that
-// renders whole floats as integers in YAML output.
-func init() {
-	out.RegisterEncoder(out.FormatYAML, func(v any) ([]byte, error) {
-		var buf bytes.Buffer
-		enc := yaml.NewEncoder(&buf)
-		enc.SetIndent(2)
-		if err := enc.Encode(normalizeYAMLNumbers(v)); err != nil {
-			return nil, err
-		}
-		_ = enc.Close()
-		return buf.Bytes(), nil
-	})
-}
 
 // Print writes data to w in the given format, optionally pruning nulls. JSON
 // prunes the typed value in place (a no-op for structs, matching the original);
@@ -124,16 +106,6 @@ func toDecoded(data any) (any, bool) {
 		return nil, false
 	}
 	return decoded, true
-}
-
-func normalizeYAMLNumbers(v any) any {
-	return walkTree(v, nil, func(leaf any) any {
-		f, ok := leaf.(float64)
-		if !ok || math.IsInf(f, 0) || math.IsNaN(f) || math.Trunc(f) != f {
-			return leaf
-		}
-		return int64(f)
-	})
 }
 
 func pruneNulls(v any) any {

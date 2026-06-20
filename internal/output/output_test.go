@@ -89,29 +89,21 @@ func TestNDJSONWriter(t *testing.T) {
 	}
 }
 
-func TestNormalizeYAMLNumbers(t *testing.T) {
-	got := normalizeYAMLNumbers(map[string]any{
-		"int":    float64(42),
-		"big":    float64(1770165109628379),
-		"frac":   1.5,
-		"nested": []any{float64(1), 2.5, map[string]any{"n": float64(0)}},
-	})
-	m := got.(map[string]any)
-	if _, ok := m["int"].(int64); !ok {
-		t.Errorf("whole float should normalize to int64, got %T", m["int"])
+// YAML number normalization now lives in the shared lib-agent-cli/yaml encoder;
+// this asserts Print still emits whole floats as plain integers (not scientific
+// notation) and leaves fractions alone, end to end through that encoder.
+func TestPrintYAMLNormalizesNumbers(t *testing.T) {
+	var buf bytes.Buffer
+	Print(&buf, map[string]any{
+		"big":  float64(1770165109628379),
+		"frac": 1.5,
+	}, FormatYAML, false)
+	got := buf.String()
+	if !strings.Contains(got, "big: 1770165109628379") {
+		t.Errorf("large whole float should render as integer, got:\n%s", got)
 	}
-	if _, ok := m["big"].(int64); !ok {
-		t.Errorf("large whole float should normalize to int64, got %T", m["big"])
-	}
-	if _, ok := m["frac"].(float64); !ok {
-		t.Errorf("fractional float must stay float64, got %T", m["frac"])
-	}
-	nested := m["nested"].([]any)
-	if _, ok := nested[0].(int64); !ok {
-		t.Errorf("nested whole float should normalize, got %T", nested[0])
-	}
-	if _, ok := nested[1].(float64); !ok {
-		t.Errorf("nested fraction must stay float64, got %T", nested[1])
+	if !strings.Contains(got, "frac: 1.5") {
+		t.Errorf("fractional float should render unchanged, got:\n%s", got)
 	}
 }
 
