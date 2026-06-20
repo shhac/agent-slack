@@ -79,10 +79,10 @@ type Client struct {
 	auth      Auth
 	refreshed bool
 
-	doer      Doer
-	sleep     func(ctx context.Context, d time.Duration) error
-	baseURL   string
-	userAgent string
+	doer        Doer
+	sleep       func(ctx context.Context, d time.Duration) error
+	baseURL     string
+	userAgent   string
 	debug       io.Writer
 	onRefresh   RefreshFunc
 	onRateLimit RateLimitFunc
