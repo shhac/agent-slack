@@ -62,12 +62,23 @@ CACHE
   a later miss is authoritative (no remote lookup); --refresh-cache bypasses it.
   'cache warm --stale-only' re-warms only categories whose sentinel has lapsed.
 
+GLOBAL FLAGS
+  -d, --debug            Log HTTP request/response trace to stderr.
+  -t, --timeout <ms>     Per-request HTTP timeout in milliseconds (default 30 000).
+  -f, --format <fmt>     Output format: json|yaml|jsonl (overrides default NDJSON/JSON).
+      --workspace <sel>  Workspace URL or unique substring (multi-workspace setups).
+      --full             Return fuller API payloads where supported.
+      --no-cache         Bypass the resolution cache entirely (no read, no write).
+      --refresh-cache    Ignore cached reads but still write fresh entries.
+      --cache-ttl <dur>  Override every cache TTL (e.g. 30m, 2h, 0 to disable reads).
+
 ERRORS
-  JSON on stderr: {"error","fixable_by","hint"}. fixable_by=agent → fix the
-  input and retry; human → credentials/permissions need a person;
-  retry → wait and re-run. Non-fatal notices also go to stderr as
-  {"notice","hint"} (e.g. Slack rate-limit throttling) — distinguish by key
-  ("error" vs "notice"), not by stream.
+  Single JSON object on stderr: {"error","fixable_by","hint"?,"retry_after_seconds"?}.
+  fixable_by=agent → fix the input and retry; human → credentials/permissions
+  need a person; retry → transient failure, wait and re-run (retry_after_seconds
+  gives the recommended back-off when present). Non-fatal notices also go to
+  stderr as {"notice","hint"} (e.g. Slack rate-limit throttling) — distinguish
+  by key ("error" vs "notice"), not by stream.
 
 AUTH
   Stored per workspace (OS keychain where available). Setup: 'auth

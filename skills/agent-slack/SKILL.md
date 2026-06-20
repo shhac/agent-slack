@@ -17,8 +17,11 @@ allowed-tools: Bash(agent-slack *) Read
 
 JSON in, JSON out, no interactivity. Lists are NDJSON (one object per line, then
 `{"@pagination":…}` / `{"@referenced_users":…}` meta lines); single resources
-are pretty JSON. Errors are JSON on stderr with `fixable_by: agent|human|retry`
-and a `hint` — read it, fix, retry.
+are pretty JSON. Errors are a single JSON object on stderr:
+`{"error":"…","fixable_by":"agent|human|retry","hint"?:"…","retry_after_seconds"?:N}`.
+`fixable_by=agent` → fix the input and retry; `human` → credentials/permissions
+need a person; `retry` → transient failure, wait and re-run (`retry_after_seconds`
+gives the recommended back-off when present).
 
 **Safety.** Read and search freely. Do not send, edit, delete, react, schedule,
 invite, create channels, or add/remove emoji unless the user explicitly asked
