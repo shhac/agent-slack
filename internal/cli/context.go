@@ -148,8 +148,8 @@ func clientFromEnv(globals *GlobalFlags, selector string) *clientContext {
 
 func clientOptions(globals *GlobalFlags) []slack.Option {
 	opts := []slack.Option{slack.WithUserAgent("agent-slack/" + globals.version)}
-	if globals.Timeout > 0 {
-		opts = append(opts, slack.WithDoer(&http.Client{Timeout: time.Duration(globals.Timeout) * time.Millisecond}))
+	if globals.TimeoutMS > 0 {
+		opts = append(opts, slack.WithDoer(&http.Client{Timeout: time.Duration(globals.TimeoutMS) * time.Millisecond}))
 	}
 	if globals.Debug {
 		opts = append(opts, slack.WithDebug(globals.stderr))

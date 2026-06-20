@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/auth"
@@ -15,10 +16,9 @@ import (
 )
 
 type GlobalFlags struct {
+	libcli.Globals // Format, TimeoutMS, Debug
+
 	Workspace    string
-	Format       string
-	Timeout      int
-	Debug        bool
 	Full         bool
 	BaseURL      string
 	NoCache      bool
@@ -61,32 +61,28 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 		desktopExtract: deps.desktopExtract,
 		promptSecret:   deps.promptSecret,
 	}
-	root := &cobra.Command{
+	root := libcli.NewRoot(libcli.Options{
 		Use:           "agent-slack",
 		Short:         "Slack CLI for AI agents",
 		Version:       deps.version,
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		// Writers resolve from cobra (tests inject via SetOut/SetErr), and
-		// --format validates once up front so a bad value can never surface
-		// AFTER a mutation has already run. No subcommand may define its own
-		// PersistentPreRunE — cobra only runs the nearest one.
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			globals.stdout = cmd.OutOrStdout()
-			globals.stderr = cmd.ErrOrStderr()
-			if globals.Format != "" {
-				if _, err := output.ParseFormat(globals.Format); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
+		Globals:       &globals.Globals,
+		DefaultFormat: output.FormatNDJSON,
+		UnknownHint:   "run 'agent-slack usage' for full documentation",
+	})
+
+	// NewRoot binds --format/--timeout/--debug, silences cobra's own
+	// usage/error printing, validates --format up front, and installs the
+	// unknown-command handler. We extend its PersistentPreRunE to also wire the
+	// stdout/stderr seams tests inject via SetOut/SetErr; cobra only runs the
+	// nearest PersistentPreRunE, so subcommands must not define their own.
+	innerPreRun := root.PersistentPreRunE
+	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		globals.stdout = cmd.OutOrStdout()
+		globals.stderr = cmd.ErrOrStderr()
+		return innerPreRun(cmd, args)
 	}
 
 	root.PersistentFlags().StringVarP(&globals.Workspace, "workspace", "w", "", "Workspace URL or unique substring to disambiguate multi-workspace credentials")
-	root.PersistentFlags().StringVarP(&globals.Format, "format", "f", "", "Output format: json, yaml, jsonl")
-	root.PersistentFlags().IntVarP(&globals.Timeout, "timeout", "t", 0, "Request timeout in milliseconds")
-	root.PersistentFlags().BoolVarP(&globals.Debug, "debug", "d", false, "Log redacted HTTP debug records to stderr")
 	root.PersistentFlags().BoolVar(&globals.Full, "full", false, "Return fuller API payloads where supported")
 	root.PersistentFlags().StringVar(&globals.BaseURL, "base-url", "", "Override the Slack API base URL (testing)")
 	_ = root.PersistentFlags().MarkHidden("base-url")
@@ -118,8 +114,12 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	return root
 }
 
-func Execute(version string) error {
-	return execute(newRootCmd(version))
+// Run builds the root command and hands it to libcli.Run, the family's single
+// sink: it executes, renders any bubbled error once via the structured contract
+// on stderr, and exits non-zero on failure. Tests use execute() instead, which
+// returns the error and writes to the command's own stderr seam.
+func Run(version string) {
+	libcli.Run(newRootCmd(version))
 }
 
 // handleUnknownSubcommand makes a parent command answer unknown subcommands
