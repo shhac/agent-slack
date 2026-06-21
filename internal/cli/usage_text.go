@@ -117,9 +117,15 @@ LIST   message list <target>
        --with-reaction/--without-reaction (repeatable, need --oldest).
        Files are metadata-only unless --download.
 TEXT   message get/list also accept --format transcript: a human-readable,
-       chronological rendering (plain text on stdout, errors still JSON).
+       chronological rendering (plain text on stdout, errors still JSON). A
+       "──── <date> (<zone>) ────" divider opens each day; headers carry the
+       time only. Consecutive messages from one author within 5 min collapse
+       under a single header; thread replies render as a ├─/└─ tree.
        --tz <Local|UTC|IANA> sets the displayed zone (default Local, honors
        $TZ); --with-ids appends each message's ts id to the header.
+       --color <auto|always|never> styles output (default auto: on only at a
+       TTY, honoring NO_COLOR and CLICOLOR_FORCE — so the piped/LLM path stays
+       plain).
 SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        Targets: #channel, C…, U… (DM auto-opens), or a permalink (replies in
        that thread). Text is standard Markdown: **bold**, *italic*/_italic_,

@@ -36,7 +36,10 @@ func TestMessageGetTranscript(t *testing.T) {
 	if strings.HasPrefix(strings.TrimSpace(out), "{") {
 		t.Fatalf("transcript should be plain text, got JSON:\n%s", out)
 	}
-	if !strings.Contains(out, "[2026-06-21 @ 09:02:20 (UTC)] <alice|U12345555>") {
+	if !strings.Contains(out, "──── 2026-06-21 (UTC) ────") {
+		t.Errorf("missing day separator:\n%s", out)
+	}
+	if !strings.Contains(out, "[09:02:20] <alice|U12345555>") {
 		t.Errorf("missing/wrong header line:\n%s", out)
 	}
 	if !strings.Contains(out, "  Hello @bob") {
@@ -67,6 +70,47 @@ func TestMessageGetTranscriptWithIDs(t *testing.T) {
 	}
 }
 
+// TestMessageGetTranscriptColor confirms --color drives ANSI styling: the
+// default (auto, non-TTY test buffer) stays plain, --color always forces it on,
+// and a bad value is a structured agent-fixable error.
+func TestMessageGetTranscriptColor(t *testing.T) {
+	run := func(t *testing.T, args ...string) (string, string, error) {
+		f := newCLIFixture(t)
+		f.server.HandleBody("conversations.history", historyWith(
+			simpleMessage("1782032540.314239", "U12345555", "hi")))
+		f.handleUser("U12345555", "alice")
+		full := append([]string{"message", "get",
+			"https://acme.slack.com/archives/C0123ABCD/p1782032540314239",
+			"--format", "transcript", "--tz", "UTC"}, args...)
+		return f.run(t, full...)
+	}
+
+	out, _, err := run(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("default (auto, non-TTY) should be plain:\n%q", out)
+	}
+
+	out, _, err = run(t, "--color", "always")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "\x1b[") {
+		t.Errorf("--color always should emit ANSI:\n%q", out)
+	}
+
+	_, stderr, err := run(t, "--color", "purple")
+	if err == nil {
+		t.Fatal("expected an error for an unknown --color value")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" {
+		t.Errorf("fixable_by = %v, want agent", payload["fixable_by"])
+	}
+}
+
 // TestMessageListTranscript renders channel history as a transcript run.
 func TestMessageListTranscript(t *testing.T) {
 	f := newCLIFixture(t)
@@ -84,9 +128,13 @@ func TestMessageListTranscript(t *testing.T) {
 	if !strings.Contains(out, "  first") || !strings.Contains(out, "  second") {
 		t.Errorf("both messages should render:\n%s", out)
 	}
-	// A blank line separates messages.
-	if !strings.Contains(out, "first\n\n[") {
-		t.Errorf("messages should be blank-line separated:\n%s", out)
+	// Same author within the window: the second collapses under the first
+	// header (no repeated speaker, no blank gap).
+	if strings.Count(out, "<U12345555|U12345555>") != 1 {
+		t.Errorf("consecutive same-author messages should group under one header:\n%s", out)
+	}
+	if !strings.Contains(out, "  first\n[") {
+		t.Errorf("grouped second message should not be blank-line separated:\n%s", out)
 	}
 }
 
@@ -115,17 +163,17 @@ func TestMessageListThreadTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Root message header has no leading indent.
-	if !strings.Contains(out, "[2026-06-21 @ 09:02:20 (UTC)]") {
-		t.Errorf("root message header missing:\n%s", out)
+	// Root message header has no leading indent (sits under the day separator).
+	if !strings.Contains(out, "──── 2026-06-21 (UTC) ────\n[09:02:20]") {
+		t.Errorf("root message header missing under separator:\n%s", out)
 	}
-	// Reply header is indented exactly one level (two spaces).
-	if !strings.Contains(out, "\n  [2026-06-21 @ 09:03:20 (UTC)]") {
-		t.Errorf("reply should be indented one level under root:\n%s", out)
+	// Reply renders as a tree leaf under the root.
+	if !strings.Contains(out, "\n└─ [09:03:20]") {
+		t.Errorf("reply should render as a tree leaf under root:\n%s", out)
 	}
-	// Reply body is indented two levels (four spaces).
-	if !strings.Contains(out, "\n    reply message") {
-		t.Errorf("reply body should be double-indented:\n%s", out)
+	// Reply body aligns under the connector (three spaces).
+	if !strings.Contains(out, "\n   reply message") {
+		t.Errorf("reply body should align under the connector:\n%s", out)
 	}
 }
 

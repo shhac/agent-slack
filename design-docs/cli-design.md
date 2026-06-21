@@ -124,6 +124,26 @@ This supersedes the broader "all writes gated" wording in
   List rows omit it to keep NDJSON lean; `channel_id` + `ts` chain into
   `message get`.
 - All confirmations are JSON.
+- **`--format transcript` (message get/list only):** an opt-in human-readable
+  rendering — the one non-JSON success output. Plain text on stdout; errors stay
+  structured JSON on stderr. It always resolves speakers/mentions/reactors to
+  names (a transcript is for a human, so `--resolve` is overridden). Rendering
+  decisions, all in `internal/render/transcript.go`:
+  - A `──── <date> (<zone>) ────` divider opens each day; headers then carry the
+    **time only** (`[HH:MM:SS]`), since the date lives on the divider. `--tz`
+    sets the zone (default `Local`, honors `$TZ`); `--with-ids` appends `⟨ts …⟩`.
+  - **Speaker grouping:** consecutive messages from the same author, same depth,
+    same day, within 5 min collapse under one header (no repeated `<name|id>`,
+    no blank gap) — mirrors Slack's own UI.
+  - **Thread tree:** replies render under their root with `├─`/`└─` connectors
+    and aligned continuation, instead of bare indentation.
+  - **Color is environment-gated, never default-on.** `--color auto` (default)
+    emits ANSI (dim metadata/timestamps/tree glyphs, bold-cyan speaker names)
+    only when stdout is a TTY, honoring `NO_COLOR` and `CLICOLOR_FORCE`;
+    `always`/`never` override. The piped/LLM path is not a TTY, so it stays
+    plain — color helps a human at a terminal without ever polluting an agent's
+    context. The render layer just honors `TranscriptOptions.Color`; the CLI
+    decides it from the output target.
 
 ## Message formatting dialect
 

@@ -20,10 +20,11 @@ func TestRenderTranscriptBasic(t *testing.T) {
 		Loc:      time.UTC,
 		UserName: nameResolver(map[string]string{"U12345555": "Alice", "U87654321": "Bob"}),
 	})
-	want := "[2026-06-21 @ 09:02:20 (UTC)] <Alice|U12345555>\n" +
+	want := "──── 2026-06-21 (UTC) ────\n" +
+		"[09:02:20] <Alice|U12345555>\n" +
 		"  Hello?\n" +
 		"\n" +
-		"[2026-06-21 @ 09:03:20 (UTC)] <Bob|U87654321>\n" +
+		"[09:03:20] <Bob|U87654321>\n" +
 		"  Hi @Alice\n"
 	if got != want {
 		t.Errorf("transcript mismatch:\n got: %q\nwant: %q", got, want)
@@ -49,9 +50,13 @@ func TestRenderTranscriptTimezoneLabel(t *testing.T) {
 		{Summary: MessageSummary{TS: "1782032540.314239", User: "U12345555", Text: "Hello?"}},
 	}
 	got := RenderTranscript(msgs, TranscriptOptions{Loc: london, UserName: nameResolver(map[string]string{"U12345555": "Alice"})})
-	// 09:02:20 UTC == 10:02:20 BST in summer.
-	if !strings.HasPrefix(got, "[2026-06-21 @ 10:02:20 (BST)] <Alice|U12345555>") {
-		t.Errorf("expected BST header, got:\n%s", got)
+	// 09:02:20 UTC == 10:02:20 BST in summer: the zone rides the day separator,
+	// the header carries the local clock.
+	if !strings.Contains(got, "──── 2026-06-21 (BST) ────") {
+		t.Errorf("expected BST day separator, got:\n%s", got)
+	}
+	if !strings.Contains(got, "[10:02:20] <Alice|U12345555>") {
+		t.Errorf("expected BST clock in header, got:\n%s", got)
 	}
 }
 
@@ -75,9 +80,9 @@ func TestRenderTranscriptThreadIndent(t *testing.T) {
 		{Summary: MessageSummary{TS: "1782032600.000000", ThreadTS: "1782032540.000000", User: "U87654321", Text: "reply"}, Depth: 1},
 	}
 	got := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC, UserName: nameResolver(map[string]string{"U12345555": "Alice", "U87654321": "Bob"})})
-	// The reply header is indented one level, its body two levels.
-	if !strings.Contains(got, "\n  [2026-06-21 @ 09:03:20 (UTC)] <Bob|U87654321>\n    reply\n") {
-		t.Errorf("reply should nest under root, got:\n%s", got)
+	// The reply renders as a tree leaf under the root, body aligned under it.
+	if !strings.Contains(got, "\n└─ [09:03:20] <Bob|U87654321>\n   reply\n") {
+		t.Errorf("reply should nest under root as a tree leaf, got:\n%s", got)
 	}
 }
 
@@ -153,7 +158,73 @@ func TestRenderTranscriptEmptyBodyStillHasHeader(t *testing.T) {
 		{Summary: MessageSummary{TS: "1782032540.000000", User: "U12345555", Files: []FileSummary{{ID: "F1", Name: "a.png"}}}},
 	}
 	got := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC, UserName: nameResolver(map[string]string{"U12345555": "Alice"})})
-	if !strings.HasPrefix(got, "[2026-06-21 @ 09:02:20 (UTC)] <Alice|U12345555>\n  [file: a.png]\n") {
+	if !strings.Contains(got, "[09:02:20] <Alice|U12345555>\n  [file: a.png]\n") {
 		t.Errorf("file-only message should still get a header, got:\n%s", got)
+	}
+}
+
+func TestRenderTranscriptDaySeparator(t *testing.T) {
+	msgs := []TranscriptMessage{
+		{Summary: MessageSummary{TS: "1782032540.000000", User: "U12345555", Text: "day one"}},
+		// +1 day, 2026-06-22.
+		{Summary: MessageSummary{TS: "1782118940.000000", User: "U12345555", Text: "day two"}},
+	}
+	got := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC, UserName: nameResolver(map[string]string{"U12345555": "Alice"})})
+	if !strings.Contains(got, "──── 2026-06-21 (UTC) ────") || !strings.Contains(got, "──── 2026-06-22 (UTC) ────") {
+		t.Errorf("each day should open with its own separator, got:\n%s", got)
+	}
+	// A new day always breaks the run, so the second day repeats the speaker.
+	if strings.Count(got, "<Alice|U12345555>") != 2 {
+		t.Errorf("new day should re-show the speaker, got:\n%s", got)
+	}
+}
+
+func TestRenderTranscriptSpeakerGrouping(t *testing.T) {
+	msgs := []TranscriptMessage{
+		{Summary: MessageSummary{TS: "1782032540.000000", User: "U12345555", Text: "first"}},
+		// +60s, same author → collapses under the first header.
+		{Summary: MessageSummary{TS: "1782032600.000000", User: "U12345555", Text: "second"}},
+	}
+	got := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC, UserName: nameResolver(map[string]string{"U12345555": "Alice"})})
+	if strings.Count(got, "<Alice|U12345555>") != 1 {
+		t.Errorf("grouped run should show the speaker once, got:\n%s", got)
+	}
+	// Grouped messages are not blank-line separated; the second is header-only.
+	if !strings.Contains(got, "  first\n[09:03:20]\n  second\n") {
+		t.Errorf("second message should collapse under the first, got:\n%s", got)
+	}
+}
+
+func TestRenderTranscriptGroupingBreaksPastWindow(t *testing.T) {
+	msgs := []TranscriptMessage{
+		{Summary: MessageSummary{TS: "1782032540.000000", User: "U12345555", Text: "first"}},
+		// +6 min (> 300s window) → a fresh header, blank-line separated.
+		{Summary: MessageSummary{TS: "1782032900.000000", User: "U12345555", Text: "later"}},
+	}
+	got := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC, UserName: nameResolver(map[string]string{"U12345555": "Alice"})})
+	if strings.Count(got, "<Alice|U12345555>") != 2 {
+		t.Errorf("a gap past the window should re-show the speaker, got:\n%s", got)
+	}
+	if !strings.Contains(got, "  first\n\n[") {
+		t.Errorf("non-grouped messages should be blank-line separated, got:\n%s", got)
+	}
+}
+
+func TestRenderTranscriptColor(t *testing.T) {
+	msgs := []TranscriptMessage{
+		{Summary: MessageSummary{TS: "1782032540.000000", User: "U12345555", Text: "hi"}},
+	}
+	resolver := nameResolver(map[string]string{"U12345555": "Alice"})
+	plain := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC, UserName: resolver})
+	if strings.Contains(plain, "\x1b[") {
+		t.Errorf("default render must be free of ANSI codes (LLM path), got:\n%q", plain)
+	}
+	colored := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC, UserName: resolver, Color: true})
+	if !strings.Contains(colored, "\x1b[") || !strings.Contains(colored, ansiReset) {
+		t.Errorf("Color:true should emit ANSI styling, got:\n%q", colored)
+	}
+	// The display name itself carries the bold-cyan span.
+	if !strings.Contains(colored, ansiName+"Alice"+ansiReset) {
+		t.Errorf("speaker name should be styled, got:\n%q", colored)
 	}
 }

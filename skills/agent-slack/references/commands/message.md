@@ -27,6 +27,17 @@ and `@name`/`@group` handles and `#channel` names resolve to real
 mentions/links; `--slack-markdown` switches to Slack's native mrkdwn dialect.
 Full table — links, mentions, escaping: [../formatting.md](../formatting.md).
 
+`message get`/`list` also take `--format transcript` — a human-readable,
+chronological text rendering (not JSON; errors still go to stderr as JSON, and
+speakers/mentions/reactors always resolve to names). A
+`──── <date> (<zone>) ────` divider opens each day, headers carry the time
+only, consecutive messages from one author within 5 minutes collapse under one
+header, and thread replies render as a `├─`/`└─` tree. Flags: `--tz
+<Local|UTC|IANA>` (display zone, default `Local`, honors `$TZ`); `--with-ids`
+appends each message's `ts` id; `--color <auto|always|never>` (default `auto`:
+ANSI styling only when stdout is a TTY, honoring `NO_COLOR`/`CLICOLOR_FORCE`, so
+the piped/LLM path stays plain).
+
 `message send --forward <permalink>` forwards a message: any `[text]` becomes a
 comment above it. **Same workspace only** — a permalink from another workspace
 is a link, not a forward, and is rejected. On **browser (xoxc) auth** this posts

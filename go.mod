@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
 	github.com/coder/websocket v1.8.14
+	github.com/mattn/go-isatty v0.0.22
 	github.com/shhac/lib-agent-cli v0.8.0
 	github.com/shhac/lib-agent-output v0.4.3
 	github.com/spf13/cobra v1.10.2
@@ -22,7 +23,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josephspurrier/goversioninfo v1.4.1 // indirect
-	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/ncruces/zenity v0.10.14 // indirect
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
