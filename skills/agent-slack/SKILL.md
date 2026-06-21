@@ -16,8 +16,15 @@ allowed-tools: Bash(agent-slack *) Read
 # agent-slack
 
 JSON in, JSON out, no interactivity. Lists are NDJSON (one object per line, then
-`{"@pagination":…}` / `{"@referenced_users":…}` meta lines); single resources
-are pretty JSON. Errors are a single JSON object on stderr:
+`{"@pagination":…}` / `{"@referenced_users":…}` meta lines). Entity gets —
+`user get`, `channel get`, `usergroup get`, `emoji get` — accept 1..N ids and
+emit NDJSON by default: one result line per id in input order, either the record
+or `{"@unresolved":{"id","reason","fixable_by","hint"?}}` for an id that
+couldn't be resolved. Item-level misses exit 0; only a command-level failure
+(auth, network) exits 1. `--format json` on a single get returns the pretty
+object; `--format json` on multi collapses to `{"data":[…],"@unresolved":[…]}`.
+Workflow, canvas, message, config gets remain single-output. Errors are a single
+JSON object on stderr:
 `{"error":"…","fixable_by":"agent|human|retry","hint"?:"…","retry_after_seconds"?:N}`.
 `fixable_by=agent` → fix the input and retry; `human` → credentials/permissions
 need a person; `retry` → transient failure, wait and re-run (`retry_after_seconds`
@@ -113,9 +120,9 @@ Scheduling, forwarding, and the draft hand-off flow: `agent-slack message usage`
 
 ```bash
 agent-slack channel list                      # compact; --full for raw
-agent-slack channel get "#general" "#ops"     # one → object; several → NDJSON
+agent-slack channel get "#general" "#ops"     # NDJSON default (one line per id; @unresolved for misses)
 agent-slack channel members "#general" --resolve auto   # who's in it
-agent-slack user get @alice @bob              # @handle or U…; several → NDJSON (+ @unresolved)
+agent-slack user get @alice @bob              # NDJSON default; @unresolved per miss; exit 0
 agent-slack user dm-open @alice @bob          # group DM channel id
 ```
 

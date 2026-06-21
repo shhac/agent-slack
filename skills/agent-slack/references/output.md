@@ -3,9 +3,16 @@
 ## Shape
 
 - **Lists → NDJSON**: one JSON object per line, then meta lines (below).
-- **Single resources → pretty JSON**.
-- `--format json|yaml|jsonl` overrides: `json`/`yaml` wrap a list in one
-  envelope (`{"data": […], "@pagination": …}`); `jsonl` forces NDJSON.
+- **Entity gets (`user get`, `channel get`, `usergroup get`, `emoji get`) →
+  NDJSON by default**: one result per id in input order — the record, or an
+  `{"@unresolved":{…}}` line for an id that couldn't be resolved. Item-level
+  misses exit 0; auth/network errors exit 1 with empty stdout.
+- **Other single resources → pretty JSON** (`message get`, `workflow get`,
+  `canvas get`, `config get`).
+- `--format json|yaml|jsonl` overrides: on a single entity get `json`/`yaml`
+  return the pretty object; on a multi-id get `json`/`yaml` collapse to
+  `{"data": […], "@unresolved": […]}`; `jsonl` forces NDJSON. For lists,
+  `json`/`yaml` wrap in `{"data": […], "@pagination": …}`.
 - Empty values are pruned (`null`, `[]`, `{}` dropped where possible).
 - **Errors → JSON on stderr**, non-zero exit:
   `{"error": "...", "fixable_by": "agent|human|retry", "hint": "..."}`.
@@ -31,7 +38,7 @@
 | `{"@thread_ts": "…"}` | the thread root, when listing a thread |
 | `{"@threads": {"has_unreads", "mention_count"}}` | unread thread-reply summary (`unreads`) |
 | `{"@counts": {…}}` | totals when `--counts-only` is set (`unreads`, `later`) |
-| `{"@unresolved": ["…"]}` | inputs that didn't resolve in a multi-arg `user get` / `channel get` / `usergroup get` (the rest still return) |
+| `{"@unresolved": {id,reason,fixable_by,hint?}}` | an id that couldn't be resolved in `user get` / `channel get` / `usergroup get` / `emoji get`; emitted **in-position** (one line per input, not a trailing aggregate) — item-level miss, exit 0 |
 
 ## Compact by default, `--full` for raw
 

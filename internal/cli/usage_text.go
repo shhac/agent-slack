@@ -35,7 +35,16 @@ TARGETS
 OUTPUT
   Lists are NDJSON: one object per line, then meta lines like
   {"@pagination":{"next_cursor":"…"}} and {"@referenced_users":{…}}.
-  Single resources are pretty JSON. --format json|yaml|jsonl overrides.
+  Get (single + multi). 'get <id>...' takes one or more ids and returns one
+  result per id, in input order. Default output is NDJSON: one line per id —
+  the record, or {"@unresolved":{"id","reason","fixable_by","hint"?}} for an id
+  that couldn't be resolved (e.g. not found / bad id). --format json|yaml
+  collapses to one {"data":[…],"@unresolved":[…]} envelope. A single
+  'get <id>' is just the one-element case (NDJSON one line by default; pass
+  --format json for the pretty object). Item-level misses stay on stdout and
+  exit 0; only a command-level failure (auth, network) goes to stderr with
+  exit 1 and empty stdout.
+  --format json|yaml|jsonl overrides.
   channel/user lists are compact projections; --full returns raw payloads.
   Bodies truncate with a trailing … at --max-body-chars
   (message 8000, search/later/unreads 4000, canvas 20000; -1 = unlimited).
@@ -154,8 +163,10 @@ SCHED  message scheduled list [--channel …] [--cursor …]
 LIST   channel list [--user U…|@handle] [--all] [--limit 100] [--cursor …]
        Default: the authed user's conversations. Compact rows: id, name,
        is_private/is_im/is_mpim, is_member, num_members, topic; --full = raw.
-GET    channel get <channel…> [--full] — channel metadata. One arg → object;
-       several → NDJSON, with a trailing {"@unresolved": […]} for any misses.
+GET    channel get <channel…> [--full] — channel metadata. 'get <id>...' NDJSON
+       default: one record or {"@unresolved":{id,reason,fixable_by}} per input
+       in order; item-level miss → exit 0. --format json → object (one id) or
+       {"data":[…],"@unresolved":[…]} envelope (several).
 MEMBERS channel members <channel> [--resolve none|cached|auto|fresh] [--limit] [--cursor]
        Who is in the channel: user ids (chain into 'user get'), or profiles
        with --resolve cached/auto/fresh.
@@ -171,8 +182,10 @@ MARK   channel mark <target> [--ts …] — mark read up to a message.`,
 LIST     user list [--limit 200] [--cursor …] [--include-bots]
          Compact rows: id, name (handle), real_name, display_name, email,
          title, tz, dm_id (open DM channel if one exists).
-GET      user get <U…|@handle|email …> — one arg → object; several → NDJSON,
-         with a trailing {"@unresolved": […]} for inputs that didn't resolve.
+GET      user get <U…|@handle|email …> — 'get <id>...' NDJSON default: one
+         record or {"@unresolved":{id,reason,fixable_by}} per input in order;
+         item-level miss → exit 0. --format json → object (one id) or
+         {"data":[…],"@unresolved":[…]} envelope (several).
 DM-OPEN  user dm-open <users…> — open a DM or group DM (max 8); returns
          dm_channel_id to send into.`,
 
@@ -185,8 +198,10 @@ LIST     usergroup list [--include-disabled] [--limit 200] [--cursor …]
          no view on which is "best" to post in; pick per your use case.
          Paginated: a full page emits {"@pagination":{next_cursor}} — pass it
          to --cursor for the next page.
-GET      usergroup get <S…|@handle …> — one arg → object; several → NDJSON,
-         with a trailing {"@unresolved": […]} for inputs that didn't resolve.
+GET      usergroup get <S…|@handle …> — 'get <id>...' NDJSON default: one
+         record or {"@unresolved":{id,reason,fixable_by}} per input in order;
+         item-level miss → exit 0. --format json → object (one id) or
+         {"data":[…],"@unresolved":[…]} envelope (several).
 MEMBERS  usergroup members <S…|@handle> [--resolve none|cached|auto|fresh] [--include-disabled]
          Who is in the group: user ids (chain into 'user get'), or profiles
          with --resolve cached/auto/fresh. To answer "which groups am I in?", scan
@@ -206,8 +221,10 @@ LIST     emoji list [--full] [--limit 200] [--cursor …]
          Does NOT include the ~1.8k standard unicode emoji. Paginated (a busy
          workspace can have thousands): a full page emits
          {"@pagination":{next_cursor}} — pass it to --cursor for the next page.
-GET      emoji get <name…> — :colons: optional; one arg → object, several →
-         NDJSON with a trailing {"@unresolved": […]}. Unified lookup over
+GET      emoji get <name…> — :colons: optional; 'get <name>...' NDJSON default:
+         one record or {"@unresolved":{id,reason,fixable_by}} per input in
+         order; item-level miss → exit 0. --format json → object (one) or
+         {"data":[…],"@unresolved":[…]} envelope (several). Unified lookup over
          custom then standard emoji: custom → {custom:true, url|alias_for};
          alias → followed one hop (url or unicode); a standard name → {unicode}.
          Names are matched EXACTLY (case-folded only; -_+ not collapsed).

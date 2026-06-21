@@ -12,10 +12,11 @@ In-binary version: `agent-slack channel usage`.
 | `channel invite` | `--channel`, `--users`, `--external`, `--allow-external-user-invites` | `--yes` |
 | `channel mark <target>` | `--ts` | |
 
-`channel get` returns one channel's metadata (topic, membership, member count,
-archive state; `--full` for the raw object). Pass several channels and it
-returns NDJSON instead, one per line, with a trailing `{"@unresolved": […]}`
-for any that didn't resolve. `channel members` lists the user IDs in a channel
+`channel get <channel…>` accepts one or more ids/names and returns NDJSON by
+default: one result per id in input order — the channel record, or
+`{"@unresolved":{"id","reason","fixable_by"}}` for any that didn't resolve.
+Item-level misses exit 0. `--format json` returns the pretty object (one id)
+or `{"data":[…],"@unresolved":[…]}` envelope (several). `channel members` lists the user IDs in a channel
 (chain into `user get`, or pass `--resolve cached`/`--resolve fresh` to expand to profiles inline).
 `channel invite --users` accepts user IDs and (with `--external`) email
 addresses, comma-separated. `channel mark` is personal read state, ungated.
