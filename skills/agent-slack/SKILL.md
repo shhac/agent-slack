@@ -23,7 +23,10 @@ or `{"@unresolved":{"id","reason","fixable_by","hint"?}}` for an id that
 couldn't be resolved. Item-level misses exit 0; only a command-level failure
 (auth, network) exits 1. `--format json` on a single get returns the pretty
 object; `--format json` on multi collapses to `{"data":[…],"@unresolved":[…]}`.
-Workflow, canvas, message, config gets remain single-output. Errors are a single
+`message get`, `message draft get`, `workflow get`, and `canvas get` are single-arg
+and now emit NDJSON by default (one line); `--format json|yaml` returns the pretty
+object. `config get` takes 1..N keys and emits NDJSON (one line per key, or
+`{"@unresolved":…}` per miss). Errors are a single
 JSON object on stderr:
 `{"error":"…","fixable_by":"agent|human|retry","hint"?:"…","retry_after_seconds"?:N}`.
 `fixable_by=agent` → fix the input and retry; `human` → credentials/permissions

@@ -7,8 +7,11 @@
   NDJSON by default**: one result per id in input order — the record, or an
   `{"@unresolved":{…}}` line for an id that couldn't be resolved. Item-level
   misses exit 0; auth/network errors exit 1 with empty stdout.
-- **Other single resources → pretty JSON** (`message get`, `workflow get`,
-  `canvas get`, `config get`).
+- **Single-arg gets (`message get`, `message draft get`, `workflow get`,
+  `canvas get`) → NDJSON by default** (one line); `--format json|yaml` returns the
+  pretty object.
+- **`config get <key>…` → NDJSON**, one line per key in input order — the value
+  record or `{"@unresolved":{…}}` per key that has no config entry. Takes 1..N keys.
 - `--format json|yaml|jsonl` overrides: on a single entity get `json`/`yaml`
   return the pretty object; on a multi-id get `json`/`yaml` collapse to
   `{"data": […], "@unresolved": […]}`; `jsonl` forces NDJSON. For lists,
