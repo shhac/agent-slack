@@ -123,9 +123,9 @@ TEXT   message get/list also accept --format transcript: a human-readable,
        under a single header; thread replies render as a ├─/└─ tree.
        --tz <Local|UTC|IANA> sets the displayed zone (default Local, honors
        $TZ); --with-ids appends each message's ts id to the header.
-       --color <auto|always|never> styles output (default auto: on only at a
-       TTY, honoring NO_COLOR and CLICOLOR_FORCE — so the piped/LLM path stays
-       plain).
+       --color <auto|always|never> is a global flag styling all output incl.
+       JSON (default auto: on only when the stream is a TTY, honoring NO_COLOR
+       and TERM=dumb — so the piped/LLM path stays plain).
 SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        Targets: #channel, C…, U… (DM auto-opens), or a permalink (replies in
        that thread). Text is standard Markdown: **bold**, *italic*/_italic_,

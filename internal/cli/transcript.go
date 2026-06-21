@@ -2,13 +2,12 @@ package cli
 
 import (
 	"context"
-	"io"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
+
+	output "github.com/shhac/lib-agent-output"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/render"
@@ -26,14 +25,13 @@ const transcriptFormat = "transcript"
 type transcriptFlags struct {
 	tz      string
 	withIDs bool
-	color   string
 }
 
 func (f *transcriptFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.tz, "tz", "Local", "Transcript display zone: Local, UTC, or an IANA name (e.g. Europe/London)")
 	cmd.Flags().BoolVar(&f.withIDs, "with-ids", false, "Append each message's ts id in the transcript header")
-	cmd.Flags().StringVar(&f.color, "color", "auto", "Transcript ANSI color: auto (TTY, honors NO_COLOR/CLICOLOR_FORCE), always, or never")
-	_ = cmd.RegisterFlagCompletionFunc("color", fixedCompletions("auto", "always", "never"))
+	// Color is driven by the global --color flag (lib-agent-cli); the transcript
+	// renderer consults output.Enabled for the same per-stream decision.
 }
 
 // location resolves --tz to a time.Location: Local (honoring $TZ) and UTC are
@@ -55,40 +53,6 @@ func (f *transcriptFlags) location() (*time.Location, error) {
 	return loc, nil
 }
 
-// colorEnabled resolves --color against the output target. always/never are
-// explicit overrides; auto consults NO_COLOR/CLICOLOR_FORCE and whether w is a
-// terminal. An unrecognized value is a structured, agent-fixable error.
-func (f *transcriptFlags) colorEnabled(w io.Writer) (bool, error) {
-	switch strings.TrimSpace(f.color) {
-	case "", "auto":
-		return autoColor(w), nil
-	case "always":
-		return true, nil
-	case "never":
-		return false, nil
-	}
-	return false, agenterrors.Newf(agenterrors.FixableByAgent,
-		"unknown --color %q", f.color).
-		WithHint("use auto, always, or never")
-}
-
-// autoColor implements the standard precedence for automatic color: a truthy
-// CLICOLOR_FORCE forces it on, a present NO_COLOR forces it off, otherwise it
-// follows whether the output writer is a terminal. A buffer or pipe (the LLM
-// path) is never a terminal, so color stays off there by default.
-func autoColor(w io.Writer) bool {
-	if v := os.Getenv("CLICOLOR_FORCE"); v != "" && v != "0" {
-		return true
-	}
-	if _, ok := os.LookupEnv("NO_COLOR"); ok {
-		return false
-	}
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	return isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd())
-}
 
 // wantsTranscript reports whether the resolved --format is the transcript
 // renderer (the literal, since it lives outside the universal format enum).
@@ -106,10 +70,7 @@ func printTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContex
 	if err != nil {
 		return err
 	}
-	color, err := tflags.colorEnabled(globals.stdout)
-	if err != nil {
-		return err
-	}
+	color := output.Enabled(globals.stdout)
 	resolveUser := transcriptUserResolver(ctx, cc, messages)
 
 	items := make([]render.TranscriptMessage, 0, len(messages))
