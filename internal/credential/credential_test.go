@@ -59,6 +59,78 @@ func TestSecretsStayInFileWhenKeychainSetFails(t *testing.T) {
 	}
 }
 
+// TestStore_Headless_FileFallback exercises the real credential-WRITE path
+// non-interactively, through the default keychain rather than an injected one.
+// Setting the per-CLI keychain opt-out (derived by lib-agent-cli from the
+// "app.paulie.agent-slack" service) makes creds.Keychain.Available() report
+// false, so Save deterministically takes the 0600 file fallback on every
+// platform — including darwin, where it would otherwise reach the `security`
+// CLI and its GUI prompt. Using AGENT_SLACK_NO_KEYCHAIN (not the family-wide
+// LIB_AGENT_NO_KEYCHAIN) also proves the lib's prefix derivation.
+func TestStore_Headless_FileFallback(t *testing.T) {
+	t.Setenv("AGENT_SLACK_NO_KEYCHAIN", "1")
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	t.Setenv("AGENT_SLACK_CREDENTIALS", path)
+
+	s, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Confirm we're going through the real default keychain and it's opted out.
+	if s.kc.Available() {
+		t.Fatal("keychain should report unavailable under AGENT_SLACK_NO_KEYCHAIN=1")
+	}
+
+	if _, err := s.Upsert(Workspace{
+		URL:  "https://headless.slack.com",
+		Name: "Headless",
+		Auth: Auth{Type: AuthStandard, Token: "xoxb-headless"},
+	}); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	// The secret must have been written to the 0600 file, not a keychain
+	// placeholder, because the keychain is opted out.
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("credentials file not written: %v", err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o600 {
+		t.Errorf("credentials mode=%o, want 0600", mode)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "xoxb-headless") {
+		t.Errorf("token not written to file under keychain opt-out:\n%s", raw)
+	}
+	if strings.Contains(string(raw), keychainPlaceholder) {
+		t.Errorf("keychain placeholder written despite opt-out:\n%s", raw)
+	}
+
+	// Round-trip via the read path.
+	got, err := s.ResolveDefault()
+	if err != nil {
+		t.Fatalf("ResolveDefault: %v", err)
+	}
+	if got.Auth.Token != "xoxb-headless" {
+		t.Errorf("token not round-tripped; got %q", got.Auth.Token)
+	}
+
+	// Remove and confirm it's gone.
+	if err := s.Remove("https://headless.slack.com"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	creds, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(creds.Workspaces) != 0 {
+		t.Errorf("workspace still present after Remove: %+v", creds.Workspaces)
+	}
+}
+
 func TestNormalizeURL(t *testing.T) {
 	cases := map[string]string{
 		"https://acme.slack.com":                "https://acme.slack.com",
