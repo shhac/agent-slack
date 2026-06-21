@@ -46,7 +46,7 @@ func registerCanvas(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			return printSingle(globals, map[string]any{"canvas": canvas})
+			return emitItem(globals, map[string]any{"canvas": canvas})
 		},
 	}
 	getCmd.Flags().IntVar(&maxChars, "max-chars", 20000, "Max markdown chars (-1 = unlimited)")

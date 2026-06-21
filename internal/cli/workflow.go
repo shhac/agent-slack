@@ -96,7 +96,7 @@ func registerWorkflowGet(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			return printSingle(globals, schema)
+			return emitItem(globals, schema)
 		},
 	}
 	parent.AddCommand(getCmd)

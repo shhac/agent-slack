@@ -61,7 +61,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 			for k, v := range resolveReferencedEntities(ctx, cc, globals, flags, []render.MessageSummary{msg}) {
 				payload[k] = v
 			}
-			return printSingle(globals, payload)
+			return emitItem(globals, payload)
 		},
 	}
 	flags.register(cmd, render.DefaultMaxBodyChars)

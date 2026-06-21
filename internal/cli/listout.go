@@ -85,6 +85,14 @@ func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
 	return nil
 }
 
+// emitItem writes a single, already-resolved record per the family's get-output
+// contract: NDJSON by default (one compact line), or the pretty bare object
+// under --format json|yaml. Use for composite-key or singleton gets that don't
+// fit the 1..N id model of runEntityGet.
+func emitItem(globals *GlobalFlags, item any) error {
+	return libcli.EmitItem(globals.stdout, globals.Format, item)
+}
+
 // runEntityGet is the shared body of the entity `get` commands (user, channel,
 // usergroup, emoji). It delegates to the family's canonical EntityGet contract:
 // NDJSON by default (one record or {"@unresolved":{…}} per id in input order),

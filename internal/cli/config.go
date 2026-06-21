@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -46,16 +49,23 @@ func registerConfig(parent *cobra.Command, globals *GlobalFlags) {
 	configCmd.AddCommand(listCmd)
 
 	getCmd := &cobra.Command{
-		Use:               "get <key>",
-		Short:             "Show one setting's persisted value",
-		Args:              cobra.ExactArgs(1),
+		Use:               "get <key> [key...]",
+		Short:             "Show one or more settings; NDJSON by default (one {key,value} line per key)",
+		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: keyCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := settings.Load()
 			if err != nil {
 				return err
 			}
-			return printSingle(globals, map[string]any{"key": args[0], "value": cfg.Get(args[0])})
+			known := settings.KnownKeys()
+			return runEntityGet(globals, args, func(key string) (any, error) {
+				if !slices.Contains(known, key) {
+					return nil, agenterrors.Newf(agenterrors.FixableByAgent, "unknown config key %q", key).
+						WithHint("valid keys: " + strings.Join(known, ", "))
+				}
+				return map[string]any{"key": key, "value": cfg.Get(key)}, nil
+			})
 		},
 	}
 	configCmd.AddCommand(getCmd)

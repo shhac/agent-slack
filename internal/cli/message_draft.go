@@ -102,7 +102,7 @@ func registerDraftGet(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			return printSingle(globals, draftItem(d))
+			return emitItem(globals, draftItem(d))
 		},
 	}
 	parent.AddCommand(cmd)
