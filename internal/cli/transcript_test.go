@@ -90,6 +90,45 @@ func TestMessageListTranscript(t *testing.T) {
 	}
 }
 
+// TestMessageListThreadTranscript renders a two-message thread as a transcript,
+// asserting the reply is indented one level under the root (depth-assignment
+// heuristic in printTranscript).
+func TestMessageListThreadTranscript(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C0123ABCD")
+
+	root := simpleMessage("1782032540.000000", "U12345555", "root message")
+	root["thread_ts"] = "1782032540.000000"
+	root["reply_count"] = 1
+
+	reply := simpleMessage("1782032600.000000", "U87654321", "reply message")
+	reply["thread_ts"] = "1782032540.000000"
+
+	f.server.HandleBody("conversations.replies", map[string]any{
+		"ok":       true,
+		"messages": []any{root, reply},
+	})
+
+	out, _, err := f.run(t, "message", "list", "#general",
+		"--thread-ts", "1782032540.000000",
+		"--format", "transcript", "--tz", "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Root message header has no leading indent.
+	if !strings.Contains(out, "[2026-06-21 @ 09:02:20 (UTC)]") {
+		t.Errorf("root message header missing:\n%s", out)
+	}
+	// Reply header is indented exactly one level (two spaces).
+	if !strings.Contains(out, "\n  [2026-06-21 @ 09:03:20 (UTC)]") {
+		t.Errorf("reply should be indented one level under root:\n%s", out)
+	}
+	// Reply body is indented two levels (four spaces).
+	if !strings.Contains(out, "\n    reply message") {
+		t.Errorf("reply body should be double-indented:\n%s", out)
+	}
+}
+
 // TestTranscriptUnknownTimezone errors with a structured agent-fixable message
 // on stderr (text transcript only on success; errors stay JSON).
 func TestTranscriptUnknownTimezone(t *testing.T) {

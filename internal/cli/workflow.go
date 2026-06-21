@@ -66,7 +66,7 @@ func registerWorkflowPreview(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			return printSingle(globals, preview)
+			return emitItem(globals, preview)
 		},
 	}
 	parent.AddCommand(previewCmd)

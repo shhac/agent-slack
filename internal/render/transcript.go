@@ -14,10 +14,13 @@ import (
 type TranscriptMessage struct {
 	Summary MessageSummary
 	// Edited marks the message as having been edited (a `(edited)` header tag).
+	// Callers must populate this from the source message; when zero the renderer
+	// falls back to Summary.Edited.
 	Edited bool
 	// BotName is the display name for a bot/app author (from the message's
 	// username / bot_profile.name). When set and the message has no human User,
-	// the speaker renders as `<BotName|app>`.
+	// the speaker renders as `<BotName|app>`. Callers must populate this; when
+	// empty the renderer falls back to Summary.BotName.
 	BotName string
 	// Depth is the thread-nesting level; replies render indented one level
 	// under their parent.
@@ -97,7 +100,8 @@ func transcriptHeader(m TranscriptMessage, opts TranscriptOptions) string {
 	speaker := transcriptSpeaker(m, opts)
 
 	header := fmt.Sprintf("[%s (%s)] %s", stamp, zone, speaker)
-	if m.Edited {
+	edited := m.Edited || m.Summary.Edited
+	if edited {
 		header += " (edited)"
 	}
 	if opts.WithIDs && m.Summary.TS != "" {
@@ -123,11 +127,26 @@ func formatTranscriptTime(ts string, loc *time.Location) (stamp, zone string) {
 	return t.Format("2006-01-02 @ 15:04:05"), name
 }
 
+// resolveName resolves id to a display name using opts.UserName, falling back
+// to id itself when the resolver is nil or returns "".
+func resolveName(opts TranscriptOptions, id string) string {
+	if opts.UserName != nil {
+		if resolved := opts.UserName(id); resolved != "" {
+			return resolved
+		}
+	}
+	return id
+}
+
 // transcriptSpeaker renders the `<DisplayName|UserID>` token. Bot/app authors
 // render `<BotName|app>`; unknown human users fall back to `<U…|U…>`.
 func transcriptSpeaker(m TranscriptMessage, opts TranscriptOptions) string {
-	if m.Summary.User == "" && m.BotName != "" {
-		return "<" + m.BotName + "|app>"
+	botName := m.BotName
+	if botName == "" {
+		botName = m.Summary.BotName
+	}
+	if m.Summary.User == "" && botName != "" {
+		return "<" + botName + "|app>"
 	}
 	id := m.Summary.User
 	if id == "" {
@@ -136,13 +155,7 @@ func transcriptSpeaker(m TranscriptMessage, opts TranscriptOptions) string {
 		}
 		return "<unknown|unknown>"
 	}
-	name := id
-	if opts.UserName != nil {
-		if resolved := opts.UserName(id); resolved != "" {
-			name = resolved
-		}
-	}
-	return "<" + name + "|" + id + ">"
+	return "<" + resolveName(opts, id) + "|" + id + ">"
 }
 
 // transcriptBodyLines builds the indented body: the prose-rendered content,
@@ -207,13 +220,7 @@ func transcriptReactions(reactions []any, opts TranscriptOptions) string {
 		glyph := EmojifyShortcodes(":" + r.Name + ":")
 		var names []string
 		for _, id := range r.Users {
-			name := id
-			if opts.UserName != nil {
-				if resolved := opts.UserName(id); resolved != "" {
-					name = resolved
-				}
-			}
-			names = append(names, name)
+			names = append(names, resolveName(opts, id))
 		}
 		seg := glyph
 		if len(names) > 0 {

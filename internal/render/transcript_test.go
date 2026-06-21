@@ -138,6 +138,16 @@ func TestRenderTranscriptEditedAndFilesAndReactions(t *testing.T) {
 	}
 }
 
+func TestRenderTranscriptAuthorlessSpeaker(t *testing.T) {
+	msgs := []TranscriptMessage{
+		{Summary: MessageSummary{TS: "1782032540.000000", Text: "ghost"}},
+	}
+	got := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC})
+	if !strings.Contains(got, "<unknown|unknown>") {
+		t.Errorf("authorless message (no User, BotID, or BotName) should render <unknown|unknown>, got:\n%s", got)
+	}
+}
+
 func TestRenderTranscriptEmptyBodyStillHasHeader(t *testing.T) {
 	msgs := []TranscriptMessage{
 		{Summary: MessageSummary{TS: "1782032540.000000", User: "U12345555", Files: []FileSummary{{ID: "F1", Name: "a.png"}}}},
