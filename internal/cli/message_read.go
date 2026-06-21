@@ -2,17 +2,19 @@ package cli
 
 import (
 	"context"
+	"strings"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/render"
 	"github.com/shhac/agent-slack/internal/slack"
-	"strings"
 )
 
 func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 	flags := &readFlags{}
+	tflags := &transcriptFlags{}
 	noDownload := false
 	cmd := &cobra.Command{
 		Use:               "get <target>",
@@ -31,6 +33,9 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 			msg, err := slack.FetchMessage(ctx, cc.Client, ref, flags.includeReactions)
 			if err != nil {
 				return err
+			}
+			if wantsTranscript(globals) {
+				return printTranscript(ctx, globals, cc, tflags, flags.slackMarkdown, []render.MessageSummary{msg}, false)
 			}
 			thread, err := slack.ThreadSummary(ctx, cc.Client, ref.ChannelID, msg)
 			if err != nil {
@@ -65,12 +70,15 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	flags.register(cmd, render.DefaultMaxBodyChars)
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
 	cmd.Flags().BoolVar(&noDownload, "no-download", false, "Skip downloading attached files")
 	parent.AddCommand(cmd)
 }
 
 func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 	flags := &readFlags{}
+	tflags := &transcriptFlags{}
 	var limit int
 	var oldest, latest string
 	var withReaction, withoutReaction []string
@@ -98,7 +106,7 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 
 			switch plan.mode {
 			case listModeURLThread:
-				return listURLThread(ctx, globals, flags, target.Ref, download)
+				return listURLThread(ctx, globals, flags, tflags, target.Ref, download)
 			case listModeHistory:
 				opts := slack.HistoryOptions{
 					Limit:            limit,
@@ -108,13 +116,15 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 					WithReactions:    plan.withReactions,
 					WithoutReactions: plan.withoutReactions,
 				}
-				return listChannelHistory(ctx, globals, flags, target, opts, download)
+				return listChannelHistory(ctx, globals, flags, tflags, target, opts, download)
 			default: // listModeThread
-				return listChannelThread(ctx, globals, flags, target, ts, threadTS, args[0], download)
+				return listChannelThread(ctx, globals, flags, tflags, target, ts, threadTS, args[0], download)
 			}
 		},
 	}
 	flags.register(cmd, render.DefaultMaxBodyChars)
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
 	cmd.Flags().IntVar(&limit, "limit", 25, "Max messages (channel history mode, max 200)")
 	cmd.Flags().StringVar(&oldest, "oldest", "", "Only messages after this ts")
 	cmd.Flags().StringVar(&latest, "latest", "", "Only messages before this ts")
@@ -125,7 +135,7 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 }
 
 // listURLThread lists the whole thread a permalink points into.
-func listURLThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, ref *render.MessageRef, download bool) error {
+func listURLThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, tflags *transcriptFlags, ref *render.MessageRef, download bool) error {
 	warnTruncatedURL(globals, ref)
 	cc, err := getClientForWorkspace(globals, ref.WorkspaceURL)
 	if err != nil {
@@ -135,12 +145,12 @@ func listURLThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, 
 	if err != nil {
 		return err
 	}
-	return printThread(ctx, globals, cc, flags, ref.ChannelID, rootTS, download)
+	return printThread(ctx, globals, cc, flags, tflags, ref.ChannelID, rootTS, download)
 }
 
 // listChannelHistory lists recent channel messages, with optional reaction
 // filters. opts.ChannelID is filled in after target resolution.
-func listChannelHistory(ctx context.Context, globals *GlobalFlags, flags *readFlags, target render.Target, opts slack.HistoryOptions, download bool) error {
+func listChannelHistory(ctx context.Context, globals *GlobalFlags, flags *readFlags, tflags *transcriptFlags, target render.Target, opts slack.HistoryOptions, download bool) error {
 	cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
 	if err != nil {
 		return err
@@ -150,12 +160,12 @@ func listChannelHistory(ctx context.Context, globals *GlobalFlags, flags *readFl
 	if err != nil {
 		return err
 	}
-	return printMessages(ctx, globals, cc, flags, messages, download, map[string]any{"channel_id": channelID}, false)
+	return printMessages(ctx, globals, cc, flags, tflags, messages, download, map[string]any{"channel_id": channelID}, false)
 }
 
 // listChannelThread lists the thread named by --thread-ts, or the thread
 // containing the --ts message when only --ts was given.
-func listChannelThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, target render.Target, ts, threadTS, rawTarget string, download bool) error {
+func listChannelThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, tflags *transcriptFlags, target render.Target, ts, threadTS, rawTarget string, download bool) error {
 	cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
 	if err != nil {
 		return err
@@ -168,7 +178,7 @@ func listChannelThread(ctx context.Context, globals *GlobalFlags, flags *readFla
 			return err
 		}
 	}
-	return printThread(ctx, globals, cc, flags, channelID, rootTS, download)
+	return printThread(ctx, globals, cc, flags, tflags, channelID, rootTS, download)
 }
 
 // listMode is which of message list's three behaviors an invocation gets.
@@ -237,16 +247,19 @@ func resolveListMode(targetKind render.TargetKind, ts, threadTS, oldest string, 
 	return listModeThread, nil
 }
 
-func printThread(ctx context.Context, globals *GlobalFlags, cc *clientContext, flags *readFlags, channelID, rootTS string, download bool) error {
+func printThread(ctx context.Context, globals *GlobalFlags, cc *clientContext, flags *readFlags, tflags *transcriptFlags, channelID, rootTS string, download bool) error {
 	messages, err := slack.FetchThread(ctx, cc.Client, channelID, rootTS, flags.includeReactions)
 	if err != nil {
 		return err
 	}
 	meta := map[string]any{"channel_id": channelID, "thread_ts": rootTS}
-	return printMessages(ctx, globals, cc, flags, messages, download, meta, true)
+	return printMessages(ctx, globals, cc, flags, tflags, messages, download, meta, true)
 }
 
-func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext, flags *readFlags, messages []render.MessageSummary, download bool, meta map[string]any, threadMode bool) error {
+func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext, flags *readFlags, tflags *transcriptFlags, messages []render.MessageSummary, download bool, meta map[string]any, threadMode bool) error {
+	if wantsTranscript(globals) {
+		return printTranscript(ctx, globals, cc, tflags, flags.slackMarkdown, messages, threadMode)
+	}
 	downloads := map[string]render.DownloadResult{}
 	if download {
 		downloads = slack.DownloadMessageFiles(ctx, cc.Client, messages, messageDownloadOptions(globals))

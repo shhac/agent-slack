@@ -70,6 +70,12 @@ type MessageSummary struct {
 	Attachments []any         `json:"attachments,omitempty"`
 	Files       []FileSummary `json:"files,omitempty"`
 	Reactions   []any         `json:"reactions,omitempty"`
+	// Edited reports that Slack marked this message as edited (presence of the
+	// raw `edited` object). Rendering-only; not part of the compact output.
+	Edited bool `json:"-"`
+	// BotName is the bot/app display name for a bot-authored message (from the
+	// raw `username` / `bot_profile.name`). Rendering-only.
+	BotName string `json:"-"`
 }
 
 // DownloadResult records the outcome of one file download performed by the

@@ -109,7 +109,19 @@ func SummaryFromRaw(channelID string, m map[string]any) render.MessageSummary {
 		Attachments: getArr(m, "attachments"),
 		Files:       files,
 		Reactions:   getArr(m, "reactions"),
+		Edited:      getRec(m, "edited") != nil,
+		BotName:     botDisplayName(m),
 	}
+}
+
+// botDisplayName extracts a bot/app's display name from a raw message: the
+// modern bot_profile.name, falling back to the legacy username field. Empty for
+// human messages.
+func botDisplayName(m map[string]any) string {
+	if name := getStr(getRec(m, "bot_profile"), "name"); name != "" {
+		return name
+	}
+	return getStr(m, "username")
 }
 
 // enrichFiles fills gaps for snippet-mode files (and any file missing its

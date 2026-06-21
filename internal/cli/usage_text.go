@@ -116,6 +116,10 @@ LIST   message list <target>
        channel_id/thread_ts; they're in meta lines). Reaction filters:
        --with-reaction/--without-reaction (repeatable, need --oldest).
        Files are metadata-only unless --download.
+TEXT   message get/list also accept --format transcript: a human-readable,
+       chronological rendering (plain text on stdout, errors still JSON).
+       --tz <Local|UTC|IANA> sets the displayed zone (default Local, honors
+       $TZ); --with-ids appends each message's ts id to the header.
 SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        Targets: #channel, C…, U… (DM auto-opens), or a permalink (replies in
        that thread). Text is standard Markdown: **bold**, *italic*/_italic_,
