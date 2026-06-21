@@ -5,6 +5,8 @@ import (
 	"maps"
 	"slices"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
+
 	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/slack"
 )
@@ -84,28 +86,14 @@ func printList(globals *GlobalFlags, items []any, meta map[string]any) error {
 }
 
 // runEntityGet is the shared body of the entity `get` commands (user, channel,
-// usergroup): one arg prints the resolved object; several print NDJSON, then a
-// trailing {"@unresolved": […]} for inputs that didn't resolve — a typo never
-// drops the rest. get resolves one input to its output shape.
+// usergroup, emoji). It delegates to the family's canonical EntityGet contract:
+// NDJSON by default (one record or {"@unresolved":{…}} per id in input order),
+// --format json|yaml → {data,@unresolved} envelope, exit 0 on item-level misses.
+// Only command-level failures (auth, network) surface on stderr and exit 1.
 func runEntityGet(globals *GlobalFlags, args []string, get func(arg string) (any, error)) error {
-	if len(args) == 1 {
-		item, err := get(args[0])
-		if err != nil {
-			return err
-		}
-		return printSingle(globals, item)
-	}
-	var items []any
-	var unresolved []string
-	for _, arg := range args {
-		item, err := get(arg)
-		if err != nil {
-			unresolved = append(unresolved, arg)
-			continue
-		}
-		items = append(items, item)
-	}
-	return printList(globals, items, unresolvedMeta(unresolved))
+	return libcli.EntityGet(globals.stdout, globals.Format, args, func(id string) (any, error) {
+		return get(id)
+	})
 }
 
 func toAnySlice[T any](items []T) []any {
@@ -114,15 +102,6 @@ func toAnySlice[T any](items []T) []any {
 		out[i] = item
 	}
 	return out
-}
-
-// unresolvedMeta is the trailing meta for a multi-arg get: an `@unresolved`
-// list of the inputs that didn't resolve, or nil when everything resolved.
-func unresolvedMeta(unresolved []string) map[string]any {
-	if len(unresolved) == 0 {
-		return nil
-	}
-	return map[string]any{"unresolved": unresolved}
 }
 
 // listMeta merges extra meta entries with pagination (added only when a

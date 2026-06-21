@@ -42,10 +42,10 @@ global persistent flags.
 | `message draft list` | | | NDJSON; unscheduled drafts (`date_scheduled == 0`), each with `id` + `file_ids` |
 | `message draft get/edit/delete/send <target\|id>` | `edit`: `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | | address by draft id, or by target when it has exactly one (else error with the ids); `send` posts (files via `files.share`), or promotes to scheduled |
 | `usergroup list` | `--include-disabled`, `--limit` (200, max 1000), `--cursor` | | NDJSON, compact projection. Full set fetched once (one `usergroups.list`, cached) then sliced client-side with the same opaque offset cursor as channel/user/emoji lists |
-| `usergroup get <usergroup…>` | | | id `S…` or `@handle`; one→object, several→NDJSON |
+| `usergroup get <usergroup…>` | | | id `S…` or `@handle`; 1..N ids; NDJSON default (one record or `{"@unresolved":{id,reason,fixable_by}}` per input in order); item-level miss → exit 0; auth failure → stderr+exit 1 |
 | `usergroup members <usergroup>` | `--resolve none\|cached\|auto\|fresh`, `--include-disabled` | | compact projection includes the group's default channels/groups (`prefs.channels`/`prefs.groups`), no "best channel" opinion |
 | `emoji list` | `--full`, `--limit` (200, max 1000), `--cursor` | | NDJSON sorted by name; **custom** emoji only. Lean by default (`name` + `alias_for`); `--full` adds image `url`. Paginated with the same opaque offset cursor as search (a busy workspace can have thousands) |
-| `emoji get <name…>` | | | `:colons:` optional; one→object, several→NDJSON (+ `{"@unresolved": […]}`). Unified lookup over custom then standard (emojilib) sets; aliases followed one hop; exact name match (case-folded only, `-_+` not collapsed) |
+| `emoji get <name…>` | | | `:colons:` optional; 1..N names; NDJSON default (one record or `{"@unresolved":{id,reason,fixable_by}}` per input in order); item-level miss → exit 0; unified lookup over custom then standard (emojilib) sets; aliases followed one hop; exact name match (case-folded only, `-_+` not collapsed) |
 | `emoji search <query>` | `--limit` (20, max 100), `--cursor`, `--full` | | fuzzy-ranks **custom** emoji over an in-memory set; rows carry `match` tier + `score`; query folded (case + `-_+`); opaque offset cursor in `@pagination` (mirrors Slack-cursor lists) |
 | `emoji add <name>` | `--image <path>` or `--alias-for <name>` | `--yes` | creates a workspace custom emoji from an image upload (multipart `emoji.add` mode=data) or as an alias (mode=alias); needs a user/browser token; drops the `emoji` cache |
 | `emoji remove <name>` | | `--yes` | deletes a custom emoji (multipart `emoji.remove`); drops the `emoji` cache |
@@ -58,7 +58,7 @@ global persistent flags.
 | `channel invite` | `--channel`, `--users`, `--external`, `--allow-external-user-invites` | `--yes` | |
 | `channel mark <target>` | `--ts` | | mark-read; personal state |
 | `user list` | `--limit` (200), `--cursor`, `--include-bots` | | NDJSON, compact projection |
-| `user get <user>` | | | accepts `U…` or `@handle` |
+| `user get <user…>` | | | 1..N ids (U…, @handle, or email); NDJSON default (one record or `{"@unresolved":{id,reason,fixable_by}}` per input in order); item-level miss → exit 0; auth failure → stderr+exit 1 |
 | `user dm-open <users…>` | | | returns DM/group-DM channel id |
 | `search all/messages/files <query>` | `--channel` (repeatable), `--user`, `--after`, `--before`, `--content-type`, `--limit` (20), `--max-content-chars` (4000), user-resolve flags | | NDJSON |
 | `workflow list <channel>` | | | |

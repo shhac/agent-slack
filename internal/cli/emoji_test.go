@@ -88,9 +88,10 @@ func TestEmojiGetCustom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := parseJSON(t, out)
-	if payload["name"] != "partyparrot" || payload["custom"] != true {
-		t.Errorf("payload = %v", payload)
+	// Single arg → one NDJSON line (EntityGet default).
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 || lines[0]["name"] != "partyparrot" || lines[0]["custom"] != true {
+		t.Errorf("out = %s", out)
 	}
 }
 
@@ -102,9 +103,10 @@ func TestEmojiGetStandardFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := parseJSON(t, out)
-	if payload["custom"] != false || payload["unicode"] != "🚀" {
-		t.Errorf("payload = %v", payload)
+	// Single arg → one NDJSON line (EntityGet default).
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 || lines[0]["custom"] != false || lines[0]["unicode"] != "🚀" {
+		t.Errorf("out = %s", out)
 	}
 }
 
@@ -112,18 +114,22 @@ func TestEmojiGetMultipleWithUnresolved(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("emoji.list", emojiListFixture())
 
+	// Multi-get → NDJSON in input order; the miss becomes an interleaved
+	// {"@unresolved":{id,reason,fixable_by:"agent"}} record, exit 0.
 	out, _, err := f.run(t, "emoji", "get", "partyparrot", "no_such_emoji_xyz")
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := parseNDJSON(t, out)
-	// One resolved row plus the trailing @unresolved meta line.
 	if len(lines) != 2 {
-		t.Fatalf("want 1 row + unresolved meta, got %d: %v", len(lines), lines)
+		t.Fatalf("want 1 row + 1 @unresolved, got %d: %v", len(lines), lines)
 	}
-	unresolved, ok := lines[1]["@unresolved"].([]any)
-	if !ok || len(unresolved) != 1 || unresolved[0] != "no_such_emoji_xyz" {
-		t.Errorf("unresolved meta = %v", lines[1])
+	if lines[0]["name"] != "partyparrot" {
+		t.Errorf("row 0 = %v", lines[0])
+	}
+	un, ok := lines[1]["@unresolved"].(map[string]any)
+	if !ok || un["id"] != "no_such_emoji_xyz" || un["fixable_by"] != "agent" {
+		t.Errorf("@unresolved = %v", lines[1])
 	}
 }
 

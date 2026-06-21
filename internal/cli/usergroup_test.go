@@ -84,9 +84,10 @@ func TestUsergroupGetByHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload := parseJSON(t, out)
-	if payload["id"] != "S0MARKETIN" || payload["name"] != "Marketing" {
-		t.Errorf("payload = %v", payload)
+	// Single arg → one NDJSON line (EntityGet default).
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 || lines[0]["id"] != "S0MARKETIN" || lines[0]["name"] != "Marketing" {
+		t.Errorf("out = %s", out)
 	}
 }
 
@@ -96,19 +97,21 @@ func TestUsergroupGetMultipleWithUnresolved(t *testing.T) {
 		mockslack.Usergroup("S0MARKETIN", "marketing", "Marketing"),
 	))
 
+	// Multi-get → NDJSON in input order; the miss becomes an interleaved
+	// {"@unresolved":{id,reason,fixable_by:"agent"}} record, exit 0.
 	out, _, err := f.run(t, "usergroup", "get", "@marketing", "@nope")
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := parseNDJSON(t, out)
 	if len(lines) != 2 {
-		t.Fatalf("want 1 group + 1 meta line, got %d: %v", len(lines), lines)
+		t.Fatalf("want 1 group + 1 @unresolved, got %d: %v", len(lines), lines)
 	}
 	if lines[0]["id"] != "S0MARKETIN" {
 		t.Errorf("group = %v", lines[0])
 	}
-	un, ok := lines[1]["@unresolved"].([]any)
-	if !ok || len(un) != 1 || un[0] != "@nope" {
+	un, ok := lines[1]["@unresolved"].(map[string]any)
+	if !ok || un["id"] != "@nope" || un["fixable_by"] != "agent" {
 		t.Errorf("@unresolved = %v", lines[1])
 	}
 }
@@ -154,14 +157,19 @@ func TestUsergroupMembersByIDResolveUsers(t *testing.T) {
 	}
 }
 
-func TestUsergroupGetSingleUnresolvedErrors(t *testing.T) {
+func TestUsergroupGetSingleUnresolved(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("usergroups.list", mockslack.UsergroupsList())
-	out, stderr, err := f.run(t, "usergroup", "get", "@ghost")
-	if err == nil {
-		t.Fatalf("single unresolved arg should error; out=%q", out)
+	out, _, err := f.run(t, "usergroup", "get", "@ghost")
+	if err != nil {
+		t.Fatalf("sole miss should exit 0; err=%v", err)
 	}
-	if errPayload(t, stderr)["fixable_by"] == nil {
-		t.Errorf("expected a structured error on stderr: %s", stderr)
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 {
+		t.Fatalf("want one @unresolved line, got %d: %v", len(lines), lines)
+	}
+	un, ok := lines[0]["@unresolved"].(map[string]any)
+	if !ok || un["id"] != "@ghost" || un["fixable_by"] != "agent" {
+		t.Errorf("@unresolved = %v", lines[0])
 	}
 }

@@ -20,34 +20,40 @@ func TestChannelGetMultiple(t *testing.T) {
 		func(p url.Values) bool { return p.Get("channel") == "C0GONEAAA" },
 		mockslack.Response{Body: map[string]any{"ok": false, "error": "channel_not_found"}})
 
+	// Multi-get → NDJSON in input order; item-level misses become interleaved
+	// {"@unresolved":{id,reason,fixable_by:"agent"}} records, exit 0.
 	out, _, err := f.run(t, "channel", "get", "C0DEVSAAA", "C0OPSAAAA", "C0GONEAAA")
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := parseNDJSON(t, out)
 	if len(lines) != 3 {
-		t.Fatalf("want 2 channels + 1 meta line, got %d: %v", len(lines), lines)
+		t.Fatalf("want devs, ops, @unresolved — got %d lines: %v", len(lines), lines)
 	}
 	if lines[0]["name"] != "devs" || lines[1]["name"] != "ops" {
 		t.Errorf("channels = %v", lines[:2])
 	}
-	un, ok := lines[2]["@unresolved"].([]any)
-	if !ok || len(un) != 1 || un[0] != "C0GONEAAA" {
+	un, ok := lines[2]["@unresolved"].(map[string]any)
+	if !ok || un["id"] != "C0GONEAAA" || un["fixable_by"] != "agent" {
 		t.Errorf("@unresolved = %v", lines[2])
 	}
 }
 
-// A single channel that doesn't resolve must error hard, not return an empty
-// list (mirrors user get's single-arg contract).
-func TestChannelGetSingleUnresolvedErrors(t *testing.T) {
+// A sole miss emits one @unresolved record on stdout and exits 0.
+func TestChannelGetSingleUnresolved(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("conversations.info", map[string]any{"ok": false, "error": "channel_not_found"})
-	out, stderr, err := f.run(t, "channel", "get", "C0GONEAAA")
-	if err == nil {
-		t.Fatalf("single unresolved channel should error; out=%q", out)
+	out, _, err := f.run(t, "channel", "get", "C0GONEAAA")
+	if err != nil {
+		t.Fatalf("sole miss should exit 0; err=%v", err)
 	}
-	if errPayload(t, stderr)["fixable_by"] == nil {
-		t.Errorf("expected a structured error on stderr: %s", stderr)
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 {
+		t.Fatalf("want one @unresolved line, got %d: %v", len(lines), lines)
+	}
+	un, ok := lines[0]["@unresolved"].(map[string]any)
+	if !ok || un["id"] != "C0GONEAAA" || un["fixable_by"] != "agent" {
+		t.Errorf("@unresolved = %v", lines[0])
 	}
 }
 
@@ -123,7 +129,12 @@ func TestChannelGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ch := parseJSON(t, out)
+	// Single arg → one NDJSON line (EntityGet default).
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 {
+		t.Fatalf("want 1 channel line, got %d: %s", len(lines), out)
+	}
+	ch := lines[0]
 	if ch["name"] != "general" || ch["num_members"] != float64(7) {
 		t.Errorf("channel = %v", ch)
 	}

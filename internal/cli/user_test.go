@@ -19,41 +19,46 @@ func TestUserGetMultiple(t *testing.T) {
 		func(p url.Values) bool { return p.Get("user") == "U0NOBODYZ" },
 		mockslack.Response{Body: map[string]any{"ok": false, "error": "user_not_found"}})
 
-	// Several args → NDJSON: the resolved users, then an @unresolved meta line
-	// for the input that didn't resolve (a typo never drops the others).
+	// Several args → NDJSON in input order: resolved records interleaved with
+	// {"@unresolved":{id,reason,fixable_by}} for misses. Exit 0 on item-level misses.
 	out, _, err := f.run(t, "user", "get", "U0ALICEAA", "U0BOBBBBB", "U0NOBODYZ")
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := parseNDJSON(t, out)
 	if len(lines) != 3 {
-		t.Fatalf("want 2 users + 1 meta line, got %d: %v", len(lines), lines)
+		t.Fatalf("want alice, bob, @unresolved — got %d lines: %v", len(lines), lines)
 	}
 	if lines[0]["id"] != "U0ALICEAA" || lines[1]["id"] != "U0BOBBBBB" {
 		t.Errorf("users = %v", lines[:2])
 	}
-	un, ok := lines[2]["@unresolved"].([]any)
-	if !ok || len(un) != 1 || un[0] != "U0NOBODYZ" {
+	un, ok := lines[2]["@unresolved"].(map[string]any)
+	if !ok || un["id"] != "U0NOBODYZ" || un["fixable_by"] != "agent" {
 		t.Errorf("@unresolved = %v", lines[2])
 	}
 }
 
-// A single arg that doesn't resolve must error hard (not return an empty list)
-// — the deliberate asymmetry with the lenient multi-arg path.
-func TestUserGetSingleUnresolvedErrors(t *testing.T) {
+// A sole miss emits one @unresolved record on stdout and exits 0 — item-level
+// misses are not command failures under the EntityGet contract.
+func TestUserGetSingleUnresolved(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("users.info", map[string]any{"ok": false, "error": "user_not_found"})
-	out, stderr, err := f.run(t, "user", "get", "U0NOBODYZ")
-	if err == nil {
-		t.Fatalf("single unresolved arg should error; out=%q", out)
+	out, _, err := f.run(t, "user", "get", "U0NOBODYZ")
+	if err != nil {
+		t.Fatalf("sole miss should exit 0; err=%v", err)
 	}
-	if errPayload(t, stderr)["fixable_by"] == nil {
-		t.Errorf("expected a structured error on stderr: %s", stderr)
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 {
+		t.Fatalf("want one @unresolved line, got %d: %v", len(lines), lines)
+	}
+	un, ok := lines[0]["@unresolved"].(map[string]any)
+	if !ok || un["id"] != "U0NOBODYZ" || un["fixable_by"] != "agent" {
+		t.Errorf("@unresolved = %v", lines[0])
 	}
 }
 
-// --format json wraps the multi result in one envelope, with the @unresolved
-// meta folded in under its @-prefixed key (same key as the NDJSON meta line).
+// --format json wraps the result in one envelope: resolved records in "data",
+// item-level misses as structured objects under "@unresolved".
 func TestUserGetMultipleJSONEnvelope(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleWhen("users.info", func(p url.Values) bool { return p.Get("user") == "U0ALICEAA" },
@@ -70,26 +75,32 @@ func TestUserGetMultipleJSONEnvelope(t *testing.T) {
 		t.Errorf("data envelope = %v", payload["data"])
 	}
 	un, _ := payload["@unresolved"].([]any)
-	if len(un) != 1 || un[0] != "U0NOBODYZ" {
+	if len(un) != 1 {
 		t.Errorf("@unresolved in envelope = %v", payload["@unresolved"])
+	}
+	rec, _ := un[0].(map[string]any)
+	if rec["id"] != "U0NOBODYZ" || rec["fixable_by"] != "agent" {
+		t.Errorf("@unresolved[0] = %v", rec)
 	}
 }
 
-// When every input fails, the result is just the @unresolved meta line.
+// When every input fails, each produces its own @unresolved record in input order.
 func TestUserGetAllUnresolved(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("users.info", map[string]any{"ok": false, "error": "user_not_found"})
 	out, _, err := f.run(t, "user", "get", "U0NOBODYZ", "U0ALSOBADX")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("all-miss should exit 0; err=%v", err)
 	}
 	lines := parseNDJSON(t, out)
-	if len(lines) != 1 {
-		t.Fatalf("want only the @unresolved meta line, got %d: %v", len(lines), lines)
+	if len(lines) != 2 {
+		t.Fatalf("want 2 @unresolved lines (one per input), got %d: %v", len(lines), lines)
 	}
-	un, _ := lines[0]["@unresolved"].([]any)
-	if len(un) != 2 {
-		t.Errorf("@unresolved = %v", lines[0])
+	for i, want := range []string{"U0NOBODYZ", "U0ALSOBADX"} {
+		un, ok := lines[i]["@unresolved"].(map[string]any)
+		if !ok || un["id"] != want || un["fixable_by"] != "agent" {
+			t.Errorf("line %d @unresolved = %v", i, lines[i])
+		}
 	}
 }
 
@@ -135,7 +146,9 @@ func TestUserGetByHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parseJSON(t, out)["email"] != "carol@acme.com" {
+	// Single arg → one NDJSON line (EntityGet default).
+	lines := parseNDJSON(t, out)
+	if len(lines) != 1 || lines[0]["email"] != "carol@acme.com" {
 		t.Errorf("out = %s", out)
 	}
 }
