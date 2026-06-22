@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -48,6 +49,7 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 	var state, cursor string
 	var limit, maxBodyChars int
 	var countsOnly, slackMarkdown bool
+	tflags := &transcriptFlags{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List saved-for-later messages",
@@ -72,10 +74,15 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			if wantsTranscript(globals) {
+				return renderLaterTranscript(cmd.Context(), globals, cc, tflags, result.Items)
+			}
 			meta := listMeta(result.NextCursor, map[string]any{"counts": result.Counts})
 			return printList(globals, toAnySlice(result.Items), meta)
 		},
 	}
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
 	cmd.Flags().StringVar(&state, "state", "in_progress", "Filter: in_progress|archived|completed|all")
 	_ = cmd.RegisterFlagCompletionFunc("state", fixedCompletions("in_progress", "archived", "completed", "all"))
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max items")

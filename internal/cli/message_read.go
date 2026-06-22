@@ -35,7 +35,10 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			if wantsTranscript(globals) {
-				return printTranscript(ctx, globals, cc, tflags, flags.slackMarkdown, []render.MessageSummary{msg}, false)
+				if err := printTranscript(ctx, globals, cc, tflags, flags.slackMarkdown, []render.MessageSummary{msg}, false); err != nil {
+					return err
+				}
+				return writeMessageGetFooter(ctx, globals, cc, ref, msg)
 			}
 			thread, err := slack.ThreadSummary(ctx, cc.Client, ref.ChannelID, msg)
 			if err != nil {

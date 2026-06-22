@@ -124,11 +124,19 @@ This supersedes the broader "all writes gated" wording in
   List rows omit it to keep NDJSON lean; `channel_id` + `ts` chain into
   `message get`.
 - All confirmations are JSON.
-- **`--format transcript` (message get/list only):** an opt-in human-readable
-  rendering — the one non-JSON success output. Plain text on stdout; errors stay
-  structured JSON on stderr. It always resolves speakers/mentions/reactors to
-  names (a transcript is for a human, so `--resolve` is overridden). Rendering
-  decisions, all in `internal/render/transcript.go`:
+- **`--format transcript`:** the one non-JSON success output — an opt-in
+  human-readable rendering. Plain text on stdout; errors stay structured JSON on
+  stderr. It always resolves speakers/mentions/reactors to names (a transcript is
+  for a human, so `--resolve` is overridden). One token, two render families:
+  - **Conversation** (`message get`/`list`) — chronological speaker turns, in
+    `internal/render/transcript.go`. `message get` also closes with a dim
+    `└ thread: N replies · <permalink>` footer.
+  - **Grouped digest** (`unreads`, `later list`, `message draft list`/`get`) —
+    `internal/render/grouped.go`: a `──── summary ────` divider, then sections
+    (channels for `unreads`, states for `later`) of `[time] <name|id>` items, or
+    a flat `<id> → #channel` listing for drafts. The `<foo> get` siblings reuse
+    their `list` renderer over one item; the channel/user entity digests are the
+    next family. Conversation-specific rendering decisions follow:
   - A `──── <date> (<zone>) ────` divider opens each day; headers then carry the
     **time only** (`[HH:MM:SS]`), since the date lives on the divider. `--tz`
     sets the zone (default `Local`, honors `$TZ`); `--with-ids` appends `⟨ts …⟩`.

@@ -117,11 +117,14 @@ LIST   message list <target>
        channel_id/thread_ts; they're in meta lines). Reaction filters:
        --with-reaction/--without-reaction (repeatable, need --oldest).
        Files are metadata-only unless --download.
-TEXT   message get/list also accept --format transcript: a human-readable,
-       chronological rendering (plain text on stdout, errors still JSON). A
-       "──── <date> (<zone>) ────" divider opens each day; headers carry the
-       time only. Consecutive messages from one author within 5 min collapse
-       under a single header; thread replies render as a ├─/└─ tree.
+TEXT   --format transcript is the human-readable rendering (plain text on
+       stdout, errors still JSON). Conversations (message get/list) read as a
+       chronological transcript: a "──── <date> (<zone>) ────" divider opens
+       each day; headers carry the time only. Consecutive messages from one
+       author within 5 min collapse under a single header; thread replies
+       render as a ├─/└─ tree (message get adds a thread/permalink footer).
+       Grouped commands (unreads, later list, message draft list/get) render a
+       "──── summary ────" divider then sections of [time] <name|id> items.
        --tz <Local|UTC|IANA> sets the displayed zone (default Local, honors
        $TZ); --with-ids appends each message's ts id to the header.
        --color <auto|always|never> is a global flag styling all output incl.
@@ -283,6 +286,7 @@ RUN      workflow run <Ft…> --channel <…>
 
 LIST     later list [--state in_progress|archived|completed|all]
          [--limit 20] [--counts-only] — items + {"@counts":…} meta line.
+         --format transcript groups items by state (--tz/--with-ids).
 MUTATE   later save|complete|archive|reopen|remove <target> [--ts …]
 REMIND   later remind <target> --in <30m|2d|tomorrow 5pm|next friday>`,
 
@@ -326,7 +330,8 @@ NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,
   One sweep of everything unread. --counts-only returns just per-conversation
   counts (no bodies) — cheapest triage. --max-messages caps messages shown per
   conversation; --max-body-chars truncates each body (-1 = unlimited).
-  --include-system keeps join/leave/topic system messages (dropped by default).`,
+  --include-system keeps join/leave/topic system messages (dropped by default).
+  --format transcript renders a per-channel digest (--tz/--with-ids).`,
 
 	"cache": `agent-slack cache — inspect, pre-fill, and clear the resolution cache.
 

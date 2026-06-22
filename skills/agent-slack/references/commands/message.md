@@ -35,7 +35,10 @@ chronological text rendering (not JSON; errors still go to stderr as JSON, and
 speakers/mentions/reactors always resolve to names). A
 `──── <date> (<zone>) ────` divider opens each day, headers carry the time
 only, consecutive messages from one author within 5 minutes collapse under one
-header, and thread replies render as a `├─`/`└─` tree. Flags: `--tz
+header, and thread replies render as a `├─`/`└─` tree (`message get` adds a dim
+`└ thread: N replies · <permalink>` footer). `message draft list`/`get` accept
+it too, rendering a `──── Drafts · N ────` digest of `<id> → #channel` blocks.
+Flags: `--tz
 <Local|UTC|IANA>` (display zone, default `Local`, honors `$TZ`); `--with-ids`
 appends each message's `ts` id; `--color <auto|always|never>` (default `auto`:
 ANSI styling only when stdout is a TTY, honoring `NO_COLOR`/`CLICOLOR_FORCE`, so

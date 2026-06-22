@@ -5,13 +5,18 @@ In-binary detail: `agent-slack <domain> usage` (e.g. `unreads usage`, `later usa
 
 | Command | Key flags | Gate |
 |---|---|---|
-| `unreads` | `--counts-only`, `--max-messages` (10), `--max-body-chars` (4000), `--include-system`, `--slack-markdown` | |
-| `later list` | `--state`, `--limit` (20), `--max-body-chars` (4000), `--counts-only`, `--slack-markdown` | |
+| `unreads` | `--counts-only`, `--max-messages` (10), `--max-body-chars` (4000), `--include-system`, `--slack-markdown`, `--format transcript` (`--tz`/`--with-ids`) | |
+| `later list` | `--state`, `--limit` (20), `--max-body-chars` (4000), `--counts-only`, `--slack-markdown`, `--format transcript` (`--tz`/`--with-ids`) | |
 | `later save\|complete\|archive\|reopen\|remove <target>` | `--ts` | |
 | `later remind <target>` | `--in <30m\|2d\|tomorrow 9am>`, `--ts` | |
 | `canvas get <canvas>` | `--max-chars` (20000) | |
 | `file download <file-id>` | `--workspace` | |
 | `api call <method>` | `--params '<json>'\|<file>\|-`, `--multipart` | |
+
+`unreads` / `later list` accept `--format transcript`: a human-readable digest
+with a `──── summary ────` divider, then sections (channels for `unreads`,
+states for `later`) of `[time] <name|id>` message blocks — the grouped sibling
+of the `message get`/`list` conversation transcript.
 
 `api call` is the raw escape hatch — POST any Slack Web API method with stored
 credentials. Prefer the wrapped commands; reach for `api call` only when no

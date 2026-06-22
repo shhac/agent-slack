@@ -1,6 +1,7 @@
 package cli
 
 import (
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/slack"
@@ -9,6 +10,7 @@ import (
 func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 	var countsOnly, includeSystem, slackMarkdown bool
 	var maxMessages, maxBodyChars int
+	tflags := &transcriptFlags{}
 	cmd := &cobra.Command{
 		Use:   "unreads",
 		Short: "Show unread messages across channels, DMs, and threads",
@@ -28,6 +30,9 @@ func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			if wantsTranscript(globals) {
+				return renderUnreadsTranscript(cmd.Context(), globals, cc, tflags, result.Channels)
+			}
 			var extra map[string]any
 			if result.Threads != nil {
 				extra = map[string]any{"threads": result.Threads}
@@ -35,6 +40,8 @@ func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 			return printList(globals, toAnySlice(result.Channels), listMeta("", extra))
 		},
 	}
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only unread counts, no message content")
 	cmd.Flags().IntVar(&maxMessages, "max-messages", 10, "Max unread messages per channel")
 	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", 4000, "Max content chars per message (-1 = unlimited)")
