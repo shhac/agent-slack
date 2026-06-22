@@ -336,11 +336,13 @@ Never message bodies. Transparent — it fills as you work; reach for these only
 when you want to control it.
 
 INFO   cache info — what's cached per workspace (entries, bytes, age).
-WARM   cache warm [users|channels|usergroups|emoji] [--page-delay 1s] [--no-bots] [--stale-only]
+WARM   cache warm [users|channels|usergroups|emoji|dm-channels] [--page-delay 1s] [--no-bots] [--stale-only]
        Pre-fetch list endpoints (all categories if none named) so resolution and
        completions are instant and offline, and --resolve auto is free. Paginates
        each, paced for rate limits, streams JSONL progress (filter done:true for
-       the per-category summary). Arms a completeness sentinel: within
+       the per-category summary). dm-channels caches open-DM ids from the existing
+       DM list (never opens a new DM); it also fills free during a users warm.
+       Arms a completeness sentinel: within
        cache.ttl.*-complete (30m) a later miss is authoritative (no remote
        lookup). --no-bots excludes bots (leaves the user set incomplete, sentinel
        un-armed). --stale-only re-warms only categories whose sentinel lapsed.

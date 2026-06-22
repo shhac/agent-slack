@@ -35,6 +35,33 @@ func TestCacheWarmScopedToUsers(t *testing.T) {
 	}
 }
 
+// `cache warm dm-channels` fills the DM-id cache from the already-open DM list
+// (conversations.list types=im) and never touches users.list or opens a DM.
+func TestCacheWarmScopedToDMChannels(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.list", mockslack.ConversationsList(
+		map[string]any{"id": "D111", "user": "U0ALICEAA", "is_im": true},
+	))
+
+	out, _, err := f.run(t, "cache", "warm", "dm-channels", "--page-delay", "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cats := map[string]bool{}
+	for _, line := range parseNDJSON(t, out) {
+		cats[line["category"].(string)] = true
+	}
+	if !cats["dm-channels"] {
+		t.Errorf("expected dm-channels to be warmed; events = %v", cats)
+	}
+	if n := len(f.server.CallsFor("users.list")); n != 0 {
+		t.Errorf("users.list called %d times; a dm-channels-scoped warm must skip it", n)
+	}
+	if n := len(f.server.CallsFor("conversations.open")); n != 0 {
+		t.Errorf("conversations.open called %d times; warming DMs must only read the existing list", n)
+	}
+}
+
 func TestCacheWarmRejectsUnknownCategory(t *testing.T) {
 	f := newCLIFixture(t)
 	if _, _, err := f.run(t, "cache", "warm", "bogus"); err == nil {
@@ -167,8 +194,8 @@ func TestCacheWarmStaleOnly(t *testing.T) {
 			skipped++
 		}
 	}
-	if skipped != 4 {
-		t.Errorf("want 4 skipped categories, got %d: %s", skipped, out)
+	if skipped != 5 { // users, channels, usergroups, emoji, dm-channels
+		t.Errorf("want 5 skipped categories, got %d: %s", skipped, out)
 	}
 	if n := len(f.server.CallsFor("users.list")); n != before["users.list"] {
 		t.Errorf("--stale-only re-fetched users.list (%d → %d)", before["users.list"], n)

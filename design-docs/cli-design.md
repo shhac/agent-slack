@@ -266,12 +266,25 @@ The CLI cold-starts each invocation, so resolutions are re-paid every run.
   only.) The subdir groups a workspace's caches and makes per-workspace purge
   one rmdir.
 - **Categories + default TTL**: `users` ID→profile, `usergroups` handle→`S…`,
-  `emoji` name→custom-emoji (24h each); `handles` @handle/email→ID,
+  `emoji` name→custom-emoji, `dm-channels` user-id-set→DM/group-DM channel id
+  (24h each); `handles` @handle/email→ID,
   `channel-names` name→ID, `channels` ID→meta, `workflow-list`
   channelID→annotated workflows, `workflow-triggers` Ft→preview,
   `workflow-schemas` Wf→schema, `scheduled` id→compact scheduled-message
   (write-only, completion-only) (1h each). Stable data lasts a day; volatile
   name/membership mappings an hour.
+- **`dm-channels`** (decision): the permanent user→channel mapping
+  `conversations.open` returns, so a later `message list @user`/`send @user`
+  skips the round trip. Message history is never cached — only the channel id —
+  so reads still surface new messages. Populated two side-effect-free ways:
+  lazily on a real DM open, and at warm time from the **already-open DM list**
+  (`conversations.list types=im`, which `warmUsers` already fetches for `dm_id`
+  annotation — so a users warm fills it free, and `cache warm dm-channels` does
+  it standalone). It must NEVER be warmed by `conversations.open` on users no DM
+  exists with yet — that *creates* the DM. Warm reads the existing list only.
+  Slack's own client boot works the same way: `client.userBoot` returns
+  `ims[]` (`{id, user}`) for every open DM in one call and never opens one to
+  enumerate.
 - **Custom emoji** (decision): `emoji list`/`get` are backed by a single
   `emoji` category (name is the key — unlike `usergroups`, no separate id, so
   one store suffices, not the handle-index + entity-store pair). It holds the

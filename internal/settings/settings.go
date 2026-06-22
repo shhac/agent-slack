@@ -30,7 +30,7 @@ type Config struct {
 
 // CacheTTLCategories are the cache TTL knobs, as the suffix after "cache.ttl.".
 var CacheTTLCategories = []string{
-	"users", "channels", "channel-names", "handles",
+	"users", "channels", "channel-names", "handles", "dm-channels",
 	"workflow-list", "workflow-preview", "workflow-schema",
 	"get", "list",
 }

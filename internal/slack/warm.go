@@ -11,6 +11,7 @@ const (
 	WarmChannels   = "channels"
 	WarmUsergroups = "usergroups"
 	WarmEmoji      = "emoji"
+	WarmDMChannels = "dm-channels"
 )
 
 // WarmOptions configures a cache warm sweep.
@@ -86,10 +87,12 @@ func WarmWorkspace(ctx context.Context, c *Client, opts WarmOptions, progress fu
 		return true
 	}
 
+	usersWarmed := false
 	if warmable(WarmUsers, c.usersComplete()) {
 		if err := warmUsers(ctx, c, opts, emit, pace); err != nil {
 			return err
 		}
+		usersWarmed = true
 	}
 	if warmable(WarmChannels, c.channelsComplete()) {
 		if err := warmChannels(ctx, c, emit, pace); err != nil {
@@ -114,7 +117,34 @@ func WarmWorkspace(ctx context.Context, c *Client, opts WarmOptions, progress fu
 		}
 		emit(WarmEvent{Category: WarmEmoji, Count: len(emoji), Done: true})
 	}
+	// dm-channels rides along with the users sweep (warmUsers fills it for free
+	// from the same DM list), so when users just warmed, skip the standalone pass
+	// — no event, no second IM listing. Otherwise enumerate it on its own, reusing
+	// the users-completeness sentinel as the staleness proxy (same source list).
+	if !usersWarmed && warmable(WarmDMChannels, c.usersComplete()) {
+		dmMap, err := warmDMChannels(ctx, c)
+		if err != nil {
+			return err
+		}
+		emit(WarmEvent{Category: WarmDMChannels, Count: len(dmMap), Done: true})
+	}
 	return nil
+}
+
+// warmDMChannels reads the already-open DM list and writes the user→channel
+// mapping into the dm_channels cache. It goes through conversations.list
+// (types=im), which only enumerates DMs that already exist — it never calls
+// conversations.open, so it cannot create a DM as a side effect. Returns the
+// map so warmUsers can reuse it for DMID annotation.
+func warmDMChannels(ctx context.Context, c *Client) (map[string]string, error) {
+	dmMap, err := fetchDMMap(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	for user, channel := range dmMap {
+		c.cacheDMChannel([]string{user}, channel)
+	}
+	return dmMap, nil
 }
 
 func warmUsers(ctx context.Context, c *Client, opts WarmOptions, emit func(WarmEvent), pace func(map[string]any) error) error {
@@ -136,8 +166,9 @@ func warmUsers(ctx context.Context, c *Client, opts WarmOptions, emit func(WarmE
 		return err
 	}
 	// Annotate open DMs (best-effort) so warmed profiles carry dm_id, matching
-	// `user list`.
-	if dmMap, derr := fetchDMMap(ctx, c); derr == nil {
+	// `user list`. warmDMChannels also populates the dm_channels cache from the
+	// same list — free, and never opens (so never creates) a DM.
+	if dmMap, derr := warmDMChannels(ctx, c); derr == nil {
 		for i := range users {
 			users[i].DMID = dmMap[users[i].ID]
 		}

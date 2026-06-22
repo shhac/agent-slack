@@ -103,6 +103,7 @@ workspace under `<cacheDir>/<wshash>/<category>.json` (never message bodies):
 |---|---|---|
 | `users` | user ID → profile | 24h |
 | `handles` | @handle / email → user ID | 1h |
+| `dm-channels` | user id(s) → DM/group-DM channel id (lazy on open; warmed from the open-DM list, never by opening one) | 24h |
 | `channel-names` | channel name → ID | 1h |
 | `channels` | channel ID → metadata (completions/resolution) | 1h |
 | `channel-info` | channel ID → full `conversations.info` (serves `channel get`) | 5m |

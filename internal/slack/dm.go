@@ -7,8 +7,14 @@ import (
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
-// OpenDMChannel opens (or reuses) a DM with one user and returns its ID.
+// OpenDMChannel opens (or reuses) a DM with one user and returns its ID. The
+// user→channel mapping is permanent, so a cache hit skips conversations.open
+// entirely; the message history that follows is still fetched live.
 func OpenDMChannel(ctx context.Context, c *Client, userID string) (string, error) {
+	members := []string{userID}
+	if channelID, ok := c.cachedDMChannel(members); ok {
+		return channelID, nil
+	}
 	resp, err := c.API(ctx, "conversations.open", map[string]any{"users": userID})
 	if err != nil {
 		return "", err
@@ -17,6 +23,7 @@ func OpenDMChannel(ctx context.Context, c *Client, userID string) (string, error
 	if channelID == "" {
 		return "", agenterrors.Newf(agenterrors.FixableByAgent, "could not open DM channel for user: %s", userID)
 	}
+	c.cacheDMChannel(members, channelID)
 	return channelID, nil
 }
 
@@ -52,13 +59,17 @@ func GetDMChannelForUsers(ctx context.Context, c *Client, inputs []string) (DMOp
 		return DMOpenResult{}, agenterrors.New("no valid users provided", agenterrors.FixableByAgent)
 	}
 
-	resp, err := c.API(ctx, "conversations.open", map[string]any{"users": strings.Join(userIDs, ",")})
-	if err != nil {
-		return DMOpenResult{}, err
-	}
-	channelID := getStr(getRec(resp, "channel"), "id")
-	if channelID == "" {
-		return DMOpenResult{}, agenterrors.New("conversations.open returned no channel", agenterrors.FixableByAgent)
+	channelID, ok := c.cachedDMChannel(userIDs)
+	if !ok {
+		resp, err := c.API(ctx, "conversations.open", map[string]any{"users": strings.Join(userIDs, ",")})
+		if err != nil {
+			return DMOpenResult{}, err
+		}
+		channelID = getStr(getRec(resp, "channel"), "id")
+		if channelID == "" {
+			return DMOpenResult{}, agenterrors.New("conversations.open returned no channel", agenterrors.FixableByAgent)
+		}
+		c.cacheDMChannel(userIDs, channelID)
 	}
 	channelType := "group_dm"
 	if strings.HasPrefix(channelID, "D") {
