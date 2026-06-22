@@ -158,14 +158,20 @@ This supersedes the broader "all writes gated" wording in
     plain — color helps a human at a terminal without ever polluting an agent's
     context. The render layer just honors `TranscriptOptions.Color`; the CLI
     decides it from the output target.
-  - **Inline custom-emoji images are opt-in and quad-gated.** `--inline-images`
-    draws workspace custom emoji (`:partyparrot:`) as real images inside the
-    transcript via the Kitty graphics protocol, rather than leaving the
-    shortcode as text. It fires only when all of: the flag is set, stdout is a
-    TTY (`output.Enabled`), `graphics.Detect()` reports a Kitty-capable terminal
-    (Ghostty/kitty/WezTerm), and the format is transcript — otherwise the
-    shortcode renders as text, so the machine/LLM path is never touched (the
-    flag is also hidden from the MCP tool surface, like `--color`). Layering:
+  - **Inline custom-emoji images are opt-in, off by default, and stream-gated.**
+    `--images <off|auto|on>` draws workspace custom emoji (`:partyparrot:`) as
+    real images inside the transcript via the Kitty graphics protocol, rather
+    than leaving the shortcode as text. The mode mirrors `--color`: `off`
+    (default) never draws; `auto` draws when stdout is a TTY **and**
+    `graphics.Detect()` reports a Kitty-capable terminal (Ghostty/kitty/WezTerm);
+    `on` forces past both checks (the escape hatch for a capable terminal the
+    env heuristic doesn't recognize, like `--color always`). The single
+    per-stream decision is `graphics.Active(stdout, mode)`; image emission
+    additionally only happens on the transcript path, so the machine/LLM path is
+    never touched. The flag is **bound opt-in** — not every family tool renders
+    images, so it rides `libcli.Options{Images: true}` (the same opt-in pattern
+    as `--expose`/`Options.Redacts`) and is hidden from `--help` and the MCP tool
+    surface. Layering:
     the generic encoder + capability detection live in `lib-agent-cli/graphics`
     (the human-terminal runtime layer, beside `dialog` — *not* the zero-dep
     `lib-agent-output` wire contract, whose color invariant "strip escapes →

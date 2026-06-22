@@ -42,10 +42,11 @@ Flags: `--tz
 <Local|UTC|IANA>` (display zone, default `Local`, honors `$TZ`); `--with-ids`
 appends each message's `ts` id; `--color <auto|always|never>` (default `auto`:
 ANSI styling only when stdout is a TTY, honoring `NO_COLOR`/`CLICOLOR_FORCE`, so
-the piped/LLM path stays plain). `--inline-images` draws custom emoji as actual
-images on a Kitty-graphics TTY (Ghostty/kitty/WezTerm) — **a human convenience,
-off by default and ignored off-TTY; agents should not set it** (it emits image
-escape bytes a tool consumer can't read).
+the piped/LLM path stays plain). `--images <off|auto|on>` draws custom emoji as
+actual images: `off` (default), `auto` (on a Kitty-graphics TTY —
+Ghostty/kitty/WezTerm), or `on` (force, e.g. a capable terminal the env
+heuristic doesn't recognize) — **a hidden human convenience; agents should not
+set it** (it emits image escape bytes a tool consumer can't read).
 
 `message send --forward <permalink>` forwards a message: any `[text]` becomes a
 comment above it. **Same workspace only** — a permalink from another workspace

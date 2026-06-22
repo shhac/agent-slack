@@ -80,9 +80,10 @@ GLOBAL FLAGS
       --no-cache         Bypass the resolution cache entirely (no read, no write).
       --refresh-cache    Ignore cached reads but still write fresh entries.
       --cache-ttl <dur>  Override every cache TTL (e.g. 30m, 2h, 0 to disable reads).
-      --inline-images    Draw custom emoji as inline images in --format transcript,
-                         on Kitty-graphics terminals (Ghostty/kitty/WezTerm) writing
-                         to a TTY. Human-only; ignored everywhere else.
+      --images <mode>    Draw custom emoji as inline images in --format transcript:
+                         off (default), auto (on a Kitty-graphics TTY —
+                         Ghostty/kitty/WezTerm), or on (force). Hidden, human-only;
+                         the machine/LLM path stays plain at off/auto.
 
 ERRORS
   Single JSON object on stderr: {"error","fixable_by","hint"?,"retry_after_seconds"?}.
@@ -135,9 +136,9 @@ TEXT   --format transcript is the human-readable rendering (plain text on
        --color <auto|always|never> is a global flag styling all output incl.
        JSON (default auto: on only when the stream is a TTY, honoring NO_COLOR
        and TERM=dumb — so the piped/LLM path stays plain).
-       --inline-images draws custom emoji as actual images, on a Kitty-graphics
-       TTY (Ghostty/kitty/WezTerm); off by default and ignored off-TTY, so the
-       LLM path is unaffected.
+       --images <off|auto|on> draws custom emoji as actual images: off (default),
+       auto (on a Kitty-graphics TTY — Ghostty/kitty/WezTerm), or on (force).
+       Hidden; off/auto keep the piped/LLM path plain.
 SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        Targets: #channel, C…, U… (DM auto-opens), or a permalink (replies in
        that thread). Text is standard Markdown: **bold**, *italic*/_italic_,

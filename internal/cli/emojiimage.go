@@ -17,8 +17,6 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 
-	output "github.com/shhac/lib-agent-output"
-
 	graphics "github.com/shhac/lib-agent-cli/graphics"
 
 	"github.com/shhac/agent-slack/internal/slack"
@@ -31,17 +29,14 @@ func emojiImagesDir() string {
 }
 
 // inlineEmojiResolver returns the TranscriptOptions.InlineEmoji seam, or nil to
-// leave shortcodes as text. It is the single gate for the whole feature: images
-// are emitted only when the user opted in (--inline-images), the stream is a
-// graphics-capable TTY, and the workspace actually has custom emoji. Any failure
-// to set up degrades silently to nil, so the transcript still renders as text.
+// leave shortcodes as text. It is the single gate for the whole feature: the
+// --images mode (off/auto/on) decides per stream via graphics.Active — off
+// never draws, auto draws on a graphics-capable TTY, on forces. Any failure to
+// set up (bad mode, no custom emoji, fetch error) degrades silently to nil, so
+// the transcript still renders as text.
 func inlineEmojiResolver(ctx context.Context, globals *GlobalFlags, cc *clientContext) func(name string) string {
-	if !globals.InlineImages {
-		return nil
-	}
-	// output.Enabled is the same per-stream TTY decision color uses; graphics
-	// then narrows to terminals that speak the Kitty protocol.
-	if !output.Enabled(globals.stdout) || graphics.Detect() != graphics.ProtocolKitty {
+	mode, err := graphics.ParseMode(globals.Images)
+	if err != nil || !graphics.Active(globals.stdout, mode) {
 		return nil
 	}
 	urls, err := slack.CustomEmojiImageURLs(ctx, cc.Client)
