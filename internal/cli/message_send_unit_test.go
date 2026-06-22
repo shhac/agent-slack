@@ -106,7 +106,8 @@ func TestResolveListMode(t *testing.T) {
 		{"thread by ts", render.TargetChannel, "1.0", "", "", false, listModeThread, false},
 		{"thread by thread-ts", render.TargetChannel, "", "1.0", "", false, listModeThread, false},
 		{"thread with filters", render.TargetChannel, "1.0", "", "", true, 0, true},
-		{"user target", render.TargetUser, "", "", "", false, 0, true},
+		{"user target", render.TargetUser, "", "", "", false, listModeHistory, false},
+		{"user target thread", render.TargetUser, "1.0", "", "", false, listModeThread, false},
 	}
 	for _, tc := range cases {
 		got, err := resolveListMode(tc.kind, tc.ts, tc.threadTS, tc.oldest, tc.filters)

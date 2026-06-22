@@ -151,7 +151,7 @@ func listURLThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, 
 // listChannelHistory lists recent channel messages, with optional reaction
 // filters. opts.ChannelID is filled in after target resolution.
 func listChannelHistory(ctx context.Context, globals *GlobalFlags, flags *readFlags, tflags *transcriptFlags, target render.Target, opts slack.HistoryOptions, download bool) error {
-	cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
+	cc, channelID, err := resolveTargetClient(ctx, globals, target, "")
 	if err != nil {
 		return err
 	}
@@ -166,7 +166,7 @@ func listChannelHistory(ctx context.Context, globals *GlobalFlags, flags *readFl
 // listChannelThread lists the thread named by --thread-ts, or the thread
 // containing the --ts message when only --ts was given.
 func listChannelThread(ctx context.Context, globals *GlobalFlags, flags *readFlags, tflags *transcriptFlags, target render.Target, ts, threadTS, rawTarget string, download bool) error {
-	cc, channelID, err := resolveTargetClient(ctx, globals, target, listRejectUserMsg)
+	cc, channelID, err := resolveTargetClient(ctx, globals, target, "")
 	if err != nil {
 		return err
 	}
@@ -219,15 +219,11 @@ func planMessageList(targetKind render.TargetKind, ts, threadTS, oldest string, 
 	return listPlan{mode, withReactions, withoutReactions, hasReactionFilters}, nil
 }
 
-const listRejectUserMsg = "message list does not support user ID targets"
-
 // resolveListMode classifies the invocation and enforces the reaction-filter
-// rules, keeping each mode's original error wording.
+// rules, keeping each mode's original error wording. User targets (a U… id or
+// "@handle") classify exactly like channels — history by default, thread with
+// --ts/--thread-ts — and the DM is opened during target resolution.
 func resolveListMode(targetKind render.TargetKind, ts, threadTS, oldest string, hasReactionFilters bool) (listMode, error) {
-	if targetKind == render.TargetUser {
-		return 0, agenterrors.New(listRejectUserMsg, agenterrors.FixableByAgent).
-			WithHint("use a channel name, channel ID, or message URL")
-	}
 	if targetKind == render.TargetURL {
 		if hasReactionFilters {
 			return 0, agenterrors.New("reaction filters are only supported for channel history mode", agenterrors.FixableByAgent)

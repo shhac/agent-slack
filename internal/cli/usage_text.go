@@ -110,8 +110,9 @@ GET    message get <target> [--ts …] [--thread-ts …]
        skips). Flags: --max-body-chars 8000, --include-reactions,
        --resolve none|cached|auto|fresh.
 LIST   message list <target>
-       Channel target → recent history (--limit 25 max 200, --oldest,
-       --latest), chronological NDJSON + {"@channel_id":…} meta line.
+       Channel or U…/@handle target → recent history (DM auto-opens for a
+       user; --limit 25 max 200, --oldest, --latest), chronological NDJSON
+       + {"@channel_id":…} meta line.
        Thread permalink or --thread-ts/--ts → the whole thread (rows drop
        channel_id/thread_ts; they're in meta lines). Reaction filters:
        --with-reaction/--without-reaction (repeatable, need --oldest).

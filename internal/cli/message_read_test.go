@@ -113,6 +113,31 @@ func TestMessageListChannelHistory(t *testing.T) {
 	}
 }
 
+func TestMessageListUserTargetOpensDM(t *testing.T) {
+	f := newCLIFixture(t)
+	// @handle resolves to an id (users.list), then a DM opens and its history
+	// lists like any channel.
+	f.server.HandleBody("users.list", map[string]any{
+		"ok": true, "members": []any{map[string]any{"id": "U12345ABCDE", "name": "alice"}},
+	})
+	f.server.HandleBody("conversations.open", map[string]any{"ok": true, "channel": map[string]any{"id": "D999"}})
+	f.server.HandleBody("conversations.history", historyWith(
+		simpleMessage("1770165109.000001", "U12345ABCDE", "hello"),
+	))
+
+	out, _, err := f.run(t, "message", "list", "@alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.server.CallsFor("conversations.open")[0].Params.Get("users"); got != "U12345ABCDE" {
+		t.Errorf("opened DM with %q, want the resolved id", got)
+	}
+	lines := parseNDJSON(t, out)
+	if lines[len(lines)-1]["@channel_id"] != "D999" {
+		t.Errorf("history should run against the DM channel: %s", out)
+	}
+}
+
 func TestMessageListThread(t *testing.T) {
 	f := newCLIFixture(t)
 	f.resolvableChannel("C123")

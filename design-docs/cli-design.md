@@ -31,7 +31,7 @@ global persistent flags.
 | `auth test` | | | calls `auth.test`; lands with read commands |
 | `auth add / set-default / remove / import-* / parse-curl` | | | implemented |
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|auto\|fresh`, `--no-download` | | thread summary included; files auto-downloaded |
-| `message list <target>` | `--thread-ts`, `--ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars` (8000), `--download`, reaction/user flags as get | | NDJSON; reaction filters require `--oldest` |
+| `message list <target>` | `--thread-ts`, `--ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars` (8000), `--download`, reaction/user flags as get | | NDJSON; reaction filters require `--oldest`; DM auto-opens for `U…`/`@handle` targets |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post together as ONE message with one `initial_comment`, not one message per file), `--blocks` (path or `-`), `--forward <permalink>`, `--schedule`, `--schedule-in` | | DM auto-opens for `U…` targets |
 | `message edit <target> [text]` | `--ts`, `--slack-markdown`, `--attach` (repeatable), `--remove-attachment <F…>` (repeatable) | `--yes` | text optional when only changing attachments |
 | `message delete <target>` | `--ts` | `--yes` | |

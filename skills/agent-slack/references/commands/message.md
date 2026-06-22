@@ -18,6 +18,9 @@ In-binary version: `agent-slack message usage`. Formatting: [../formatting.md](.
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | |
 | `message scheduled cancel <id>` | `--channel` (required for bot/user tokens) | `--yes` |
 
+`message list` accepts a `U…`/`@handle` target too: the DM auto-opens and its
+history (or a thread within it) lists like any channel.
+
 `message list` reaction filters (`--with-reaction`/`--without-reaction`) only
 apply to channel-history mode and require `--oldest` to bound the scan.
 

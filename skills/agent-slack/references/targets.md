@@ -54,12 +54,14 @@ require `--ts "<seconds>.<micros>"`. `message list` shows recent ts values.
 ## 4. User (DM): `U…` id or `@handle`
 
 A `U…` user id or an `@handle` is a DM target — the DM auto-opens and the
-message goes there. `@handle` resolves to an id wherever a user is accepted
-(message targets, `user get`, `user dm-open`, `channel invite --users`).
+command (send **or** `message list`) runs against it. `@handle` resolves to an
+id wherever a user is accepted (message targets, `user get`, `user dm-open`,
+`channel invite --users`).
 
 ```bash
 agent-slack message send U05BRPTKL6A "hi"          # DM auto-opens
 agent-slack message send @alice "hi"               # same, by handle
+agent-slack message list @alice --limit 5          # read the DM's history
 agent-slack user dm-open @alice @bob                # group DM channel id
 ```
 
