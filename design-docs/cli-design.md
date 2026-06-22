@@ -131,12 +131,18 @@ This supersedes the broader "all writes gated" wording in
   - **Conversation** (`message get`/`list`) — chronological speaker turns, in
     `internal/render/transcript.go`. `message get` also closes with a dim
     `└ thread: N replies · <permalink>` footer.
-  - **Grouped digest** (`unreads`, `later list`, `message draft list`/`get`) —
-    `internal/render/grouped.go`: a `──── summary ────` divider, then sections
-    (channels for `unreads`, states for `later`) of `[time] <name|id>` items, or
-    a flat `<id> → #channel` listing for drafts. The `<foo> get` siblings reuse
-    their `list` renderer over one item; the channel/user entity digests are the
-    next family. Conversation-specific rendering decisions follow:
+  - **Grouped digest** (`unreads`, `later list`, `message draft list`/`get`,
+    `channel list`/`get`, `user list`/`get`, `usergroup list`/`get`) —
+    `internal/render/grouped.go`: a `──── summary ────` divider, then either
+    message sections (channels for `unreads`, states for `later`) of
+    `[time] <name|id>` items, or an entity listing of `Emphasize`d headlines with
+    dim badges (members, `🔒 private`, `🗄 archived`, `✓ member`, `🤖 bot`, `DM
+    open`). The `<foo> get` siblings reuse their `list` renderer over one item; a
+    multi-target get appends a dim "Unresolved" section for misses.
+  - **Document** (`canvas get`) — the canvas Markdown body verbatim under a dim
+    `──── <title> ────` divider; the third render family, neither conversation
+    nor digest.
+  - Conversation-specific rendering decisions follow:
   - A `──── <date> (<zone>) ────` divider opens each day; headers then carry the
     **time only** (`[HH:MM:SS]`), since the date lives on the divider. `--tz`
     sets the zone (default `Local`, honors `$TZ`); `--with-ids` appends `⟨ts …⟩`.

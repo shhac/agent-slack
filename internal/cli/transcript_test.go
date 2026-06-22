@@ -203,9 +203,9 @@ func TestTranscriptUnknownTimezone(t *testing.T) {
 // NOT opt in rejects --format transcript with a structured error.
 func TestTranscriptRejectedOnNonConversationCommand(t *testing.T) {
 	f := newCLIFixture(t)
-	_, stderr, err := f.run(t, "channel", "get", "C0123ABCD", "--format", "transcript")
+	_, stderr, err := f.run(t, "channel", "members", "C0123ABCD", "--format", "transcript")
 	if err == nil {
-		t.Fatal("expected --format transcript to be rejected on `channel get`")
+		t.Fatal("expected --format transcript to be rejected on `channel members`")
 	}
 	payload := errPayload(t, stderr)
 	if payload["fixable_by"] != "agent" {

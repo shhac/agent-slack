@@ -123,8 +123,10 @@ TEXT   --format transcript is the human-readable rendering (plain text on
        each day; headers carry the time only. Consecutive messages from one
        author within 5 min collapse under a single header; thread replies
        render as a ├─/└─ tree (message get adds a thread/permalink footer).
-       Grouped commands (unreads, later list, message draft list/get) render a
-       "──── summary ────" divider then sections of [time] <name|id> items.
+       Grouped commands (unreads, later list, message/channel/user/usergroup
+       list+get) render a "──── summary ────" digest; canvas get prints the
+       canvas Markdown body. Available wherever a command lists --format
+       transcript in its own usage.
        --tz <Local|UTC|IANA> sets the displayed zone (default Local, honors
        $TZ); --with-ids appends each message's ts id to the header.
        --color <auto|always|never> is a global flag styling all output incl.
@@ -181,6 +183,8 @@ GET    channel get <channel…> [--full] — channel metadata. 'get <id>...' NDJ
        default: one record or {"@unresolved":{id,reason,fixable_by}} per input
        in order; item-level miss → exit 0. --format json → object (one id) or
        {"data":[…],"@unresolved":[…]} envelope (several).
+       channel list/get also take --format transcript: a human digest of
+       #name/@dm headlines with member/private/archived/member badges.
 MEMBERS channel members <channel> [--resolve none|cached|auto|fresh] [--limit] [--cursor]
        Who is in the channel: user ids (chain into 'user get'), or profiles
        with --resolve cached/auto/fresh.
@@ -201,7 +205,9 @@ GET      user get <U…|@handle|email …> — 'get <id>...' NDJSON default: one
          item-level miss → exit 0. --format json → object (one id) or
          {"data":[…],"@unresolved":[…]} envelope (several).
 DM-OPEN  user dm-open <users…> — open a DM or group DM (max 8); returns
-         dm_channel_id to send into.`,
+         dm_channel_id to send into.
+         user list/get also take --format transcript: a human digest, one
+         @handle per line with name/title/tz and bot/deactivated/DM-open tags.`,
 
 	"usergroup": `agent-slack usergroup — user groups (subteams, @group).
 
@@ -216,6 +222,7 @@ GET      usergroup get <S…|@handle …> — 'get <id>...' NDJSON default: one
          record or {"@unresolved":{id,reason,fixable_by}} per input in order;
          item-level miss → exit 0. --format json → object (one id) or
          {"data":[…],"@unresolved":[…]} envelope (several).
+         usergroup list/get also take --format transcript (human digest).
 MEMBERS  usergroup members <S…|@handle> [--resolve none|cached|auto|fresh] [--include-disabled]
          Who is in the group: user ids (chain into 'user get'), or profiles
          with --resolve cached/auto/fresh. To answer "which groups am I in?", scan
@@ -293,7 +300,9 @@ REMIND   later remind <target> --in <30m|2d|tomorrow 5pm|next friday>`,
 	"canvas": `agent-slack canvas — canvases as Markdown.
 
 GET  canvas get <…/docs/… URL | F…> [--max-chars 20000]
-     Downloads the canvas HTML export and converts it to Markdown.`,
+     Downloads the canvas HTML export and converts it to Markdown. JSON by
+     default ({"canvas":{id,title,markdown}}); --format transcript prints the
+     Markdown body directly under a "──── <title> ────" divider.`,
 
 	"file": `agent-slack file — point pulls.
 

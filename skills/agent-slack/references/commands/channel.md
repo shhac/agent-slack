@@ -5,8 +5,8 @@ In-binary version: `agent-slack channel usage`.
 
 | Command | Key flags | Gate |
 |---|---|---|
-| `channel list` | `--user`, `--all`, `--limit` (100), `--cursor` | |
-| `channel get <channel…>` | `--full` | |
+| `channel list` | `--user`, `--all`, `--limit` (100), `--cursor`, `--format transcript` | |
+| `channel get <channel…>` | `--full`, `--format transcript` | |
 | `channel members <channel>` | `--resolve none\|cached\|auto\|fresh`, `--limit` (100), `--cursor` | |
 | `channel new` | `--name`, `--private` | `--yes` |
 | `channel invite` | `--channel`, `--users`, `--external`, `--allow-external-user-invites` | `--yes` |
@@ -20,3 +20,8 @@ or `{"data":[…],"@unresolved":[…]}` envelope (several). `channel members` li
 (chain into `user get`, or pass `--resolve cached`/`--resolve fresh` to expand to profiles inline).
 `channel invite --users` accepts user IDs and (with `--external`) email
 addresses, comma-separated. `channel mark` is personal read state, ungated.
+
+`channel list`/`get` also take `--format transcript` — a human-readable digest:
+a `──── Channels · N ────` divider then `#name`/`@dm` headlines with dim badges
+(members, `🔒 private`, `🗄 archived`, `✓ member`) and the topic on a second line.
+A multi-target `get` appends a dim "Unresolved" section for misses.

@@ -9,7 +9,7 @@ In-binary detail: `agent-slack <domain> usage` (e.g. `unreads usage`, `later usa
 | `later list` | `--state`, `--limit` (20), `--max-body-chars` (4000), `--counts-only`, `--slack-markdown`, `--format transcript` (`--tz`/`--with-ids`) | |
 | `later save\|complete\|archive\|reopen\|remove <target>` | `--ts` | |
 | `later remind <target>` | `--in <30m\|2d\|tomorrow 9am>`, `--ts` | |
-| `canvas get <canvas>` | `--max-chars` (20000) | |
+| `canvas get <canvas>` | `--max-chars` (20000), `--format transcript` (prints the Markdown body directly) | |
 | `file download <file-id>` | `--workspace` | |
 | `api call <method>` | `--params '<json>'\|<file>\|-`, `--multipart` | |
 

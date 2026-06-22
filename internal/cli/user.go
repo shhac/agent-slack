@@ -1,6 +1,7 @@
 package cli
 
 import (
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/slack"
@@ -17,6 +18,7 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 	var limit int
 	var cursor string
 	var includeBots bool
+	listTflags := &transcriptFlags{}
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List users (compact projection; each includes dm_id when a DM exists)",
@@ -34,14 +36,20 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			if wantsTranscript(globals) {
+				return renderUsersDigest(globals, listTflags, page.Users, nil, page.NextCursor != "")
+			}
 			return printList(globals, toAnySlice(page.Users), listMeta(page.NextCursor, nil))
 		},
 	}
 	listCmd.Flags().IntVar(&limit, "limit", 200, "Max users")
 	listCmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
 	listCmd.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot users")
+	listTflags.register(listCmd)
+	libcli.AllowFormats(listCmd, transcriptFormat)
 	userCmd.AddCommand(listCmd)
 
+	getTflags := &transcriptFlags{}
 	getCmd := &cobra.Command{
 		Use:               "get <user...>",
 		Short:             "Get users by id (U…), @handle, or email; one → object, several → NDJSON",
@@ -53,11 +61,19 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			ctx := cmd.Context()
+			if wantsTranscript(globals) {
+				users, unresolved := collectEntityGet(args, func(arg string) (slack.CompactUser, error) {
+					return slack.GetUser(ctx, cc.Client, arg)
+				})
+				return renderUsersDigest(globals, getTflags, users, unresolved, false)
+			}
 			return runEntityGet(globals, args, func(arg string) (any, error) {
 				return slack.GetUser(ctx, cc.Client, arg)
 			})
 		},
 	}
+	getTflags.register(getCmd)
+	libcli.AllowFormats(getCmd, transcriptFormat)
 	userCmd.AddCommand(getCmd)
 
 	dmOpenCmd := &cobra.Command{

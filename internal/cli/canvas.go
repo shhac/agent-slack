@@ -1,6 +1,7 @@
 package cli
 
 import (
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -46,9 +47,13 @@ func registerCanvas(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			if wantsTranscript(globals) {
+				return writeCanvasTranscript(globals, canvas)
+			}
 			return emitItem(globals, map[string]any{"canvas": canvas})
 		},
 	}
 	getCmd.Flags().IntVar(&maxChars, "max-chars", 20000, "Max markdown chars (-1 = unlimited)")
+	libcli.AllowFormats(getCmd, transcriptFormat)
 	canvasCmd.AddCommand(getCmd)
 }

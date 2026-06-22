@@ -1,6 +1,7 @@
 package cli
 
 import (
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/slack"
@@ -24,6 +25,7 @@ func registerUsergroupList(parent *cobra.Command, globals *GlobalFlags) {
 	var includeDisabled bool
 	var limit int
 	var cursor string
+	tflags := &transcriptFlags{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List usergroups (compact projection incl. default channels/groups); paginated",
@@ -41,16 +43,22 @@ func registerUsergroupList(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			if wantsTranscript(globals) {
+				return renderUsergroupsDigest(globals, tflags, groups, nil, next != "")
+			}
 			return printList(globals, toAnySlice(groups), listMeta(next, nil))
 		},
 	}
 	cmd.Flags().BoolVar(&includeDisabled, "include-disabled", false, "Include deactivated usergroups")
 	cmd.Flags().IntVar(&limit, "limit", 200, "Max results per page (capped at 1000)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a prior page's @pagination.next_cursor")
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
 	parent.AddCommand(cmd)
 }
 
 func registerUsergroupGet(parent *cobra.Command, globals *GlobalFlags) {
+	tflags := &transcriptFlags{}
 	cmd := &cobra.Command{
 		Use:               "get <usergroup...>",
 		Short:             "Get usergroups by id (S…) or @handle; one → object, several → NDJSON",
@@ -62,11 +70,19 @@ func registerUsergroupGet(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			ctx := cmd.Context()
+			if wantsTranscript(globals) {
+				groups, unresolved := collectEntityGet(args, func(arg string) (slack.CompactUsergroup, error) {
+					return slack.GetUsergroup(ctx, cc.Client, arg)
+				})
+				return renderUsergroupsDigest(globals, tflags, groups, unresolved, false)
+			}
 			return runEntityGet(globals, args, func(arg string) (any, error) {
 				return slack.GetUsergroup(ctx, cc.Client, arg)
 			})
 		},
 	}
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
 	parent.AddCommand(cmd)
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -28,6 +29,7 @@ func registerChannel(parent *cobra.Command, globals *GlobalFlags) {
 }
 
 func registerChannelGet(parent *cobra.Command, globals *GlobalFlags) {
+	tflags := &transcriptFlags{}
 	cmd := &cobra.Command{
 		Use:               "get <channel...>",
 		Short:             "Get channel metadata (topic, membership, archive state); one → object, several → NDJSON; --full for the raw object",
@@ -35,12 +37,39 @@ func registerChannelGet(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: channelArgCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
+			if wantsTranscript(globals) {
+				cc, err := getClient(globals)
+				if err != nil {
+					return err
+				}
+				channels, unresolved := collectEntityGet(args, func(arg string) (slack.CompactChannel, error) {
+					return getChannelCompact(ctx, globals, arg)
+				})
+				return renderChannelsDigest(ctx, globals, cc, tflags, channels, unresolved, false)
+			}
 			return runEntityGet(globals, args, func(arg string) (any, error) {
 				return getChannel(ctx, globals, arg)
 			})
 		},
 	}
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
 	parent.AddCommand(cmd)
+}
+
+// getChannelCompact resolves one channel target to its compact projection,
+// independent of --full (the transcript is always the compact, human view).
+func getChannelCompact(ctx context.Context, globals *GlobalFlags, arg string) (slack.CompactChannel, error) {
+	target, err := render.ParseTarget(arg)
+	if err != nil {
+		return slack.CompactChannel{}, err
+	}
+	cc, channelID, err := resolveTargetClient(ctx, globals, target, "channel get does not support user ID targets")
+	if err != nil {
+		return slack.CompactChannel{}, err
+	}
+	compact, _, err := slack.GetChannelInfo(ctx, cc.Client, channelID)
+	return compact, err
 }
 
 // getChannel resolves one channel target and returns its compact projection
@@ -105,6 +134,7 @@ func registerChannelList(parent *cobra.Command, globals *GlobalFlags) {
 	var user, cursor string
 	var all bool
 	var limit int
+	tflags := &transcriptFlags{}
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List conversations for a user (default: the authed user), or --all for the workspace",
@@ -130,6 +160,13 @@ func registerChannelList(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 
+			if wantsTranscript(globals) {
+				compacts := make([]slack.CompactChannel, 0, len(page.Channels))
+				for _, ch := range page.Channels {
+					compacts = append(compacts, slack.ToCompactChannel(ch))
+				}
+				return renderChannelsDigest(ctx, globals, cc, tflags, compacts, nil, page.NextCursor != "")
+			}
 			items := make([]any, 0, len(page.Channels))
 			for _, ch := range page.Channels {
 				if globals.Full {
@@ -145,6 +182,8 @@ func registerChannelList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().BoolVar(&all, "all", false, "List all workspace conversations (conversations.list)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max conversations per page")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
 	parent.AddCommand(cmd)
 }
 
