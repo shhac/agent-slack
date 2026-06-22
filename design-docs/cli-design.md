@@ -158,6 +158,26 @@ This supersedes the broader "all writes gated" wording in
     plain — color helps a human at a terminal without ever polluting an agent's
     context. The render layer just honors `TranscriptOptions.Color`; the CLI
     decides it from the output target.
+  - **Inline custom-emoji images are opt-in and quad-gated.** `--inline-images`
+    draws workspace custom emoji (`:partyparrot:`) as real images inside the
+    transcript via the Kitty graphics protocol, rather than leaving the
+    shortcode as text. It fires only when all of: the flag is set, stdout is a
+    TTY (`output.Enabled`), `graphics.Detect()` reports a Kitty-capable terminal
+    (Ghostty/kitty/WezTerm), and the format is transcript — otherwise the
+    shortcode renders as text, so the machine/LLM path is never touched (the
+    flag is also hidden from the MCP tool surface, like `--color`). Layering:
+    the generic encoder + capability detection live in `lib-agent-cli/graphics`
+    (the human-terminal runtime layer, beside `dialog` — *not* the zero-dep
+    `lib-agent-output` wire contract, whose color invariant "strip escapes →
+    original bytes" an image escape has no plaintext to satisfy). The render
+    layer exposes one injected seam, `TranscriptOptions.InlineEmoji
+    func(name) string` (nil on every non-image path), applied **last** — after
+    link/mention rewriting and `--max-body-chars` truncation — so an escape is
+    never split. The Slack-specific glue (resolve `:name:`→URL with one alias
+    hop, fetch bytes, decode GIF-first-frame/PNG to PNG since Kitty decodes PNG
+    only, dedup transmit-then-place) lives in `internal/cli/emojiimage.go` +
+    `internal/slack/emojiimage.go`, keeping `graphics` Slack-agnostic and
+    PNG-in.
 
 ## Message formatting dialect
 

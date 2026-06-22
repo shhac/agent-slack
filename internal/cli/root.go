@@ -25,6 +25,7 @@ type GlobalFlags struct {
 	NoCache      bool
 	RefreshCache bool
 	CacheTTL     string
+	InlineImages bool
 
 	// Injected seams — wired by newRootCmd, substituted by tests. Constructor
 	// injection (not package globals) so test roots are hermetic and
@@ -90,6 +91,7 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	root.PersistentFlags().BoolVar(&globals.NoCache, "no-cache", false, "Bypass the resolution cache entirely (no read, no write)")
 	root.PersistentFlags().BoolVar(&globals.RefreshCache, "refresh-cache", false, "Ignore cached reads but still write fresh entries")
 	root.PersistentFlags().StringVar(&globals.CacheTTL, "cache-ttl", "", "Override every cache TTL (e.g. 30m, 2h, 0 to disable reads)")
+	root.PersistentFlags().BoolVar(&globals.InlineImages, "inline-images", false, "Render custom emoji as inline images in --format transcript (Kitty-graphics terminals: Ghostty/kitty/WezTerm; human TTYs only)")
 
 	_ = root.RegisterFlagCompletionFunc("format", fixedCompletions("json", "yaml", "jsonl"))
 	registerWorkspaceCompletion(root, globals)
@@ -122,7 +124,7 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	exposeGroups(root,
 		"api", "canvas", "channel", "emoji", "file", "later", "message", "search", "unreads", "user", "usergroup", "workflow")
 
-	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose")))
+	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose", "inline-images")))
 
 	return root
 }

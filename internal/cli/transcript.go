@@ -80,6 +80,7 @@ func printTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContex
 	}
 	opts.SlackMarkdown = slackMarkdown
 	opts.UserName = transcriptUserResolver(ctx, cc, messages)
+	opts.InlineEmoji = inlineEmojiResolver(ctx, globals, cc)
 
 	items := make([]render.TranscriptMessage, 0, len(messages))
 	for _, m := range messages {

@@ -143,6 +143,61 @@ func TestRenderTranscriptEditedAndFilesAndReactions(t *testing.T) {
 	}
 }
 
+func TestRenderTranscriptInlineEmoji(t *testing.T) {
+	// Resolver recognizes only :partyparrot:, rendering it as a sentinel; every
+	// other shortcode (standard :smile:, unknown :nope:) must be left to the
+	// existing text path.
+	resolve := func(name string) string {
+		if name == "partyparrot" {
+			return "<IMG>"
+		}
+		return ""
+	}
+	msgs := []TranscriptMessage{
+		{
+			Summary: MessageSummary{
+				TS:   "1782032540.000000",
+				User: "U11111111",
+				Text: "ship it :partyparrot: :nope:",
+				Reactions: []any{
+					map[string]any{"name": "partyparrot", "users": []any{"U22222222"}},
+				},
+			},
+		},
+	}
+	opts := TranscriptOptions{Loc: time.UTC, InlineEmoji: resolve, UserName: nameResolver(map[string]string{"U11111111": "Al", "U22222222": "Bo"})}
+
+	got := RenderTranscript(msgs, opts)
+	if !strings.Contains(got, "ship it <IMG> :nope:") {
+		t.Errorf("custom emoji not replaced inline / unknown not preserved:\n%s", got)
+	}
+	if !strings.Contains(got, "↳ <IMG> Bo") {
+		t.Errorf("custom reaction emoji not replaced inline:\n%s", got)
+	}
+
+	// nil resolver (the machine-output / no-TTY path) leaves shortcodes as text.
+	opts.InlineEmoji = nil
+	plain := RenderTranscript(msgs, opts)
+	if !strings.Contains(plain, ":partyparrot:") || strings.Contains(plain, "<IMG>") {
+		t.Errorf("nil resolver should leave shortcodes as text:\n%s", plain)
+	}
+}
+
+func TestApplyInlineEmoji(t *testing.T) {
+	resolve := func(name string) string {
+		if name == "ok" {
+			return "ESC"
+		}
+		return ""
+	}
+	if got := applyInlineEmoji("a :ok: b :no: c", resolve); got != "a ESC b :no: c" {
+		t.Errorf("applyInlineEmoji = %q", got)
+	}
+	if got := applyInlineEmoji(":ok:", nil); got != ":ok:" {
+		t.Errorf("nil resolve should be a no-op, got %q", got)
+	}
+}
+
 func TestRenderTranscriptAuthorlessSpeaker(t *testing.T) {
 	msgs := []TranscriptMessage{
 		{Summary: MessageSummary{TS: "1782032540.000000", Text: "ghost"}},

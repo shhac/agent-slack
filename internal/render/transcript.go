@@ -45,6 +45,14 @@ type TranscriptOptions struct {
 	// glyphs). The caller decides this from the output target (a TTY) and the
 	// NO_COLOR/CLICOLOR_FORCE conventions; the render layer just honors it.
 	Color bool
+	// InlineEmoji, when set, turns a custom-emoji shortcode name (no colons)
+	// into a terminal escape sequence that draws the emoji's image inline; ""
+	// leaves the shortcode as text. It is the seam for the Kitty-graphics
+	// inline-image mode — nil in every machine-output path, so the render layer
+	// needs no knowledge of the graphics protocol or the Slack client behind
+	// it. Applied last (after link/mention rewriting and truncation) so an
+	// escape sequence is never split.
+	InlineEmoji func(name string) string
 }
 
 // transcriptIndent is one level of indentation for a root message's body.
@@ -339,7 +347,25 @@ func transcriptContent(msg MessageSummary, opts TranscriptOptions) string {
 			return token
 		})
 	}
-	return content
+	return applyInlineEmoji(content, opts.InlineEmoji)
+}
+
+// applyInlineEmoji replaces each custom-emoji shortcode the resolver recognizes
+// with its inline-image escape, leaving standard/unknown shortcodes as text. It
+// is a no-op when resolve is nil (every machine-output path) and runs last, so
+// the escape it inserts is never truncated or rewritten downstream. The resolver
+// itself is the filter — only names it returns a non-empty escape for change,
+// so `:not_an_emoji:` in prose is left alone.
+func applyInlineEmoji(text string, resolve func(name string) string) string {
+	if resolve == nil || text == "" {
+		return text
+	}
+	return emojiShortcodeRe.ReplaceAllStringFunc(text, func(m string) string {
+		if esc := resolve(m[1 : len(m)-1]); esc != "" {
+			return esc
+		}
+		return m
+	})
 }
 
 // transcriptReactions builds `↳ 👍 Alice, Bob` from raw reaction objects, using
@@ -353,8 +379,10 @@ func transcriptReactions(reactions []any, opts TranscriptOptions) string {
 	var parts []string
 	for _, r := range compact {
 		// EmojifyShortcodes leaves unknown :names: untouched, which is the
-		// desired fallback.
-		glyph := EmojifyShortcodes(":" + r.Name + ":")
+		// desired fallback; applyInlineEmoji then swaps a custom emoji for its
+		// inline image when that mode is on (a no-op otherwise, and on the
+		// unicode glyph a standard emoji already became).
+		glyph := applyInlineEmoji(EmojifyShortcodes(":"+r.Name+":"), opts.InlineEmoji)
 		var names []string
 		for _, id := range r.Users {
 			names = append(names, resolveName(opts, id))
