@@ -33,6 +33,11 @@ const transcriptFormat = "transcript"
 type transcriptFlags struct {
 	tz      string
 	withIDs bool
+	// resolve is the --resolve mode for the grouped/digest transcripts
+	// (unreads/later/drafts), which carry no readFlags. Registered only on those
+	// commands (via registerResolveFlag); the conversation transcripts source it
+	// from readFlags instead. Empty on commands that never register it → auto.
+	resolve string
 }
 
 func (f *transcriptFlags) register(cmd *cobra.Command) {
@@ -69,17 +74,20 @@ func wantsTranscript(globals *GlobalFlags) bool {
 }
 
 // printTranscript renders messages as a natural-language transcript on stdout.
-// It always resolves referenced user names (so speakers/mentions/reactors read
-// as names) regardless of --resolve, since a transcript is for humans. When
-// threadMode is set, reply messages (thread_ts != ts) indent one level under
-// the root.
-func printTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContext, tflags *transcriptFlags, slackMarkdown bool, messages []render.MessageSummary, threadMode bool) error {
+// It resolves referenced users, channels, and usergroups so speakers, mentions,
+// and reactors read as names — under the --resolve policy (default auto, since a
+// transcript is for humans), the same cache-controlled machinery the JSON
+// referenced_* path uses. When threadMode is set, reply messages (thread_ts !=
+// ts) indent one level under the root.
+func printTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContext, tflags *transcriptFlags, flags *readFlags, messages []render.MessageSummary, threadMode bool) error {
 	opts, err := transcriptOpts(globals, tflags)
 	if err != nil {
 		return err
 	}
-	opts.SlackMarkdown = slackMarkdown
-	opts.UserName = transcriptUserResolver(ctx, cc, messages)
+	opts.SlackMarkdown = flags.slackMarkdown
+	refs := render.CollectReferencedIDs(messages, true)
+	resolvers := transcriptResolvers(ctx, globals, cc, refs, flags.resolveMode())
+	opts.UserName, opts.ChannelName, opts.UsergroupName = resolvers.User, resolvers.Channel, resolvers.Usergroup
 	opts.InlineEmoji = inlineEmojiResolver(ctx, globals, cc)
 
 	items := make([]render.TranscriptMessage, 0, len(messages))
@@ -98,12 +106,4 @@ func printTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContex
 
 	_, err = globals.stdout.Write([]byte(render.RenderTranscript(items, opts)))
 	return err
-}
-
-// transcriptUserResolver builds an id→display-name lookup for the transcript,
-// resolving every referenced user (cache-then-fetch) up front. Returns "" for
-// ids it can't resolve so the renderer falls back to the bare id. Shares the
-// display-name precedence with the grouped digests via userNameResolver.
-func transcriptUserResolver(ctx context.Context, cc *clientContext, messages []render.MessageSummary) func(string) string {
-	return userNameResolver(ctx, cc, render.CollectReferencedUserIDs(messages, true))
 }

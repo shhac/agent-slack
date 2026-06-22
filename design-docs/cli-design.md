@@ -151,6 +151,23 @@ This supersedes the broader "all writes gated" wording in
     no blank gap) — mirrors Slack's own UI.
   - **Thread tree:** replies render under their root with `├─`/`└─` connectors
     and aligned continuation, instead of bare indentation.
+  - **Entity mentions resolve INLINE, reusing the JSON resolver + controls.**
+    Where the JSON path expands `<@U…>`/`<#C…>`/`<!subteam^S…>` into
+    `referenced_*` sidecar maps (an LLM dereferences them), the transcript
+    rewrites the tokens in place to `@name`/`#channel`/`@group` — a human can't
+    cross-reference a map. Both run the *same* machinery: `CollectReferencedIDs`
+    → `ResolveReferenced` under the `--resolve` policy (none|cached|auto|fresh,
+    default auto) with the same `cache warm` hint; only the application differs
+    (in-place rewrite vs. sidecar). The rewrite is a pure render-layer pass
+    (`render.ResolveMentionsForDisplay`, the read-direction analog of the
+    outbound `slack.ResolveMentions`): it also turns `slack://` user/channel
+    deep-links into their label and `<!date^…>` into its formatted fallback,
+    masking code spans so a token in code stays literal. The digests
+    (unreads/later/drafts) keep no raw blocks, so they collect ids from the
+    already-rendered content (`render.CollectDisplayIDs`) and gained their own
+    `--resolve` flag (transcript-only, like `--tz`/`--with-ids`). `--resolve
+    none` leaves ids bare even in transcript — controls are uniform, not
+    special-cased "always on".
   - **Color is environment-gated, never default-on.** `--color auto` (default)
     emits ANSI (dim metadata/timestamps/tree glyphs, bold-cyan speaker names)
     only when stdout is a TTY, honoring `NO_COLOR` and `CLICOLOR_FORCE`;

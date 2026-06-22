@@ -40,6 +40,7 @@ func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	enableTranscript(cmd, tflags)
+	registerResolveFlag(cmd, &tflags.resolve, resolveAuto)
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only unread counts, no message content")
 	cmd.Flags().IntVar(&maxMessages, "max-messages", 10, "Max unread messages per channel")
 	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", 4000, "Max content chars per message (-1 = unlimited)")

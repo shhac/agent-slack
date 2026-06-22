@@ -34,7 +34,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			if wantsTranscript(globals) {
-				if err := printTranscript(ctx, globals, cc, tflags, flags.slackMarkdown, []render.MessageSummary{msg}, false); err != nil {
+				if err := printTranscript(ctx, globals, cc, tflags, flags, []render.MessageSummary{msg}, false); err != nil {
 					return err
 				}
 				return writeMessageGetFooter(ctx, globals, cc, ref, msg)
@@ -254,7 +254,7 @@ func printThread(ctx context.Context, globals *GlobalFlags, cc *clientContext, f
 
 func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext, flags *readFlags, tflags *transcriptFlags, messages []render.MessageSummary, download bool, meta map[string]any, threadMode bool) error {
 	if wantsTranscript(globals) {
-		return printTranscript(ctx, globals, cc, tflags, flags.slackMarkdown, messages, threadMode)
+		return printTranscript(ctx, globals, cc, tflags, flags, messages, threadMode)
 	}
 	downloads := map[string]render.DownloadResult{}
 	if download {

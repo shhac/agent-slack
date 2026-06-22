@@ -41,6 +41,11 @@ type TranscriptOptions struct {
 	// UserName resolves a user id (U…/W…) to a display name; "" means unknown
 	// (the bare id is shown). Used for the speaker, @mentions, and reactors.
 	UserName func(id string) string
+	// ChannelName and UsergroupName resolve a channel id (C…/G…) to its name and
+	// a usergroup id (S…) to its handle, for inline #channel / @group mentions in
+	// the body; "" means unknown (the token is left as-is). Both may be nil.
+	ChannelName   func(id string) string
+	UsergroupName func(id string) string
 	// Color emits ANSI styling (dim metadata, bold speaker names, dim tree
 	// glyphs). The caller decides this from the output target (a TTY) and the
 	// NO_COLOR/CLICOLOR_FORCE conventions; the render layer just honors it.
@@ -53,6 +58,11 @@ type TranscriptOptions struct {
 	// it. Applied last (after link/mention rewriting and truncation) so an
 	// escape sequence is never split.
 	InlineEmoji func(name string) string
+}
+
+// mentionResolvers bundles the per-entity resolvers for inline body rewriting.
+func (o TranscriptOptions) mentionResolvers() MentionResolvers {
+	return MentionResolvers{User: o.UserName, Channel: o.ChannelName, Usergroup: o.UsergroupName}
 }
 
 // transcriptIndent is one level of indentation for a root message's body.
@@ -86,8 +96,11 @@ var markdownLinkRe = regexp.MustCompile(`\[([^\]]*)\]\((https?://[^)]+)\)`)
 
 // mentionAtIDRe matches the `@U123`/`@W123` residue MrkdwnToMarkdown leaves for
 // bare mention tokens (those without an inline label), so we can swap in a
-// resolved display name.
-var mentionAtIDRe = regexp.MustCompile(`@([UW][A-Z0-9]{7,})\b`)
+// resolved display name. No trailing \b: the id char class ([A-Z0-9]) already
+// ends the match at the first lowercase/space/punctuation, and a real boundary
+// assertion would *miss* a mention butted straight against following prose —
+// Slack allows `<@U…>for`, which renders as `@U…for` with no space.
+var mentionAtIDRe = regexp.MustCompile(`@([UW][A-Z0-9]{7,})`)
 
 // transcriptMeta is the per-message data RenderTranscript precomputes so the
 // render pass can see neighbours (grouping, day rollovers, last-reply) without
@@ -338,15 +351,7 @@ func transcriptContent(msg MessageSummary, opts TranscriptOptions) string {
 		return ""
 	}
 	content = markdownLinkRe.ReplaceAllString(content, "$1 ($2)")
-	if opts.UserName != nil {
-		content = mentionAtIDRe.ReplaceAllStringFunc(content, func(token string) string {
-			id := strings.TrimPrefix(token, "@")
-			if name := opts.UserName(id); name != "" {
-				return "@" + name
-			}
-			return token
-		})
-	}
+	content = ResolveMentionsForDisplay(content, opts.mentionResolvers())
 	return applyInlineEmoji(content, opts.InlineEmoji)
 }
 

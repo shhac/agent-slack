@@ -31,8 +31,13 @@ mentions/links; `--slack-markdown` switches to Slack's native mrkdwn dialect.
 Full table — links, mentions, escaping: [../formatting.md](../formatting.md).
 
 `message get`/`list` also take `--format transcript` — a human-readable,
-chronological text rendering (not JSON; errors still go to stderr as JSON, and
-speakers/mentions/reactors always resolve to names). A
+chronological text rendering (not JSON; errors still go to stderr as JSON).
+Speakers, `<@U…>` mentions, reactors, `<#C…>` channels, `<!subteam^S…>` groups,
+`slack://` user/channel deep-links, and `<!date^…>` tokens all resolve inline to
+names/labels under `--resolve` (default `auto`; `none` leaves ids bare) — the
+same cache-controlled machinery as the JSON `referenced_*` maps, but rewritten
+in place. `unreads`/`later list`/`message draft list`/`get` take `--resolve` too.
+A
 `──── <date> (<zone>) ────` divider opens each day, headers carry the time
 only, consecutive messages from one author within 5 minutes collapse under one
 header, and thread replies render as a `├─`/`└─` tree (`message get` adds a dim

@@ -93,6 +93,7 @@ func registerDraftList(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	enableTranscript(cmd, tflags)
+	registerResolveFlag(cmd, &tflags.resolve, resolveAuto)
 	parent.AddCommand(cmd)
 }
 
@@ -115,6 +116,7 @@ func registerDraftGet(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	enableTranscript(cmd, tflags)
+	registerResolveFlag(cmd, &tflags.resolve, resolveAuto)
 	parent.AddCommand(cmd)
 }
 

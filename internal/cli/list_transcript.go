@@ -21,7 +21,17 @@ func renderUnreadsTranscript(ctx context.Context, globals *GlobalFlags, cc *clie
 	if err != nil {
 		return err
 	}
-	resolve := userNameResolver(ctx, cc, unreadAuthorIDs(channels))
+	mode, err := parseResolveMode(tflags.resolve)
+	if err != nil {
+		return err
+	}
+	var authors, contents []string
+	for _, ch := range channels {
+		for _, m := range ch.Messages {
+			authors, contents = appendAuthorContent(authors, contents, m.Author, m.Content)
+		}
+	}
+	resolvers := digestResolvers(ctx, globals, cc, mode, authors, contents)
 
 	totalUnread, totalMentions := 0, 0
 	sections := make([]render.GroupSection, 0, len(channels))
@@ -30,10 +40,10 @@ func renderUnreadsTranscript(ctx context.Context, globals *GlobalFlags, cc *clie
 		totalMentions += ch.MentionCount
 		items := make([]render.GroupItem, 0, len(ch.Messages))
 		for _, m := range ch.Messages {
-			id, name := authorIDName(m.Author, resolve)
+			id, name := authorIDName(m.Author, resolvers.User)
 			items = append(items, render.GroupItem{
 				Title:   render.SpeakerLine(m.TS, name, id, replyNote(m.ReplyCount), opts),
-				Details: bodyLines(m.Content),
+				Details: bodyLines(render.ResolveMentionsForDisplay(m.Content, resolvers)),
 			})
 		}
 		sections = append(sections, render.GroupSection{Heading: unreadChannelLabel(ch), Items: items})
@@ -46,18 +56,25 @@ func renderUnreadsTranscript(ctx context.Context, globals *GlobalFlags, cc *clie
 	return writeGrouped(globals, render.Grouped{Summary: summary, Sections: sections, Empty: "No unread messages."}, opts)
 }
 
-func unreadAuthorIDs(channels []slack.UnreadChannel) []string {
-	seen := map[string]bool{}
-	var ids []string
-	for _, ch := range channels {
-		for _, m := range ch.Messages {
-			if m.Author != nil && m.Author.UserID != "" && !seen[m.Author.UserID] {
-				seen[m.Author.UserID] = true
-				ids = append(ids, m.Author.UserID)
-			}
-		}
+// digestResolvers builds the inline mention resolvers for a digest transcript:
+// every entity referenced in the rendered message bodies, plus the speaker
+// (author) ids, resolved under the --resolve mode. It is the digest counterpart
+// of printTranscript's resolver wiring — same ResolveReferenced machinery, but
+// sourcing ids from the already-rendered content (CollectDisplayIDs) since the
+// digest kept no raw blocks.
+func digestResolvers(ctx context.Context, globals *GlobalFlags, cc *clientContext, mode resolveMode, authorIDs, contents []string) render.MentionResolvers {
+	refs := render.CollectDisplayIDs(contents...)
+	refs.Users = append(refs.Users, authorIDs...)
+	return transcriptResolvers(ctx, globals, cc, refs, mode)
+}
+
+// appendAuthorContent accumulates an author's user id (for speaker resolution)
+// and the message content (for body-mention collection) in one step.
+func appendAuthorContent(authors, contents []string, author *render.CompactAuthor, content string) ([]string, []string) {
+	if author != nil && author.UserID != "" {
+		authors = append(authors, author.UserID)
 	}
-	return ids
+	return authors, append(contents, content)
 }
 
 func unreadChannelLabel(c slack.UnreadChannel) string {
@@ -90,13 +107,23 @@ func renderLaterTranscript(ctx context.Context, globals *GlobalFlags, cc *client
 	if err != nil {
 		return err
 	}
-	resolve := userNameResolver(ctx, cc, laterAuthorIDs(items))
+	mode, err := parseResolveMode(tflags.resolve)
+	if err != nil {
+		return err
+	}
+	var authors, contents []string
+	for _, it := range items {
+		if it.Message != nil {
+			authors, contents = appendAuthorContent(authors, contents, it.Message.Author, it.Message.Content)
+		}
+	}
+	resolvers := digestResolvers(ctx, globals, cc, mode, authors, contents)
 
 	byState := map[string][]render.GroupItem{}
 	counts := map[string]int{}
 	for _, it := range items {
 		counts[it.State]++
-		byState[it.State] = append(byState[it.State], laterDigestItem(ctx, cc, it, resolve, opts))
+		byState[it.State] = append(byState[it.State], laterDigestItem(ctx, cc, it, resolvers, opts))
 	}
 
 	sections, summarySuffix := laterSections(byState, counts)
@@ -107,15 +134,15 @@ func renderLaterTranscript(ctx context.Context, globals *GlobalFlags, cc *client
 // laterDigestItem builds one saved-item block: the channel/saved-time lead, then
 // the saved message as a speaker line (or a bare timestamp when the message body
 // wasn't fetched).
-func laterDigestItem(ctx context.Context, cc *clientContext, it slack.LaterItem, resolve func(string) string, opts render.TranscriptOptions) render.GroupItem {
+func laterDigestItem(ctx context.Context, cc *clientContext, it slack.LaterItem, resolvers render.MentionResolvers, opts render.TranscriptOptions) render.GroupItem {
 	item := render.GroupItem{Lead: laterLead(ctx, cc, it, opts.Loc)}
 	if it.Message == nil {
 		item.Title = render.SpeakerLine(it.TS, "", "", "", opts)
 		return item
 	}
-	id, name := authorIDName(it.Message.Author, resolve)
+	id, name := authorIDName(it.Message.Author, resolvers.User)
 	item.Title = render.SpeakerLine(it.TS, name, id, replyNote(it.Message.ReplyCount), opts)
-	item.Details = bodyLines(it.Message.Content)
+	item.Details = bodyLines(render.ResolveMentionsForDisplay(it.Message.Content, resolvers))
 	return item
 }
 
@@ -144,18 +171,6 @@ func laterSections(byState map[string][]render.GroupItem, counts map[string]int)
 	return sections, summarySuffix
 }
 
-func laterAuthorIDs(items []slack.LaterItem) []string {
-	seen := map[string]bool{}
-	var ids []string
-	for _, it := range items {
-		if it.Message != nil && it.Message.Author != nil && it.Message.Author.UserID != "" && !seen[it.Message.Author.UserID] {
-			seen[it.Message.Author.UserID] = true
-			ids = append(ids, it.Message.Author.UserID)
-		}
-	}
-	return ids
-}
-
 func laterLead(ctx context.Context, cc *clientContext, it slack.LaterItem, loc *time.Location) string {
 	name := it.ChannelName
 	if name == "" {
@@ -175,6 +190,16 @@ func renderDraftsTranscript(ctx context.Context, globals *GlobalFlags, cc *clien
 	if err != nil {
 		return err
 	}
+	mode, err := parseResolveMode(tflags.resolve)
+	if err != nil {
+		return err
+	}
+	draftTexts := make([]string, len(drafts))
+	for i, d := range drafts {
+		draftTexts[i] = d.Text
+	}
+	resolvers := digestResolvers(ctx, globals, cc, mode, nil, draftTexts)
+
 	items := make([]render.GroupItem, 0, len(drafts))
 	for _, d := range drafts {
 		target := slack.ResolveChannelName(ctx, cc.Client, d.ChannelID)
@@ -182,7 +207,7 @@ func renderDraftsTranscript(ctx context.Context, globals *GlobalFlags, cc *clien
 		if d.PostAt > 0 {
 			title += render.Dim(" · scheduled "+groupedStamp(d.PostAt, opts.Loc), opts.Color)
 		}
-		details := bodyLines(d.Text)
+		details := bodyLines(render.ResolveMentionsForDisplay(d.Text, resolvers))
 		if len(details) == 0 {
 			details = []string{render.Dim("(no text)", opts.Color)}
 		}

@@ -131,6 +131,11 @@ TEXT   --format transcript is the human-readable rendering (plain text on
        list+get) render a "──── summary ────" digest; canvas get prints the
        canvas Markdown body. Available wherever a command lists --format
        transcript in its own usage.
+       Mentions resolve INLINE to names: <@U…>→@name, <#C…>→#channel,
+       <!subteam^S…>→@group, slack:// user/channel deep-links to their label, and
+       <!date^…> to its formatted text — under --resolve (default auto; none
+       leaves ids bare), the same cache-controlled machinery as the JSON
+       referenced_* maps. unreads/later/drafts accept --resolve too.
        --tz <Local|UTC|IANA> sets the displayed zone (default Local, honors
        $TZ); --with-ids appends each message's ts id to the header.
        --color <auto|always|never> is a global flag styling all output incl.
