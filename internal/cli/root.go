@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
-	agentmcp "github.com/shhac/lib-agent-mcp"
 	libcli "github.com/shhac/lib-agent-cli/cli"
+	agentmcp "github.com/shhac/lib-agent-mcp"
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/auth"
@@ -115,6 +115,13 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	// Expose the whole command tree as an MCP server (added last, so it reflects
 	// the complete tree). --color/--expose are output-shaping, irrelevant to a
 	// tool call, so hide them from the generated schemas.
+	// Opt the agent-facing groups into the MCP tool surface: each becomes one
+	// coarse tool that dispatches its subcommands (with a "help" verb), so the
+	// surface is ~one-tool-per-group instead of one-per-leaf. Credential/config/
+	// usage commands are deliberately left out — they aren't agent tasks.
+	exposeGroups(root,
+		"api", "canvas", "channel", "emoji", "file", "later", "message", "search", "unreads", "user", "usergroup", "workflow")
+
 	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose")))
 
 	return root
@@ -153,4 +160,19 @@ func execute(root *cobra.Command) error {
 		output.WriteError(root.ErrOrStderr(), err)
 	}
 	return err
+}
+
+// exposeGroups opts the named top-level commands into the MCP tool surface.
+// A name with no matching command is skipped silently — the list is a curation
+// of agent-facing groups, not a registration check.
+func exposeGroups(root *cobra.Command, names ...string) {
+	want := make(map[string]bool, len(names))
+	for _, n := range names {
+		want[n] = true
+	}
+	for _, c := range root.Commands() {
+		if want[c.Name()] {
+			agentmcp.Expose(c)
+		}
+	}
 }
