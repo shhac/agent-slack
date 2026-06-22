@@ -3,7 +3,10 @@ package auth
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
 func TestParseProfilesIni(t *testing.T) {
@@ -86,6 +89,60 @@ func TestDecodeFirefoxCookie(t *testing.T) {
 	}
 	if got := decodeFirefoxCookie("xoxd-plain"); got != "xoxd-plain" {
 		t.Errorf("decodeFirefoxCookie plain = %q", got)
+	}
+}
+
+// fixableByHuman reports whether err is an APIError marked FixableByHuman.
+func fixableByHuman(t *testing.T, err error) bool {
+	t.Helper()
+	var apiErr *agenterrors.APIError
+	if !agenterrors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.FixableBy == agenterrors.FixableByHuman
+}
+
+func TestExtractFromGecko_NoMatchingProfile(t *testing.T) {
+	// Empty base dir: no profiles.ini, no profile dirs -> zero candidates,
+	// so extractFromGecko returns the ":304 no matching profile found" error.
+	base := t.TempDir()
+	baseDir := func() (string, error) { return base, nil }
+
+	_, err := extractFromGecko("Firefox", baseDir, "")
+	if err == nil {
+		t.Fatal("expected error when no profiles exist")
+	}
+	if !strings.Contains(err.Error(), "no matching") {
+		t.Errorf("error %q, want 'no matching ... profile found'", err.Error())
+	}
+	if !fixableByHuman(t, err) {
+		t.Errorf("error should be FixableByHuman, got %v", err)
+	}
+}
+
+func TestExtractFromGecko_NoCompleteSession(t *testing.T) {
+	// A profile dir exists but holds no Slack local-storage DB, so
+	// firefoxTeamsFromProfile fails for every candidate and extractFromGecko
+	// falls through to the ":323 no complete Slack session" error.
+	base := t.TempDir()
+	// Cover both layouts (darwin/windows use Profiles/, others use base root)
+	// so the test is platform-independent regardless of runtime.GOOS.
+	for _, rel := range []string{filepath.Join("Profiles", "abc.default"), "abc.default"} {
+		if err := os.MkdirAll(filepath.Join(base, rel), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	baseDir := func() (string, error) { return base, nil }
+
+	_, err := extractFromGecko("Firefox", baseDir, "")
+	if err == nil {
+		t.Fatal("expected error when no profile has a complete session")
+	}
+	if !strings.Contains(err.Error(), "complete") {
+		t.Errorf("error %q, want 'could not find ... complete Slack session'", err.Error())
+	}
+	if !fixableByHuman(t, err) {
+		t.Errorf("error should be FixableByHuman, got %v", err)
 	}
 }
 
