@@ -51,7 +51,10 @@ the piped/LLM path stays plain). `--images <off|auto|on>` draws custom emoji as
 actual images: `off` (default), `auto` (on a Kitty-graphics TTY —
 Ghostty/kitty/WezTerm), or `on` (force, e.g. a capable terminal the env
 heuristic doesn't recognize) — **a hidden human convenience; agents should not
-set it** (it emits image escape bytes a tool consumer can't read).
+set it** (it emits image escape bytes a tool consumer can't read). `--hyperlinks
+<off|auto|on>` likewise renders `[label](url)` links as OSC 8 terminal
+hyperlinks (`off` default, `auto` on a TTY, `on` force) — **hidden, human-only;
+agents should not set it.**
 
 `message send --forward <permalink>` forwards a message: any `[text]` becomes a
 comment above it. **Same workspace only** — a permalink from another workspace

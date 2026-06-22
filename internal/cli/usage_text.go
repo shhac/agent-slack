@@ -84,6 +84,9 @@ GLOBAL FLAGS
                          off (default), auto (on a Kitty-graphics TTY —
                          Ghostty/kitty/WezTerm), or on (force). Hidden, human-only;
                          the machine/LLM path stays plain at off/auto.
+      --hyperlinks <m>   Render links as OSC 8 terminal hyperlinks in --format
+                         transcript: off (default), auto (on a TTY), or on (force).
+                         Hidden, human-only; off/auto keep the piped/LLM path plain.
 
 ERRORS
   Single JSON object on stderr: {"error","fixable_by","hint"?,"retry_after_seconds"?}.
@@ -144,6 +147,9 @@ TEXT   --format transcript is the human-readable rendering (plain text on
        --images <off|auto|on> draws custom emoji as actual images: off (default),
        auto (on a Kitty-graphics TTY — Ghostty/kitty/WezTerm), or on (force).
        Hidden; off/auto keep the piped/LLM path plain.
+       --hyperlinks <off|auto|on> renders [label](url) links as OSC 8 terminal
+       hyperlinks: off (default), auto (on a TTY), on (force). Hidden; off/auto
+       keep the piped/LLM path plain.
 SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        Targets: #channel, C…, U… (DM auto-opens), or a permalink (replies in
        that thread). Text is standard Markdown: **bold**, *italic*/_italic_,

@@ -71,6 +71,19 @@ func TestResolveMentionsForDisplayNilResolvers(t *testing.T) {
 	}
 }
 
+func TestApplyHyperlinks(t *testing.T) {
+	enc := func(url, label string) string { return "<" + label + "|" + url + ">" }
+	in := "see [here](https://x.com/a) and [docs](https://y.com)"
+	want := "see <here|https://x.com/a> and <docs|https://y.com>"
+	if got := ApplyHyperlinks(in, enc); got != want {
+		t.Errorf("ApplyHyperlinks = %q, want %q", got, want)
+	}
+	// nil encoder is a no-op (the plain/LLM path keeps markdown).
+	if got := ApplyHyperlinks(in, nil); got != in {
+		t.Errorf("nil encoder should be a no-op, got %q", got)
+	}
+}
+
 func TestCollectDisplayIDs(t *testing.T) {
 	refs := CollectDisplayIDs(
 		"hi @U0123456789 and @U0123456789",

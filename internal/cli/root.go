@@ -70,6 +70,7 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 		DefaultFormat: output.FormatNDJSON,
 		UnknownHint:   "run 'agent-slack usage' for full documentation",
 		Images:        true,
+		Hyperlinks:    true,
 	})
 
 	// NewRoot binds --format/--timeout/--debug, silences cobra's own
@@ -123,7 +124,7 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	exposeGroups(root,
 		"api", "canvas", "channel", "emoji", "file", "later", "message", "search", "unreads", "user", "usergroup", "workflow")
 
-	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose", "images")))
+	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose", "images", "hyperlinks")))
 
 	return root
 }

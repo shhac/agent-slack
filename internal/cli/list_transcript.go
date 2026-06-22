@@ -43,7 +43,7 @@ func renderUnreadsTranscript(ctx context.Context, globals *GlobalFlags, cc *clie
 			id, name := authorIDName(m.Author, resolvers.User)
 			items = append(items, render.GroupItem{
 				Title:   render.SpeakerLine(m.TS, name, id, replyNote(m.ReplyCount), opts),
-				Details: bodyLines(render.ResolveMentionsForDisplay(m.Content, resolvers)),
+				Details: digestBody(m.Content, resolvers, opts),
 			})
 		}
 		sections = append(sections, render.GroupSection{Heading: unreadChannelLabel(ch), Items: items})
@@ -66,6 +66,14 @@ func digestResolvers(ctx context.Context, globals *GlobalFlags, cc *clientContex
 	refs := render.CollectDisplayIDs(contents...)
 	refs.Users = append(refs.Users, authorIDs...)
 	return transcriptResolvers(ctx, globals, cc, refs, mode)
+}
+
+// digestBody renders a digest message body to transcript lines: OSC 8
+// hyperlinks (when active) then inline mention resolution, the same final
+// transforms the conversation path's transcriptContent applies.
+func digestBody(content string, resolvers render.MentionResolvers, opts render.TranscriptOptions) []string {
+	content = render.ApplyHyperlinks(content, opts.Hyperlink)
+	return bodyLines(render.ResolveMentionsForDisplay(content, resolvers))
 }
 
 // appendAuthorContent accumulates an author's user id (for speaker resolution)
@@ -142,7 +150,7 @@ func laterDigestItem(ctx context.Context, cc *clientContext, it slack.LaterItem,
 	}
 	id, name := authorIDName(it.Message.Author, resolvers.User)
 	item.Title = render.SpeakerLine(it.TS, name, id, replyNote(it.Message.ReplyCount), opts)
-	item.Details = bodyLines(render.ResolveMentionsForDisplay(it.Message.Content, resolvers))
+	item.Details = digestBody(it.Message.Content, resolvers, opts)
 	return item
 }
 
@@ -207,7 +215,7 @@ func renderDraftsTranscript(ctx context.Context, globals *GlobalFlags, cc *clien
 		if d.PostAt > 0 {
 			title += render.Dim(" · scheduled "+groupedStamp(d.PostAt, opts.Loc), opts.Color)
 		}
-		details := bodyLines(render.ResolveMentionsForDisplay(d.Text, resolvers))
+		details := digestBody(d.Text, resolvers, opts)
 		if len(details) == 0 {
 			details = []string{render.Dim("(no text)", opts.Color)}
 		}

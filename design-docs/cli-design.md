@@ -201,6 +201,17 @@ This supersedes the broader "all writes gated" wording in
     only, dedup transmit-then-place) lives in `internal/cli/emojiimage.go` +
     `internal/slack/emojiimage.go`, keeping `graphics` Slack-agnostic and
     PNG-in.
+  - **OSC 8 hyperlinks are the same shape as images.** `--hyperlinks
+    <off|auto|on>` renders a `[label](url)` link's label as a clickable OSC 8
+    terminal hyperlink instead of the plain `label (url)` form. The generic
+    encoder + Mode/Active live in `lib-agent-cli/hyperlink` (sibling of
+    `graphics`), bound opt-in via `libcli.Options{Hyperlinks: true}`, hidden from
+    `--help`/MCP. It differs from images in one respect: OSC 8 has no reliable
+    capability probe, so `auto` gates on a TTY alone — the sequence degrades to
+    plain label text where unsupported. The render seam is
+    `TranscriptOptions.Hyperlink func(url, label) string` (nil → plain form);
+    `ApplyHyperlinks` rewrites the markdown links, applied in both the
+    conversation and digest body pipelines.
 
 ## Message formatting dialect
 

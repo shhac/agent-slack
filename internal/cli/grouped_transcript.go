@@ -23,9 +23,10 @@ func transcriptOpts(globals *GlobalFlags, tflags *transcriptFlags) (render.Trans
 		return render.TranscriptOptions{}, err
 	}
 	return render.TranscriptOptions{
-		Loc:     loc,
-		WithIDs: tflags.withIDs,
-		Color:   output.Enabled(globals.stdout),
+		Loc:       loc,
+		WithIDs:   tflags.withIDs,
+		Color:     output.Enabled(globals.stdout),
+		Hyperlink: hyperlinkEncoder(globals),
 	}, nil
 }
 

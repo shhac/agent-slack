@@ -58,6 +58,24 @@ type TranscriptOptions struct {
 	// it. Applied last (after link/mention rewriting and truncation) so an
 	// escape sequence is never split.
 	InlineEmoji func(name string) string
+	// Hyperlink, when set, renders a markdown link's label as an OSC 8 terminal
+	// hyperlink to its url (encode(url, label)); nil falls back to the plain
+	// "label (url)" form. Like InlineEmoji it is the seam for a terminal feature
+	// the render layer stays ignorant of — nil on every non-TTY path.
+	Hyperlink func(url, label string) string
+}
+
+// ApplyHyperlinks rewrites [label](url) markdown links via encode (e.g. into OSC
+// 8 hyperlinks). With encode nil it is a no-op, so a caller keeps the markdown
+// form for the plain/LLM path.
+func ApplyHyperlinks(text string, encode func(url, label string) string) string {
+	if encode == nil || text == "" {
+		return text
+	}
+	return markdownLinkRe.ReplaceAllStringFunc(text, func(m string) string {
+		sub := markdownLinkRe.FindStringSubmatch(m)
+		return encode(sub[2], sub[1])
+	})
 }
 
 // mentionResolvers bundles the per-entity resolvers for inline body rewriting.
@@ -350,7 +368,11 @@ func transcriptContent(msg MessageSummary, opts TranscriptOptions) string {
 	if content == "" {
 		return ""
 	}
-	content = markdownLinkRe.ReplaceAllString(content, "$1 ($2)")
+	if opts.Hyperlink != nil {
+		content = ApplyHyperlinks(content, opts.Hyperlink)
+	} else {
+		content = markdownLinkRe.ReplaceAllString(content, "$1 ($2)")
+	}
 	content = ResolveMentionsForDisplay(content, opts.mentionResolvers())
 	return applyInlineEmoji(content, opts.InlineEmoji)
 }
