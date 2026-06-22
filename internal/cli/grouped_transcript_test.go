@@ -144,6 +144,26 @@ func TestUsergroupGetTranscriptUnresolved(t *testing.T) {
 	}
 }
 
+func TestUsergroupGetTranscriptAllMissed(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("usergroups.list", map[string]any{"ok": true, "usergroups": []any{}})
+
+	out, _, err := f.run(t, "usergroup", "get", "@ghost1", "@ghost2", "--format", "transcript")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"@ghost1 — not found", "@ghost2 — not found"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("transcript missing %q\n%s", want, out)
+		}
+	}
+	// 0 resolved → an Unresolved section directly under the summary, with no
+	// stray empty leading block.
+	if !strings.Contains(out, "0 usergroups ────\n\nUnresolved") {
+		t.Errorf("all-missed digest should have no empty leading block:\n%s", out)
+	}
+}
+
 func TestCanvasGetTranscript(t *testing.T) {
 	f := newCLIFixture(t)
 	host := fileHost(t, "text/html", `<html><body><main><h1>Plan</h1><p>Step <strong>one</strong></p></main></body></html>`)

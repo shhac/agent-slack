@@ -53,6 +53,25 @@ func TestRenderGroupedFlatWithLead(t *testing.T) {
 	}
 }
 
+func TestRenderGroupedMultiSectionSkipsEmpty(t *testing.T) {
+	g := Grouped{
+		Summary: "X",
+		Sections: []GroupSection{
+			{Heading: "A", Items: []GroupItem{{Title: "a1"}}},
+			{Heading: "Empty", Items: nil},
+			{Heading: "B", Items: []GroupItem{{Title: "b1"}}},
+		},
+	}
+	got := RenderGrouped(g, TranscriptOptions{})
+	want := "──── X ────\n\nA\n  a1\n\nB\n  b1\n"
+	if got != want {
+		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+	if strings.Contains(got, "Empty") {
+		t.Errorf("empty section should be skipped (no heading, no blank gap):\n%s", got)
+	}
+}
+
 func TestRenderGroupedEmpty(t *testing.T) {
 	got := RenderGrouped(Grouped{Summary: "Unreads · 0", Empty: "No unreads."}, TranscriptOptions{})
 	if !strings.Contains(got, "No unreads.") {

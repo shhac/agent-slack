@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -73,8 +72,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	flags.register(cmd, render.DefaultMaxBodyChars)
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	cmd.Flags().BoolVar(&noDownload, "no-download", false, "Skip downloading attached files")
 	parent.AddCommand(cmd)
 }
@@ -126,8 +124,7 @@ func registerMessageList(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	flags.register(cmd, render.DefaultMaxBodyChars)
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	cmd.Flags().IntVar(&limit, "limit", 25, "Max messages (channel history mode, max 200)")
 	cmd.Flags().StringVar(&oldest, "oldest", "", "Only messages after this ts")
 	cmd.Flags().StringVar(&latest, "latest", "", "Only messages before this ts")

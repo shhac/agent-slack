@@ -142,7 +142,7 @@ func (c *completionCollector) addChannels() {
 func (c *completionCollector) addUsers() {
 	for _, e := range loadCacheEntries[CompactUser](c.cacheDir, c.workspaceURL, "users") {
 		u := e.Value
-		realName := firstNonEmpty(u.RealName, u.DisplayName)
+		realName := FirstNonEmpty(u.RealName, u.DisplayName)
 		if u.Name == "" {
 			c.add(u.ID, realName, e.FetchedAt) // no handle — id only
 			continue
@@ -162,7 +162,7 @@ func (c *completionCollector) addUsers() {
 func (c *completionCollector) addUsergroups() {
 	for _, e := range loadCacheEntries[CompactUsergroup](c.cacheDir, c.workspaceURL, "usergroup-entities") {
 		g := e.Value
-		desc := firstNonEmpty(g.Name, g.Description)
+		desc := FirstNonEmpty(g.Name, g.Description)
 		if g.Handle == "" {
 			c.add(g.ID, desc, e.FetchedAt) // no handle — id only
 			continue
@@ -174,7 +174,7 @@ func (c *completionCollector) addUsergroups() {
 
 func (c *completionCollector) addTriggers() {
 	for id, e := range loadCacheEntries[WorkflowPreview](c.cacheDir, c.workspaceURL, "workflow-triggers") {
-		c.add(id, firstNonEmpty(e.Value.Name, e.Value.Workflow.Title), e.FetchedAt)
+		c.add(id, FirstNonEmpty(e.Value.Name, e.Value.Workflow.Title), e.FetchedAt)
 	}
 }
 

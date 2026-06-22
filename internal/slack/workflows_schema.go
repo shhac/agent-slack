@@ -49,7 +49,7 @@ func GetWorkflowSchema(ctx context.Context, c *Client, workflowID string) (Workf
 // schema: step titles plus the open_form step's fields. Pure.
 func assembleWorkflowSchema(wf map[string]any, workflowID string) WorkflowSchema {
 	schema := WorkflowSchema{
-		WorkflowID:  firstNonEmpty(getStr(wf, "id"), workflowID),
+		WorkflowID:  FirstNonEmpty(getStr(wf, "id"), workflowID),
 		Title:       getStr(wf, "title"),
 		Description: getStr(wf, "description"),
 		Fields:      []FormField{},
@@ -58,7 +58,7 @@ func assembleWorkflowSchema(wf map[string]any, workflowID string) WorkflowSchema
 	for _, step := range recItems(getArr(wf, "steps")) {
 		fn := getRec(step, "function")
 		callbackID := getStr(fn, "callback_id")
-		schema.Steps = append(schema.Steps, firstNonEmpty(getStr(fn, "title"), callbackID))
+		schema.Steps = append(schema.Steps, FirstNonEmpty(getStr(fn, "title"), callbackID))
 
 		if callbackID != "open_form" {
 			continue

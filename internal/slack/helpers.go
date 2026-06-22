@@ -92,7 +92,9 @@ func orDefault(v, def int) int {
 	return v
 }
 
-func firstNonEmpty(values ...string) string {
+// FirstNonEmpty returns the first non-empty string, or "" if all are empty —
+// the standard "fall back through a preference order" helper.
+func FirstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {
 			return v

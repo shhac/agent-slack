@@ -1,7 +1,6 @@
 package cli
 
 import (
-	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/slack"
@@ -45,8 +44,7 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 	listCmd.Flags().IntVar(&limit, "limit", 200, "Max users")
 	listCmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
 	listCmd.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot users")
-	listTflags.register(listCmd)
-	libcli.AllowFormats(listCmd, transcriptFormat)
+	enableTranscript(listCmd, listTflags)
 	userCmd.AddCommand(listCmd)
 
 	getTflags := &transcriptFlags{}
@@ -72,8 +70,7 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 			})
 		},
 	}
-	getTflags.register(getCmd)
-	libcli.AllowFormats(getCmd, transcriptFormat)
+	enableTranscript(getCmd, getTflags)
 	userCmd.AddCommand(getCmd)
 
 	dmOpenCmd := &cobra.Command{

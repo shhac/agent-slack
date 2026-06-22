@@ -61,7 +61,7 @@ func PostMessage(ctx context.Context, c *Client, m OutgoingMessage) (PostResult,
 		return PostResult{}, err
 	}
 	return PostResult{
-		ChannelID: firstNonEmpty(getStr(resp, "channel"), m.ChannelID),
+		ChannelID: FirstNonEmpty(getStr(resp, "channel"), m.ChannelID),
 		TS:        getStr(resp, "ts"),
 	}, nil
 }
@@ -92,7 +92,7 @@ func ScheduleMessage(ctx context.Context, c *Client, m OutgoingMessage, postAt i
 		return ScheduleResult{}, err
 	}
 	out := ScheduleResult{
-		ChannelID:          firstNonEmpty(getStr(resp, "channel"), m.ChannelID),
+		ChannelID:          FirstNonEmpty(getStr(resp, "channel"), m.ChannelID),
 		ScheduledMessageID: getStr(resp, "scheduled_message_id"),
 		PostAt:             postAt,
 	}

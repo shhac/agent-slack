@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -52,8 +51,7 @@ func registerChannelGet(parent *cobra.Command, globals *GlobalFlags) {
 			})
 		},
 	}
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	parent.AddCommand(cmd)
 }
 
@@ -182,8 +180,7 @@ func registerChannelList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().BoolVar(&all, "all", false, "List all workspace conversations (conversations.list)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max conversations per page")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	parent.AddCommand(cmd)
 }
 

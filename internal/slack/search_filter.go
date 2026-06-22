@@ -32,7 +32,7 @@ func downloadSearchFile(ctx context.Context, c *Client, f map[string]any, opts S
 	if !passesFileContentTypeFilter(mode, mimetype, opts.ContentType) {
 		return SearchFileItem{}, false
 	}
-	fileURL := firstNonEmpty(getStr(f, "url_private_download"), getStr(f, "url_private"))
+	fileURL := FirstNonEmpty(getStr(f, "url_private_download"), getStr(f, "url_private"))
 	id := getStr(f, "id")
 	if fileURL == "" || id == "" {
 		return SearchFileItem{}, false
@@ -50,7 +50,7 @@ func downloadSearchFile(ctx context.Context, c *Client, f map[string]any, opts S
 		return SearchFileItem{}, false
 	}
 	return SearchFileItem{
-		Title:    strings.TrimSpace(firstNonEmpty(getStr(f, "title"), getStr(f, "name"))),
+		Title:    strings.TrimSpace(FirstNonEmpty(getStr(f, "title"), getStr(f, "name"))),
 		Mimetype: mimetype,
 		Mode:     mode,
 		Path:     path,

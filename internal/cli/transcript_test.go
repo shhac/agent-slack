@@ -47,6 +47,37 @@ func TestMessageGetTranscript(t *testing.T) {
 	}
 }
 
+// TestMessageGetTranscriptFooter pins the dim thread/permalink footer: a
+// threaded parent shows the reply count, a plain message just the permalink.
+func TestMessageGetTranscriptFooter(t *testing.T) {
+	const url = "https://acme.slack.com/archives/C0123ABCD/p1782032540314239"
+
+	threaded := newCLIFixture(t)
+	root := simpleMessage("1782032540.314239", "U12345555", "root")
+	root["reply_count"] = float64(4)
+	threaded.server.HandleBody("conversations.history", historyWith(root))
+	threaded.handleUser("U12345555", "alice")
+	out, _, err := threaded.run(t, "message", "get", url, "--format", "transcript", "--tz", "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "└ thread: 4 replies · "+url) {
+		t.Errorf("threaded footer missing/wrong:\n%s", out)
+	}
+
+	plain := newCLIFixture(t)
+	plain.server.HandleBody("conversations.history", historyWith(
+		simpleMessage("1782032540.314239", "U12345555", "solo")))
+	plain.handleUser("U12345555", "alice")
+	out2, _, err := plain.run(t, "message", "get", url, "--format", "transcript", "--tz", "UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out2, "└ "+url) || strings.Contains(out2, "thread:") {
+		t.Errorf("plain footer should be the bare permalink, no thread segment:\n%s", out2)
+	}
+}
+
 // TestMessageGetTranscriptWithIDs toggles the ts id region on the header.
 func TestMessageGetTranscriptWithIDs(t *testing.T) {
 	run := func(args ...string) string {

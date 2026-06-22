@@ -1,7 +1,6 @@
 package cli
 
 import (
-	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/slack"
@@ -40,8 +39,7 @@ func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 			return printList(globals, toAnySlice(result.Channels), listMeta("", extra))
 		},
 	}
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only unread counts, no message content")
 	cmd.Flags().IntVar(&maxMessages, "max-messages", 10, "Max unread messages per channel")
 	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", 4000, "Max content chars per message (-1 = unlimited)")

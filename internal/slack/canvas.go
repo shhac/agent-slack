@@ -86,8 +86,8 @@ func FetchCanvasMarkdown(ctx context.Context, c *Client, canvasID string, opts C
 	if file == nil {
 		return Canvas{}, agenterrors.New("canvas not found (files.info returned no file)", agenterrors.FixableByAgent)
 	}
-	title := strings.TrimSpace(firstNonEmpty(getStr(file, "title"), getStr(file, "name")))
-	downloadURL := firstNonEmpty(getStr(file, "url_private_download"), getStr(file, "url_private"))
+	title := strings.TrimSpace(FirstNonEmpty(getStr(file, "title"), getStr(file, "name")))
+	downloadURL := FirstNonEmpty(getStr(file, "url_private_download"), getStr(file, "url_private"))
 	if downloadURL == "" {
 		return Canvas{}, agenterrors.New("canvas has no download URL", agenterrors.FixableByAgent)
 	}

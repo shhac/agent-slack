@@ -194,7 +194,7 @@ func searchFilesInChannels(ctx context.Context, c *Client, opts SearchOptions) (
 				break
 			}
 			for _, f := range files {
-				title := strings.TrimSpace(firstNonEmpty(getStr(f, "title"), getStr(f, "name")))
+				title := strings.TrimSpace(FirstNonEmpty(getStr(f, "title"), getStr(f, "name")))
 				if queryLower != "" && !strings.Contains(strings.ToLower(title), queryLower) {
 					continue
 				}

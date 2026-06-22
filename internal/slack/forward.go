@@ -37,7 +37,7 @@ func ForwardMessage(ctx context.Context, c *Client, destChannelID string, src Fo
 			return PostResult{}, err
 		}
 		return PostResult{
-			ChannelID: firstNonEmpty(getStr(resp, "channel"), destChannelID),
+			ChannelID: FirstNonEmpty(getStr(resp, "channel"), destChannelID),
 			TS:        getStr(resp, "ts"),
 		}, nil
 	}

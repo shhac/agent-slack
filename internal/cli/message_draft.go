@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -93,8 +92,7 @@ func registerDraftList(parent *cobra.Command, globals *GlobalFlags) {
 			return printList(globals, items, nil)
 		},
 	}
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	parent.AddCommand(cmd)
 }
 
@@ -116,8 +114,7 @@ func registerDraftGet(parent *cobra.Command, globals *GlobalFlags) {
 			return emitItem(globals, draftItem(d))
 		},
 	}
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	parent.AddCommand(cmd)
 }
 

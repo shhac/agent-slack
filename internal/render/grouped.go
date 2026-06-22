@@ -103,6 +103,12 @@ func Emphasize(s string, color bool) string { return paint(color, ansiName, s) }
 // detail of a digest title (scheduled time, counts) and ad-hoc dim fragments.
 func Dim(s string, color bool) string { return paint(color, ansiDim, s) }
 
+// GroupedTimeLayout is the timestamp format for grouped views: unlike the
+// conversation transcript (day divider + clock), grouped views aren't
+// day-bounded, so each line carries the full date. Shared by SpeakerLine and the
+// CLI's grouped stamp helpers so the two never drift.
+const GroupedTimeLayout = "2006-01-02 15:04"
+
 // SpeakerLine formats a conversation-style headline — `[<time>] <Name|id>` plus
 // an optional ` · note` suffix and the `⟨ts …⟩` id region — for a GroupItem
 // Title, using the same painting as the transcript speaker. Unlike the
@@ -117,7 +123,7 @@ func SpeakerLine(ts, name, id, note string, opts TranscriptOptions) string {
 	_, clock, _, unix := formatTranscriptTime(ts, loc)
 	stamp := clock
 	if unix >= 0 {
-		stamp = time.Unix(unix, 0).In(loc).Format("2006-01-02 15:04")
+		stamp = time.Unix(unix, 0).In(loc).Format(GroupedTimeLayout)
 	}
 	if id == "" {
 		id = "unknown"

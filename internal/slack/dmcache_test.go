@@ -8,6 +8,38 @@ import (
 	"github.com/shhac/agent-slack/internal/mockslack"
 )
 
+// Warming users fills dm-channels for free from the same IM list, so the
+// standalone dm-channels pass is skipped (no second conversations.list) and a
+// later OpenDMChannel is a cache hit — the load-bearing "no redundant IM listing,
+// never opens a DM" invariant.
+func TestWarmUsersFillsDMChannelsRidealong(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("users.list", map[string]any{"ok": true, "members": []any{
+		map[string]any{"id": "U0ALICEAA", "name": "alice"},
+	}})
+	server.HandleBody("conversations.list", map[string]any{"ok": true, "channels": []any{
+		map[string]any{"id": "D111", "user": "U0ALICEAA", "is_im": true},
+	}})
+	c := cachingClient(t, server, "https://acme.slack.com", t.TempDir(), CacheNormal, time.Now())
+
+	if err := WarmWorkspace(context.Background(), c, WarmOptions{Categories: []string{WarmUsers, WarmDMChannels}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// The IM list is fetched exactly once (by the users ridealong), not twice.
+	if n := len(server.CallsFor("conversations.list")); n != 1 {
+		t.Errorf("conversations.list called %d times; the dm-channels pass should ride along with users, not re-list", n)
+	}
+	if n := len(server.CallsFor("conversations.open")); n != 0 {
+		t.Errorf("warm called conversations.open %d times; warming must never open a DM", n)
+	}
+	if id, err := OpenDMChannel(context.Background(), c, "U0ALICEAA"); err != nil || id != "D111" {
+		t.Fatalf("id=%q err=%v; ridealong warm should have cached the DM id", id, err)
+	}
+	if n := len(server.CallsFor("conversations.open")); n != 0 {
+		t.Errorf("open after warm hit the network (%d conversations.open); expected a cache hit", n)
+	}
+}
+
 // The user→DM-channel mapping is permanent, so a second open of the same DM is
 // served from the cache without re-hitting conversations.open.
 func TestOpenDMChannelCachesMapping(t *testing.T) {

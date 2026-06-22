@@ -242,7 +242,7 @@ func assembleWorkflowPreview(t map[string]any, triggerID string) WorkflowPreview
 		}
 	}
 	return WorkflowPreview{
-		TriggerID:   firstNonEmpty(getStr(t, "id"), triggerID),
+		TriggerID:   FirstNonEmpty(getStr(t, "id"), triggerID),
 		Type:        getStr(t, "type"),
 		Name:        getStr(t, "name"),
 		Description: getStr(t, "description"),
@@ -251,7 +251,7 @@ func assembleWorkflowPreview(t map[string]any, triggerID string) WorkflowPreview
 			ID:          getStr(wf, "workflow_id"),
 			Title:       getStr(wf, "title"),
 			Description: getStr(wf, "description"),
-			AppID:       firstNonEmpty(getStr(wf, "app_id"), getStr(wfApp, "id")),
+			AppID:       FirstNonEmpty(getStr(wf, "app_id"), getStr(wfApp, "id")),
 			AppName:     getStr(wfApp, "name"),
 		},
 		Collaborators: collaborators,

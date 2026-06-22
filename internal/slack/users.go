@@ -24,6 +24,13 @@ type CompactUser struct {
 	DMID        string `json:"dm_id,omitempty"`
 }
 
+// DisplayLabel is the name to show for a user: display name, then real name,
+// then the bare handle. The canonical speaker/mention precedence shared by the
+// transcript and digest renderers. ("" only when the user has no name at all.)
+func (u CompactUser) DisplayLabel() string {
+	return FirstNonEmpty(u.DisplayName, u.RealName, u.Name)
+}
+
 // ToCompactUser shapes a raw users.list / users.info member object.
 func ToCompactUser(u map[string]any) CompactUser {
 	profile := getRec(u, "profile")

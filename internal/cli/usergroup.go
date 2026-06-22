@@ -1,7 +1,6 @@
 package cli
 
 import (
-	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/slack"
@@ -52,8 +51,7 @@ func registerUsergroupList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().BoolVar(&includeDisabled, "include-disabled", false, "Include deactivated usergroups")
 	cmd.Flags().IntVar(&limit, "limit", 200, "Max results per page (capped at 1000)")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a prior page's @pagination.next_cursor")
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	parent.AddCommand(cmd)
 }
 
@@ -81,8 +79,7 @@ func registerUsergroupGet(parent *cobra.Command, globals *GlobalFlags) {
 			})
 		},
 	}
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	parent.AddCommand(cmd)
 }
 

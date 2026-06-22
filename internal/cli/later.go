@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -81,8 +80,7 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 			return printList(globals, toAnySlice(result.Items), meta)
 		},
 	}
-	tflags.register(cmd)
-	libcli.AllowFormats(cmd, transcriptFormat)
+	enableTranscript(cmd, tflags)
 	cmd.Flags().StringVar(&state, "state", "in_progress", "Filter: in_progress|archived|completed|all")
 	_ = cmd.RegisterFlagCompletionFunc("state", fixedCompletions("in_progress", "archived", "completed", "all"))
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max items")

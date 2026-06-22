@@ -5,14 +5,22 @@ import (
 	"strings"
 	"time"
 
+	libcli "github.com/shhac/lib-agent-cli/cli"
 	"github.com/spf13/cobra"
-
-	output "github.com/shhac/lib-agent-output"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/render"
-	"github.com/shhac/agent-slack/internal/slack"
 )
+
+// enableTranscript wires a command for --format transcript: it registers the
+// display flags (--tz/--with-ids) and allow-lists the format. Bundling the two
+// keeps them from drifting apart — a command that registers the flags but forgets
+// AllowFormats silently rejects the format. (Canvas opts in without the display
+// flags, so it calls libcli.AllowFormats directly.)
+func enableTranscript(cmd *cobra.Command, tflags *transcriptFlags) {
+	tflags.register(cmd)
+	libcli.AllowFormats(cmd, transcriptFormat)
+}
 
 // transcriptFormat is the opt-in --format value rendering a conversation as
 // natural-language text (not JSON). Only the conversation-read commands accept
@@ -66,12 +74,12 @@ func wantsTranscript(globals *GlobalFlags) bool {
 // threadMode is set, reply messages (thread_ts != ts) indent one level under
 // the root.
 func printTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContext, tflags *transcriptFlags, slackMarkdown bool, messages []render.MessageSummary, threadMode bool) error {
-	loc, err := tflags.location()
+	opts, err := transcriptOpts(globals, tflags)
 	if err != nil {
 		return err
 	}
-	color := output.Enabled(globals.stdout)
-	resolveUser := transcriptUserResolver(ctx, cc, messages)
+	opts.SlackMarkdown = slackMarkdown
+	opts.UserName = transcriptUserResolver(ctx, cc, messages)
 
 	items := make([]render.TranscriptMessage, 0, len(messages))
 	for _, m := range messages {
@@ -87,34 +95,14 @@ func printTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContex
 		})
 	}
 
-	text := render.RenderTranscript(items, render.TranscriptOptions{
-		Loc:           loc,
-		WithIDs:       tflags.withIDs,
-		SlackMarkdown: slackMarkdown,
-		UserName:      resolveUser,
-		Color:         color,
-	})
-	_, err = globals.stdout.Write([]byte(text))
+	_, err = globals.stdout.Write([]byte(render.RenderTranscript(items, opts)))
 	return err
 }
 
 // transcriptUserResolver builds an id→display-name lookup for the transcript,
 // resolving every referenced user (cache-then-fetch) up front. Returns "" for
-// ids it can't resolve so the renderer falls back to the bare id.
+// ids it can't resolve so the renderer falls back to the bare id. Shares the
+// display-name precedence with the grouped digests via userNameResolver.
 func transcriptUserResolver(ctx context.Context, cc *clientContext, messages []render.MessageSummary) func(string) string {
-	userIDs := render.CollectReferencedUserIDs(messages, true)
-	users, _ := slack.ResolveUsersByID(ctx, cc.Client, userIDs, slack.ResolveCacheThenFetch)
-	return func(id string) string {
-		u, ok := users[id]
-		if !ok {
-			return ""
-		}
-		if u.DisplayName != "" {
-			return u.DisplayName
-		}
-		if u.RealName != "" {
-			return u.RealName
-		}
-		return u.Name
-	}
+	return userNameResolver(ctx, cc, render.CollectReferencedUserIDs(messages, true))
 }
