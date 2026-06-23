@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -34,7 +35,19 @@ func TestHyperlinkEncoderGating(t *testing.T) {
 	g.Hyperlinks = "on"
 	g.stdout = &bytes.Buffer{}
 	enc := hyperlinkEncoder(g)
-	if enc == nil || enc("https://x.com", "label") == "label" {
-		t.Error("on mode should produce an OSC 8 encoder that wraps the label")
+	if enc == nil {
+		t.Fatal("on mode should produce an OSC 8 encoder")
+	}
+	got := enc("https://x.com", "label")
+	if got == "label" {
+		t.Error("on mode should wrap the label in an OSC 8 sequence")
+	}
+	// The label must carry underline + color so it reads as a link, and the
+	// styling must sit inside the OSC 8 wrap (before the label text).
+	if !strings.Contains(got, linkStyleOn+"label"+linkStyleOff) {
+		t.Errorf("label should be styled (underline + color): %q", got)
+	}
+	if !strings.HasPrefix(got, "\x1b]8;;https://x.com\x1b\\"+linkStyleOn) {
+		t.Errorf("styling should sit inside the OSC 8 wrap: %q", got)
 	}
 }

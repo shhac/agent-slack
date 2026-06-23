@@ -211,7 +211,10 @@ This supersedes the broader "all writes gated" wording in
     plain label text where unsupported. The render seam is
     `TranscriptOptions.Hyperlink func(url, label) string` (nil → plain form);
     `ApplyHyperlinks` rewrites the markdown links, applied in both the
-    conversation and digest body pipelines.
+    conversation and digest body pipelines. `internal/cli/hyperlink.go`
+    additionally underlines and colors the label (ANSI SGR `4;36`) inside the
+    OSC 8 wrap, so a link reads as a link even on terminals that don't tint OSC 8
+    themselves.
 
 ## Message formatting dialect
 
