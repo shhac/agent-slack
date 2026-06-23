@@ -205,6 +205,9 @@ func FetchChannelHistory(ctx context.Context, c *Client, opts HistoryOptions) ([
 				break
 			}
 		}
+		// Stop once we have `limit` messages. Without reaction filters the first
+		// page is already sized to `limit`, so one page always suffices; with
+		// filters, post-filtering can leave a page short, so follow has_more.
 		if len(out) >= limit || !hasReactionFilters {
 			return false, nil
 		}
