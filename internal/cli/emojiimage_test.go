@@ -8,9 +8,54 @@ import (
 	"image/color"
 	"image/gif"
 	"image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// TestInlineEmojiResolverGating — the --images gate must yield no resolver
+// (leaving emoji as text, no escape bytes) for off/auto-on-non-TTY/bad modes.
+// These branches return before touching the client, so a nil clientContext is
+// safe; "on" is excluded as it would proceed to fetch.
+func TestInlineEmojiResolverGating(t *testing.T) {
+	for _, mode := range []string{"off", "", "auto", "bogus"} {
+		g := &GlobalFlags{}
+		g.Images = mode
+		g.stdout = &bytes.Buffer{} // never a TTY
+		if r := inlineEmojiResolver(context.Background(), g, nil); r != nil {
+			t.Errorf("inlineEmojiResolver(%q) on a non-TTY must be nil", mode)
+		}
+	}
+}
+
+// TestEmojiImageCacheDiskHit — a PNG already on disk (a prior run) is returned
+// without a network fetch, exercising the cross-run cache keyed by URL.
+func TestEmojiImageCacheDiskHit(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	const url = "u-parrot"
+	if err := os.MkdirAll(emojiImagesDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	png := pngBytesFixture(t, color.RGBA{0, 0, 255, 255})
+	if err := os.WriteFile(filepath.Join(emojiImagesDir(), emojiCacheFile(url)), png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fetched := 0
+	fetch := func(context.Context, string) ([]byte, error) {
+		fetched++
+		return nil, stderrors.New("must not fetch on a disk hit")
+	}
+	cache := newEmojiImageCache(context.Background(), fetch, map[string]string{"parrot": url})
+
+	if esc := cache.escape("parrot"); esc == "" {
+		t.Error("a disk-cached emoji should still produce an escape")
+	}
+	if fetched != 0 {
+		t.Errorf("disk hit must not fetch, got %d fetches", fetched)
+	}
+}
 
 func pngBytesFixture(t *testing.T, c color.Color) []byte {
 	t.Helper()
