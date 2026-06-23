@@ -349,6 +349,16 @@ func transcriptBodyLines(m TranscriptMessage, opts TranscriptOptions) []string {
 // markdown links to `label (url)` and bare @id mentions to @DisplayName.
 func transcriptContent(msg MessageSummary, opts TranscriptOptions) string {
 	content := renderContent(msg.Text, msg.Blocks, msg.Attachments, opts.SlackMarkdown)
+	return FinalizeContent(content, opts.mentionResolvers(), opts)
+}
+
+// FinalizeContent applies the transcript body's final text transforms, in order:
+// links (OSC 8 hyperlinks when active, else plain "label (url)" prose), inline
+// entity resolution (r), then inline-emoji images. It is the single place the
+// conversation (transcriptContent) and digest (digestBody) paths share, so a
+// message body renders identically whichever surface shows it. Empty content
+// passes through unchanged.
+func FinalizeContent(content string, r MentionResolvers, opts TranscriptOptions) string {
 	if content == "" {
 		return ""
 	}
@@ -357,7 +367,7 @@ func transcriptContent(msg MessageSummary, opts TranscriptOptions) string {
 	} else {
 		content = markdownLinkRe.ReplaceAllString(content, "$1 ($2)")
 	}
-	content = ResolveMentionsForDisplay(content, opts.mentionResolvers())
+	content = ResolveMentionsForDisplay(content, r)
 	return applyInlineEmoji(content, opts.InlineEmoji)
 }
 

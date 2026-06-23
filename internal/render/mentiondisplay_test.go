@@ -71,6 +71,35 @@ func TestResolveMentionsForDisplayNilResolvers(t *testing.T) {
 	}
 }
 
+func TestFinalizeContent(t *testing.T) {
+	r := testResolvers() // User: U0123456789 → Alice
+
+	// Plain path: markdown link → "label (url)" prose, mention → name.
+	var opts TranscriptOptions
+	if got := FinalizeContent("see [docs](https://x.com/a) ping @U0123456789", r, opts); got != "see docs (https://x.com/a) ping @Alice" {
+		t.Errorf("plain = %q", got)
+	}
+	// Hyperlink path: the label becomes an OSC-8 link instead of "label (url)".
+	opts.Hyperlink = func(url, label string) string { return "<" + label + "|" + url + ">" }
+	if got := FinalizeContent("see [docs](https://x.com/a)", r, opts); got != "see <docs|https://x.com/a>" {
+		t.Errorf("hyperlink = %q", got)
+	}
+	// Inline emoji is applied last via opts.InlineEmoji.
+	opts.Hyperlink = nil
+	opts.InlineEmoji = func(name string) string {
+		if name == "parrot" {
+			return "<IMG>"
+		}
+		return ""
+	}
+	if got := FinalizeContent("hi :parrot:", r, opts); got != "hi <IMG>" {
+		t.Errorf("emoji = %q", got)
+	}
+	if FinalizeContent("", r, opts) != "" {
+		t.Error("empty content should pass through")
+	}
+}
+
 func TestApplyHyperlinks(t *testing.T) {
 	enc := func(url, label string) string { return "<" + label + "|" + url + ">" }
 	in := "see [here](https://x.com/a) and [docs](https://y.com)"

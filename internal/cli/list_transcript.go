@@ -17,21 +17,16 @@ import (
 // --- unreads -----------------------------------------------------------------
 
 func renderUnreadsTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContext, tflags *transcriptFlags, channels []slack.UnreadChannel) error {
-	opts, err := transcriptOpts(globals, tflags)
-	if err != nil {
-		return err
-	}
-	mode, err := parseResolveMode(tflags.resolve)
-	if err != nil {
-		return err
-	}
 	var authors, contents []string
 	for _, ch := range channels {
 		for _, m := range ch.Messages {
 			authors, contents = appendAuthorContent(authors, contents, m.Author, m.Content)
 		}
 	}
-	resolvers := digestResolvers(ctx, globals, cc, mode, authors, contents)
+	opts, resolvers, err := digestSetup(ctx, globals, cc, tflags, authors, contents)
+	if err != nil {
+		return err
+	}
 
 	totalUnread, totalMentions := 0, 0
 	sections := make([]render.GroupSection, 0, len(channels))
@@ -72,8 +67,24 @@ func digestResolvers(ctx context.Context, globals *GlobalFlags, cc *clientContex
 // hyperlinks (when active) then inline mention resolution, the same final
 // transforms the conversation path's transcriptContent applies.
 func digestBody(content string, resolvers render.MentionResolvers, opts render.TranscriptOptions) []string {
-	content = render.ApplyHyperlinks(content, opts.Hyperlink)
-	return bodyLines(render.ResolveMentionsForDisplay(content, resolvers))
+	return bodyLines(render.FinalizeContent(content, resolvers, opts))
+}
+
+// digestSetup folds the preamble the three digest builders share: build the
+// transcript options, parse --resolve, wire the inline-emoji resolver (so digests
+// render emoji like the conversation transcript), and resolve referenced entities
+// from the speaker (authorIDs) plus the ids found in the rendered contents.
+func digestSetup(ctx context.Context, globals *GlobalFlags, cc *clientContext, tflags *transcriptFlags, authorIDs, contents []string) (render.TranscriptOptions, render.MentionResolvers, error) {
+	opts, err := transcriptOpts(globals, tflags)
+	if err != nil {
+		return opts, render.MentionResolvers{}, err
+	}
+	mode, err := parseResolveMode(tflags.resolve)
+	if err != nil {
+		return opts, render.MentionResolvers{}, err
+	}
+	opts.InlineEmoji = inlineEmojiResolver(ctx, globals, cc)
+	return opts, digestResolvers(ctx, globals, cc, mode, authorIDs, contents), nil
 }
 
 // appendAuthorContent accumulates an author's user id (for speaker resolution)
@@ -111,21 +122,16 @@ func unreadChannelLabel(c slack.UnreadChannel) string {
 // --- later -------------------------------------------------------------------
 
 func renderLaterTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContext, tflags *transcriptFlags, items []slack.LaterItem) error {
-	opts, err := transcriptOpts(globals, tflags)
-	if err != nil {
-		return err
-	}
-	mode, err := parseResolveMode(tflags.resolve)
-	if err != nil {
-		return err
-	}
 	var authors, contents []string
 	for _, it := range items {
 		if it.Message != nil {
 			authors, contents = appendAuthorContent(authors, contents, it.Message.Author, it.Message.Content)
 		}
 	}
-	resolvers := digestResolvers(ctx, globals, cc, mode, authors, contents)
+	opts, resolvers, err := digestSetup(ctx, globals, cc, tflags, authors, contents)
+	if err != nil {
+		return err
+	}
 
 	byState := map[string][]render.GroupItem{}
 	counts := map[string]int{}
@@ -194,19 +200,14 @@ func laterLead(ctx context.Context, cc *clientContext, it slack.LaterItem, loc *
 // --- drafts ------------------------------------------------------------------
 
 func renderDraftsTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContext, tflags *transcriptFlags, drafts []slack.Draft) error {
-	opts, err := transcriptOpts(globals, tflags)
-	if err != nil {
-		return err
-	}
-	mode, err := parseResolveMode(tflags.resolve)
-	if err != nil {
-		return err
-	}
 	draftTexts := make([]string, len(drafts))
 	for i, d := range drafts {
 		draftTexts[i] = d.Text
 	}
-	resolvers := digestResolvers(ctx, globals, cc, mode, nil, draftTexts)
+	opts, resolvers, err := digestSetup(ctx, globals, cc, tflags, nil, draftTexts)
+	if err != nil {
+		return err
+	}
 
 	items := make([]render.GroupItem, 0, len(drafts))
 	for _, d := range drafts {
