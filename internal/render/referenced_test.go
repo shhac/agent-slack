@@ -28,13 +28,13 @@ func TestCollectReferencedUserIDs(t *testing.T) {
 		},
 	}
 
-	withoutReactions := CollectReferencedUserIDs(messages, false)
+	withoutReactions := CollectReferencedIDs(messages, false).Users
 	want := []string{"U11111111", "U22222222", "W33333333", "U44444444", "U55555555"}
 	if !reflect.DeepEqual(withoutReactions, want) {
 		t.Errorf("got %v, want %v", withoutReactions, want)
 	}
 
-	withReactions := CollectReferencedUserIDs(messages, true)
+	withReactions := CollectReferencedIDs(messages, true).Users
 	if !reflect.DeepEqual(withReactions, append(want, "U66666666")) {
 		t.Errorf("got %v", withReactions)
 	}
@@ -49,7 +49,7 @@ func TestCollectReferencedUserIDsIgnoresInvalid(t *testing.T) {
 			"users":   []any{"C12345678"},
 		}},
 	}}
-	if got := CollectReferencedUserIDs(messages, true); len(got) != 0 {
+	if got := CollectReferencedIDs(messages, true).Users; len(got) != 0 {
 		t.Errorf("got %v, want empty", got)
 	}
 }

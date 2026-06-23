@@ -98,12 +98,6 @@ func (a *idAccumulator) addGroup(id string) {
 	}
 }
 
-// CollectReferencedUserIDs is the user-only projection of CollectReferencedIDs,
-// kept for callers that resolve only users.
-func CollectReferencedUserIDs(messages []MessageSummary, includeReactions bool) []string {
-	return CollectReferencedIDs(messages, includeReactions).Users
-}
-
 // refCollector threads the three per-type add funcs through one recursive walk.
 type refCollector struct {
 	addU, addC, addG func(string)
