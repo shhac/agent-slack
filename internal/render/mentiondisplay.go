@@ -29,10 +29,10 @@ var (
 	// MrkdwnToMarkdown; what reaches here is the BARE id forms (common from
 	// rich_text, which carries only the id) plus tokens mrkdwn never handled
 	// (usergroups, slack:// deep links, dates).
-	displayChannelTokenRe   = regexp.MustCompile(`<#([CG][A-Z0-9]{7,})(?:\|([^>]*))?>`)
-	displayUsergroupTokenRe = regexp.MustCompile(`<!subteam\^(S[A-Z0-9]{7,})(?:\|([^>]*))?>`)
-	displaySlackUserRe      = regexp.MustCompile(`<slack://user\?[^>|]*\bid=([UW][A-Z0-9]{7,})[^>|]*(?:\|([^>]*))?>`)
-	displaySlackChannelRe   = regexp.MustCompile(`<slack://channel\?[^>|]*\bid=([CG][A-Z0-9]{7,})[^>|]*(?:\|([^>]*))?>`)
+	displayChannelTokenRe   = regexp.MustCompile(`<#([CG][A-Z0-9]{8,})(?:\|([^>]*))?>`)
+	displayUsergroupTokenRe = regexp.MustCompile(`<!subteam\^(S[A-Z0-9]{8,})(?:\|([^>]*))?>`)
+	displaySlackUserRe      = regexp.MustCompile(`<slack://user\?[^>|]*\bid=([UW][A-Z0-9]{8,})[^>|]*(?:\|([^>]*))?>`)
+	displaySlackChannelRe   = regexp.MustCompile(`<slack://channel\?[^>|]*\bid=([CG][A-Z0-9]{8,})[^>|]*(?:\|([^>]*))?>`)
 	displayDateRe           = regexp.MustCompile(`<!date\^\d+\^[^>|]*(?:\|([^>]*))?>`)
 )
 
@@ -117,24 +117,17 @@ func atPrefixed(s string) string {
 // used. It scans the post-mrkdwn token forms ResolveMentionsForDisplay rewrites,
 // so the resolver is built for exactly the ids that will be looked up.
 func CollectDisplayIDs(texts ...string) ReferencedIDs {
-	var r ReferencedIDs
-	seenU, seenC, seenG := map[string]bool{}, map[string]bool{}, map[string]bool{}
-	add := func(seen map[string]bool, list *[]string, ok func(string) bool, id string) {
-		if ok(id) && !seen[id] {
-			seen[id] = true
-			*list = append(*list, id)
-		}
-	}
+	a := newIDAccumulator()
 	for _, t := range texts {
 		for _, m := range mentionAtIDRe.FindAllStringSubmatch(t, -1) {
-			add(seenU, &r.Users, IsReferencedUserID, m[1])
+			a.addUser(m[1])
 		}
 		for _, m := range displayChannelTokenRe.FindAllStringSubmatch(t, -1) {
-			add(seenC, &r.Channels, IsReferencedChannelID, m[1])
+			a.addChannel(m[1])
 		}
 		for _, m := range displayUsergroupTokenRe.FindAllStringSubmatch(t, -1) {
-			add(seenG, &r.Usergroups, IsReferencedUsergroupID, m[1])
+			a.addGroup(m[1])
 		}
 	}
-	return r
+	return a.refs
 }

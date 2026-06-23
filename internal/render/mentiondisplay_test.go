@@ -113,6 +113,17 @@ func TestApplyHyperlinks(t *testing.T) {
 	}
 }
 
+func TestCollectDisplayIDsBound(t *testing.T) {
+	// The display-token regexes and the IsReferenced* validators now share one
+	// bound ({8,} after prefix, 9 total), so the matcher never collects an id the
+	// validator would discard. A 9-char user id is kept; an 8-char one (too short
+	// for a real Slack id) is matched by neither.
+	refs := CollectDisplayIDs("@U12345678 and @U1234567")
+	if len(refs.Users) != 1 || refs.Users[0] != "U12345678" {
+		t.Errorf("Users = %v, want [U12345678] (9-char kept, 8-char dropped)", refs.Users)
+	}
+}
+
 func TestCollectDisplayIDs(t *testing.T) {
 	refs := CollectDisplayIDs(
 		"hi @U0123456789 and @U0123456789",

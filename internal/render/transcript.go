@@ -109,7 +109,7 @@ var markdownLinkRe = regexp.MustCompile(`\[([^\]]*)\]\((https?://[^)]+)\)`)
 // ends the match at the first lowercase/space/punctuation, and a real boundary
 // assertion would *miss* a mention butted straight against following prose —
 // Slack allows `<@U…>for`, which renders as `@U…for` with no space.
-var mentionAtIDRe = regexp.MustCompile(`@([UW][A-Z0-9]{7,})`)
+var mentionAtIDRe = regexp.MustCompile(`@([UW][A-Z0-9]{8,})`)
 
 // transcriptMeta is the per-message data RenderTranscript precomputes so the
 // render pass can see neighbours (grouping, day rollovers, last-reply) without

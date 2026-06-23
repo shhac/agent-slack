@@ -43,36 +43,17 @@ type ReferencedIDs struct {
 // in a single tree-walk. Order is first-seen; map walks are key-sorted for
 // determinism.
 func CollectReferencedIDs(messages []MessageSummary, includeReactions bool) ReferencedIDs {
-	var r ReferencedIDs
-	seenU, seenC, seenG := map[string]bool{}, map[string]bool{}, map[string]bool{}
-	addU := func(id string) {
-		if IsReferencedUserID(id) && !seenU[id] {
-			seenU[id] = true
-			r.Users = append(r.Users, id)
-		}
-	}
-	addC := func(id string) {
-		if IsReferencedChannelID(id) && !seenC[id] {
-			seenC[id] = true
-			r.Channels = append(r.Channels, id)
-		}
-	}
-	addG := func(id string) {
-		if IsReferencedUsergroupID(id) && !seenG[id] {
-			seenG[id] = true
-			r.Usergroups = append(r.Usergroups, id)
-		}
-	}
-	refs := refCollector{addU: addU, addC: addC, addG: addG}
+	a := newIDAccumulator()
+	refs := refCollector{addU: a.addUser, addC: a.addChannel, addG: a.addGroup}
 
 	for _, msg := range messages {
-		addU(msg.User)
+		a.addUser(msg.User)
 		refs.fromText(msg.Text)
 		for _, b := range msg.Blocks {
 			refs.fromValue(b)
 		}
-		for _, a := range msg.Attachments {
-			refs.fromValue(a)
+		for _, at := range msg.Attachments {
+			refs.fromValue(at)
 		}
 		if includeReactions {
 			for _, rx := range msg.Reactions {
@@ -80,7 +61,41 @@ func CollectReferencedIDs(messages []MessageSummary, includeReactions bool) Refe
 			}
 		}
 	}
-	return r
+	return a.refs
+}
+
+// idAccumulator gathers distinct user/channel/usergroup ids in first-seen order,
+// each filtered by its IsReferenced* validity check. Shared by CollectReferencedIDs
+// (a block/text tree-walk) and CollectDisplayIDs (a post-render token scan) so the
+// dedup bookkeeping and the validity gate live in one place.
+type idAccumulator struct {
+	refs                ReferencedIDs
+	seenU, seenC, seenG map[string]bool
+}
+
+func newIDAccumulator() *idAccumulator {
+	return &idAccumulator{seenU: map[string]bool{}, seenC: map[string]bool{}, seenG: map[string]bool{}}
+}
+
+func (a *idAccumulator) addUser(id string) {
+	if IsReferencedUserID(id) && !a.seenU[id] {
+		a.seenU[id] = true
+		a.refs.Users = append(a.refs.Users, id)
+	}
+}
+
+func (a *idAccumulator) addChannel(id string) {
+	if IsReferencedChannelID(id) && !a.seenC[id] {
+		a.seenC[id] = true
+		a.refs.Channels = append(a.refs.Channels, id)
+	}
+}
+
+func (a *idAccumulator) addGroup(id string) {
+	if IsReferencedUsergroupID(id) && !a.seenG[id] {
+		a.seenG[id] = true
+		a.refs.Usergroups = append(a.refs.Usergroups, id)
+	}
 }
 
 // CollectReferencedUserIDs is the user-only projection of CollectReferencedIDs,
