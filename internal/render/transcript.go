@@ -12,15 +12,6 @@ import (
 // etc.) so nested replies read as a thread.
 type TranscriptMessage struct {
 	Summary MessageSummary
-	// Edited marks the message as having been edited (a `(edited)` header tag).
-	// Callers must populate this from the source message; when zero the renderer
-	// falls back to Summary.Edited.
-	Edited bool
-	// BotName is the display name for a bot/app author (from the message's
-	// username / bot_profile.name). When set and the message has no human User,
-	// the speaker renders as `<BotName|app>`. Callers must populate this; when
-	// empty the renderer falls back to Summary.BotName.
-	BotName string
 	// Depth is the thread-nesting level; replies render indented one level
 	// under their parent.
 	Depth int
@@ -247,7 +238,7 @@ func transcriptHeader(m TranscriptMessage, meta transcriptMeta, opts TranscriptO
 		b.WriteString(" ")
 		b.WriteString(transcriptSpeaker(m, opts))
 	}
-	if m.Edited || m.Summary.Edited {
+	if m.Summary.Edited {
 		b.WriteString(paint(opts.Color, ansiDim, " (edited)"))
 	}
 	if opts.WithIDs && m.Summary.TS != "" {
@@ -296,10 +287,7 @@ func transcriptSpeaker(m TranscriptMessage, opts TranscriptOptions) string {
 // speakerParts resolves a message to its (display name, id-suffix) pair: app
 // authors carry the literal "app" suffix, unknown authors render "unknown".
 func speakerParts(m TranscriptMessage, opts TranscriptOptions) (name, id string) {
-	botName := m.BotName
-	if botName == "" {
-		botName = m.Summary.BotName
-	}
+	botName := m.Summary.BotName
 	if m.Summary.User == "" && botName != "" {
 		return botName, "app"
 	}
@@ -320,11 +308,7 @@ func speakerKey(m TranscriptMessage) string {
 	if m.Summary.User != "" {
 		return "u:" + m.Summary.User
 	}
-	botName := m.BotName
-	if botName == "" {
-		botName = m.Summary.BotName
-	}
-	if botName != "" {
+	if botName := m.Summary.BotName; botName != "" {
 		return "b:" + botName
 	}
 	if m.Summary.BotID != "" {

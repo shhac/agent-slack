@@ -98,7 +98,7 @@ func TestRenderTranscriptLinkToProse(t *testing.T) {
 
 func TestRenderTranscriptBotSpeaker(t *testing.T) {
 	msgs := []TranscriptMessage{
-		{Summary: MessageSummary{TS: "1782032540.000000", BotID: "B999", Text: "deploy done"}, BotName: "Deploybot"},
+		{Summary: MessageSummary{TS: "1782032540.000000", BotID: "B999", Text: "deploy done", BotName: "Deploybot"}},
 	}
 	got := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC})
 	if !strings.Contains(got, "<Deploybot|app>") {
@@ -127,8 +127,8 @@ func TestRenderTranscriptEditedAndFilesAndReactions(t *testing.T) {
 				Reactions: []any{
 					map[string]any{"name": "+1", "users": []any{"U87654321"}},
 				},
+				Edited: true,
 			},
-			Edited: true,
 		},
 	}
 	got := RenderTranscript(msgs, TranscriptOptions{Loc: time.UTC, UserName: nameResolver(map[string]string{"U12345555": "Alice", "U87654321": "Bob"})})

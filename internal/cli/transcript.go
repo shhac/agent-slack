@@ -98,8 +98,6 @@ func printTranscript(ctx context.Context, globals *GlobalFlags, cc *clientContex
 		}
 		items = append(items, render.TranscriptMessage{
 			Summary: m,
-			Edited:  m.Edited,
-			BotName: m.BotName,
 			Depth:   depth,
 		})
 	}
