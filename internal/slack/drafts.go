@@ -33,7 +33,8 @@ import (
 type Draft struct {
 	ID        string   `json:"id"`
 	ChannelID string   `json:"channel_id"`
-	PostAt    int64    `json:"post_at,omitempty"` // 0 = a plain (unscheduled) draft
+	ThreadTS  string   `json:"thread_ts,omitempty"` // set when the draft is a thread reply
+	PostAt    int64    `json:"post_at,omitempty"`   // 0 = a plain (unscheduled) draft
 	Text      string   `json:"text,omitempty"`
 	Blocks    []any    `json:"-"`                  // raw rich_text, kept for edit/send
 	FileIDs   []string `json:"file_ids,omitempty"` // already-uploaded attachments, kept for send
@@ -43,6 +44,7 @@ func toDraft(d map[string]any) Draft {
 	return Draft{
 		ID:        getStr(d, "id"),
 		ChannelID: draftChannelID(d),
+		ThreadTS:  draftThreadTS(d),
 		PostAt:    int64(getNum(d, "date_scheduled")),
 		Text:      render.RenderMessageContent(d),
 		Blocks:    getArr(d, "blocks"),
@@ -150,14 +152,18 @@ func UpdateDraft(ctx context.Context, c *Client, draftID string, m OutgoingMessa
 // with attachments must go this way (a fileless draft posts normally instead).
 // Browser auth only.
 func ShareDraft(ctx context.Context, c *Client, d Draft) (PostResult, error) {
-	resp, err := c.API(ctx, "files.share", map[string]any{
+	params := map[string]any{
 		"draft_id":      d.ID,
 		"files":         strings.Join(d.FileIDs, ","),
 		"channel":       d.ChannelID,
 		"blocks":        d.Blocks,
 		"client_msg_id": newClientMsgID(),
 		"broadcast":     false,
-	})
+	}
+	if d.ThreadTS != "" {
+		params["thread_ts"] = d.ThreadTS
+	}
+	resp, err := c.API(ctx, "files.share", params)
 	if err != nil {
 		return PostResult{}, err
 	}
@@ -184,7 +190,7 @@ func draftContent(m OutgoingMessage, postAt int64) map[string]any {
 	}
 	params := map[string]any{
 		"blocks":           draftBlocks(m),
-		"destinations":     []any{map[string]any{"channel_id": m.ChannelID}},
+		"destinations":     []any{draftDestination(m)},
 		"file_ids":         fileIDs,
 		"is_from_composer": true,
 	}
@@ -216,12 +222,32 @@ func draftBlocks(m OutgoingMessage) []any {
 	return out
 }
 
+// draftDestination is a draft's single target. A thread_ts in the destination
+// is how Slack addresses a draft to a thread (verified live: drafts.create
+// echoes it back, and sending the draft posts the reply in that thread) — the
+// draft genuinely lives in the thread, not just at send time.
+func draftDestination(m OutgoingMessage) map[string]any {
+	dest := map[string]any{"channel_id": m.ChannelID}
+	if m.ThreadTS != "" {
+		dest["thread_ts"] = m.ThreadTS
+	}
+	return dest
+}
+
 func draftChannelID(draft map[string]any) string {
 	dests := recItems(getArr(draft, "destinations"))
 	if len(dests) == 0 {
 		return ""
 	}
 	return getStr(dests[0], "channel_id")
+}
+
+func draftThreadTS(draft map[string]any) string {
+	dests := recItems(getArr(draft, "destinations"))
+	if len(dests) == 0 {
+		return ""
+	}
+	return getStr(dests[0], "thread_ts")
 }
 
 func draftClientTS() string {

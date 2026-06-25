@@ -19,6 +19,14 @@ func draftObj(id, channelID, text string, postAt int) map[string]any {
 	}
 }
 
+// draftObjThread is draftObj addressed to a thread — a thread_ts in the
+// destination is how Slack marks a draft as a reply (see drafts.go).
+func draftObjThread(id, channelID, threadTS, text string) map[string]any {
+	d := draftObj(id, channelID, text, 0)
+	d["destinations"] = []any{map[string]any{"channel_id": channelID, "thread_ts": threadTS}}
+	return d
+}
+
 func TestDraftListPlainOnly(t *testing.T) {
 	f := newBrowserCLIFixture(t)
 	// Our drafts are is_from_composer now, so they're indistinguishable from a
@@ -297,6 +305,78 @@ func TestDraftResolveAmbiguousTarget(t *testing.T) {
 	}
 	if hint, _ := p["hint"].(string); !strings.Contains(hint, "id") {
 		t.Errorf("hint should suggest passing an id: %s", stderr)
+	}
+}
+
+// --thread-ts addresses the draft to a thread: the thread_ts rides inside the
+// destination object (not a separate field), and the create payload echoes it.
+func TestDraftCreateThread(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.create", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C12345678", "thread_ts": "1700.0001"}}}})
+
+	out, _, err := f.run(t, "message", "draft", "create", "C12345678", "a reply", "--thread-ts", "1700.0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseJSON(t, out)["thread_ts"] != "1700.0001" {
+		t.Errorf("create payload should surface thread_ts: %s", out)
+	}
+	dests := f.server.CallsFor("drafts.create")[0].Params.Get("destinations")
+	if !strings.Contains(dests, `"thread_ts":"1700.0001"`) {
+		t.Errorf("drafts.create destination should carry the thread_ts: %s", dests)
+	}
+}
+
+// A thread draft surfaces its thread_ts in get/list output.
+func TestDraftGetSurfacesThread(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		draftObjThread("Dr0A", "C12345678", "1700.0001", "in a thread")}})
+
+	out, _, err := f.run(t, "message", "draft", "get", "Dr0A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseJSON(t, out)["thread_ts"] != "1700.0001" {
+		t.Errorf("get should surface the draft's thread_ts: %s", out)
+	}
+}
+
+// Sending a thread draft posts the reply into the thread.
+func TestDraftSendThread(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		draftObjThread("Dr0A", "C12345678", "1700.0001", "thread reply")}})
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.2", "channel": "C12345678"})
+
+	out, _, err := f.run(t, "message", "draft", "send", "Dr0A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parseJSON(t, out)["thread_ts"] != "1700.0001" {
+		t.Errorf("send payload should surface thread_ts: %s", out)
+	}
+	if post := f.server.CallsFor("chat.postMessage")[0]; post.Params.Get("thread_ts") != "1700.0001" {
+		t.Errorf("sending a thread draft should post into the thread: %v", post.Params)
+	}
+}
+
+// A replace keeps the draft's thread when --thread-ts isn't given — an edit must
+// not silently demote a thread reply to a channel draft.
+func TestDraftEditPreservesThread(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.HandleBody("drafts.list", map[string]any{"ok": true, "drafts": []any{
+		draftObjThread("Dr0A", "C12345678", "1700.0001", "old")}})
+	f.server.HandleBody("drafts.update", map[string]any{"ok": true, "draft": map[string]any{
+		"id": "Dr0A", "destinations": []any{map[string]any{"channel_id": "C12345678", "thread_ts": "1700.0001"}}}})
+
+	if _, _, err := f.run(t, "message", "draft", "edit", "Dr0A", "new"); err != nil {
+		t.Fatal(err)
+	}
+	dests := f.server.CallsFor("drafts.update")[0].Params.Get("destinations")
+	if !strings.Contains(dests, `"thread_ts":"1700.0001"`) {
+		t.Errorf("editing a thread draft should keep its thread: %s", dests)
 	}
 }
 

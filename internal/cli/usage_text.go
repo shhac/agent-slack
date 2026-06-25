@@ -170,10 +170,12 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        fall back to a permalink unfurl (permission-scoped to the source channel).
        Output includes ts + permalink. Reads (get/list/search/unreads/later)
        return Markdown too; --slack-markdown keeps native Slack mrkdwn.
-DRAFT  message draft create <target> [text] [--blocks <file|->] [--forward <permalink>] [--attach <path>]
+DRAFT  message draft create <target> [text] [--blocks <file|->] [--forward <permalink>] [--attach <path>] [--thread-ts <ts>]
        message draft list | get <target|id> | edit <target|id> [text] | send <target|id>
        --attach (repeatable) attaches files to the draft, keeping its rich text
        (links/formatting) — unlike a direct attachment send, which posts plain text.
+       --thread-ts <ts> drafts a thread reply (or pass a message permalink as the
+       target); edit keeps the thread unless --thread-ts overrides it.
        message draft delete <target|id> --yes   (destructive)
        LLM→human hand-off (browser auth): save a draft for the user to review
        and send. create returns a draft id; drafts are many-per-target, so

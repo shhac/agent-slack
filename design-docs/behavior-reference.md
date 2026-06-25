@@ -94,10 +94,16 @@ Methods (all accept `xoxc`):
 
 - `drafts.create` — params: `client_msg_id` (UUID — a non-UUID fails with
   `invalid_client_msg_id`), `blocks` (rich_text — a draft has no plain-text
-  field), `destinations` (`[{channel_id}]`), `file_ids` (required, may be `[]`),
-  `is_from_composer`. A **scheduled** draft also sets `date_scheduled` (unix).
+  field), `destinations` (`[{channel_id, thread_ts?}]`), `file_ids` (required,
+  may be `[]`), `is_from_composer`. A **scheduled** draft also sets
+  `date_scheduled` (unix). A `thread_ts` inside the destination makes the draft a
+  thread reply — verified live: `drafts.create` echoes it back (and fills in
+  `broadcast`/`user_ids`), `drafts.list` returns it, and sending the draft
+  (`chat.postMessage`/`files.share` with `thread_ts`) posts the reply in-thread.
+  This is how Slack itself models a draft started in a thread, so the draft lives
+  in the thread across review and through a `--schedule*` promotion.
 - `drafts.list` — returns every draft (filter on `date_scheduled`, `is_deleted`,
-  `is_sent`); stored `file_ids` round-trip on read.
+  `is_sent`); stored `file_ids` and the destination `thread_ts` round-trip on read.
 - `drafts.info` — single draft by `draft_id`.
 - `drafts.update` — edit; same fields as create plus `client_last_updated_ts`.
 - `drafts.delete` — soft-delete (sets `is_deleted`); needs `client_last_updated_ts`.

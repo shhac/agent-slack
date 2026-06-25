@@ -8,9 +8,9 @@ In-binary version: `agent-slack message usage`. Formatting: [../formatting.md](.
 | `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|auto\|fresh`, `--no-download`, `--slack-markdown` | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, `--slack-markdown`, + the resolve/reaction flags from `get` | |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post as one message, text = shared comment), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>`, `--slack-markdown`, `--forward <permalink>` | |
-| `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>`, `--attach <path>` (repeatable; keeps rich text, unlike a direct attachment send) — returns a draft id | |
-| `message draft list` | each row carries `id` + `file_ids` | |
-| `message draft get\|edit\|send <target\|id>` | `edit`: `--blocks`, `--slack-markdown`, `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | |
+| `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>`, `--attach <path>` (repeatable; keeps rich text, unlike a direct attachment send), `--thread-ts <ts>` (draft a thread reply; or pass a message permalink as the target) — returns a draft id (+ `thread_ts` when threaded) | |
+| `message draft list` | each row carries `id` + `file_ids` (+ `thread_ts` when threaded) | |
+| `message draft get\|edit\|send <target\|id>` | `edit`: `--blocks`, `--slack-markdown`, `--forward`, `--attach`, `--thread-ts` (keeps the draft's current thread unless overridden); `send`: `--schedule`, `--schedule-in` — sends into the draft's thread | |
 | `message draft delete <target\|id>` | | `--yes` |
 | `message edit <target> [text]` | `--ts`, `--slack-markdown`, `--attach <path>` (repeatable), `--remove-attachment <F…>` (repeatable; ids from `message get` `files[].id`) — text optional when only changing attachments | `--yes` |
 | `message delete <target>` | `--ts` | `--yes` |
@@ -76,6 +76,13 @@ draft, otherwise the command errors and lists the candidate ids to pass instead.
 every unscheduled draft — including any the user started in-app, which are
 indistinguishable from ours — each with its `id` and `file_ids`; scheduled
 messages live under `scheduled`.
+
+A draft can be a **thread reply**: `create --thread-ts <ts>` (or pass a message
+permalink as the target, which resolves to that message's thread root) addresses
+the draft to a thread, and `send` posts the reply into it. The thread rides in
+the draft itself — `get`/`list` surface `thread_ts`, and `edit` keeps it unless
+`--thread-ts` overrides — so it survives across review and through a
+`--schedule*` promotion.
 
 On browser (desktop-imported) auth, **scheduled messages are also drafts**:
 `message send --schedule*` creates a scheduled draft, `scheduled list` lists

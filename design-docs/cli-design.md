@@ -38,7 +38,7 @@ global persistent flags.
 | `message react add/remove <target> <emoji>` | `--ts` | | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | | NDJSON |
 | `message scheduled cancel <id>` | `--channel` | `--yes` | destroys a pending send |
-| `message draft create <target> [text]` | `--blocks`, `--slack-markdown`, `--forward <permalink>`, `--attach` | | browser-only; many drafts per target — returns the new draft id |
+| `message draft create <target> [text]` | `--blocks`, `--slack-markdown`, `--forward <permalink>`, `--attach`, `--thread-ts` (or a permalink target) | | browser-only; many drafts per target — returns the new draft id; threaded when `--thread-ts`/permalink |
 | `message draft list` | | | NDJSON; unscheduled drafts (`date_scheduled == 0`), each with `id` + `file_ids` |
 | `message draft get/edit/delete/send <target\|id>` | `edit`: `--forward`, `--attach`; `send`: `--schedule`, `--schedule-in` | | address by draft id, or by target when it has exactly one (else error with the ids); `send` posts (files via `files.share`), or promotes to scheduled |
 | `usergroup list` | `--include-disabled`, `--limit` (200, max 1000), `--cursor` | | NDJSON, compact projection. Full set fetched once (one `usergroups.list`, cached) then sliced client-side with the same opaque offset cursor as channel/user/emoji lists |
