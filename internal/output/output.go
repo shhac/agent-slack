@@ -70,22 +70,27 @@ func WriteNotice(w io.Writer, notice, hint string) {
 	_ = enc.Encode(payload)
 }
 
+// NDJSONWriter wraps the shared lib-agent-output writer so list output flows
+// through the family's single encoding funnel — the same one Print and
+// libcli.EmitItem use — rather than a hand-rolled json.Encoder. That funnel
+// disables HTML escaping (URLs survive intact) and applies the per-stream color
+// mode, so NDJSON rows colorize on a terminal exactly like JSON/YAML do, and
+// stay byte-identical when piped. (Migration shim: keeps the internal/output
+// import path while the wire mechanism lives in lib-agent-output.)
 type NDJSONWriter struct {
-	enc *json.Encoder
+	w *out.NDJSONWriter
 }
 
 func NewNDJSONWriter(w io.Writer) *NDJSONWriter {
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	return &NDJSONWriter{enc: enc}
+	return &NDJSONWriter{w: out.NewNDJSONWriter(w)}
 }
 
 func (n *NDJSONWriter) WriteItem(item any) error {
-	return n.enc.Encode(item)
+	return n.w.WriteItem(item)
 }
 
 func (n *NDJSONWriter) WriteMetaLine(key string, value any) error {
-	return n.enc.Encode(map[string]any{key: value})
+	return n.w.WriteMetaLine(key, value)
 }
 
 // Pagination is Slack-shaped (an opaque next_cursor plus a total), so it stays

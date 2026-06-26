@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	out "github.com/shhac/lib-agent-output"
+
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
@@ -86,6 +88,33 @@ func TestNDJSONWriter(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &v); err != nil {
 			t.Errorf("line %q is not valid JSON: %v", line, err)
 		}
+	}
+}
+
+// TestNDJSONWriterColorMode confirms list rows route through the shared color
+// funnel: ANSI escapes when the color mode forces it on, byte-identical plain
+// JSON when it's off. This is the property that was missing while the writer
+// hand-rolled its own json.Encoder — color reached single-resource and
+// json/yaml output but never the default NDJSON list path.
+func TestNDJSONWriterColorMode(t *testing.T) {
+	out.SetColorMode(out.ColorNever)
+	defer out.SetColorMode(out.ColorAuto)
+
+	var plain bytes.Buffer
+	if err := NewNDJSONWriter(&plain).WriteItem(map[string]any{"ts": "1.2"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain.String(), "\x1b[") {
+		t.Errorf("ColorNever should emit no ANSI, got: %q", plain.String())
+	}
+
+	out.SetColorMode(out.ColorAlways)
+	var colored bytes.Buffer
+	if err := NewNDJSONWriter(&colored).WriteItem(map[string]any{"ts": "1.2"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(colored.String(), "\x1b[") {
+		t.Errorf("ColorAlways should emit ANSI on the NDJSON row, got: %q", colored.String())
 	}
 }
 

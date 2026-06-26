@@ -174,7 +174,17 @@ This supersedes the broader "all writes gated" wording in
     `always`/`never` override. The piped/LLM path is not a TTY, so it stays
     plain — color helps a human at a terminal without ever polluting an agent's
     context. The render layer just honors `TranscriptOptions.Color`; the CLI
-    decides it from the output target.
+    decides it from the output target. The same `--color` gate also styles the
+    **native wire formats** — JSON, NDJSON, and YAML — via `lib-agent-output`'s
+    encoding funnel (structure dim, values prominent), not just the transcript
+    renderer. The invariant holds across all of them: strip the escapes and the
+    bytes are identical to the plain form, so the piped/LLM path is untouched.
+    The one rule this imposes on the CLI: every stdout path must route through
+    that funnel. `output.Print` (single resources, json/yaml list envelopes) and
+    `output.NDJSONWriter` (the default NDJSON list/stream path) both do; the
+    latter delegates to the shared writer rather than hand-rolling a
+    `json.Encoder`, which is what once left NDJSON lists — the default list
+    output — uncolored while every other surface colorized.
   - **Inline custom-emoji images are opt-in, off by default, and stream-gated.**
     `--images <off|auto|on>` draws workspace custom emoji (`:partyparrot:`) as
     real images inside the transcript via the Kitty graphics protocol, rather
