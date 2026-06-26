@@ -120,4 +120,4 @@ make dev ARGS="usage"
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+PolyForm Perimeter License 1.0.0 — see [LICENSE](LICENSE).
