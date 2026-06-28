@@ -85,6 +85,20 @@ vs `U…` DM, `--ts`): [references/targets.md](references/targets.md). These are
 the common reads; reaction filters, body-length caps, and the full flag set are
 in `agent-slack message usage`.
 
+**Files over MCP (`agent-slack mcp`):** an MCP client has no filesystem, so the
+local `path`s above come back as fetchable references
+(`{"@type":"file","root":"cache","path":"downloads/F….png"}`) and you read them
+with the bridge's built-in **`fs`** tool — no host path needed:
+
+```text
+fs get  cache downloads/F0BD….png   # returns the bytes (images inline as image blocks)
+fs find cache -e png                 # discover downloaded images
+fs ls   cache downloads              # list a directory
+```
+
+`get` refuses files over a small inline limit. In plain-CLI use the `path`s are
+real and Read-able directly. Detail: [references/commands/message.md](references/commands/message.md).
+
 ## Searching
 
 ```bash

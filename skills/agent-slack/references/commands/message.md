@@ -56,6 +56,31 @@ set it** (it emits image escape bytes a tool consumer can't read). `--hyperlinks
 hyperlinks (`off` default, `auto` on a TTY, `on` force) — **hidden, human-only;
 agents should not set it.**
 
+## Reading downloaded files (esp. over MCP)
+
+`message get`/`list` (and `file download F…`, `search files`) download
+attachments to the cache dir and report a local `path` in `files[].path`. How
+you read those bytes depends on how you're running:
+
+- **Plain CLI:** the `path` is a real host path — Read it directly.
+- **MCP (`agent-slack mcp`):** the client has no filesystem, so the bridge
+  rewrites each such `path` into a fetchable reference
+  `{"@type":"file","root":"cache","path":"downloads/F….png"}` (the host path is
+  never exposed). Read it with the bridge's built-in **`fs`** tool:
+  - `fs get cache downloads/F0BD….png` — returns the bytes. Images come back as
+    MCP **image blocks** (the model sees the picture); text comes back verbatim;
+    other binary as an embedded base64 resource. Files over a small inline limit
+    return a structured error rather than flooding context.
+  - `fs find cache -e png -e jpg` — search the cache for images.
+  - `fs ls cache downloads` — list a directory.
+  - `fs` is read-only and addresses everything **relative to the `cache` root**;
+    `..` escapes and out-of-root symlinks are rejected.
+
+The same `{root,path}` reference shape is what `fs find`/`ls` return, so a file
+looks identical however you discovered it.
+
+## Forwarding
+
 `message send --forward <permalink>` forwards a message: any `[text]` becomes a
 comment above it. **Same workspace only** — a permalink from another workspace
 is a link, not a forward, and is rejected. On **browser (xoxc) auth** this posts

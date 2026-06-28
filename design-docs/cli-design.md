@@ -334,6 +334,22 @@ metadata-only unless asked.**
 - Failed downloads surface an `error` field on the file entry, never abort
   the command.
 
+**Reading downloads over MCP (`agent-slack mcp`).** An MCP client has no
+filesystem, so a `files[].path` is useless to it. The MCP server (from
+`lib-agent-mcp`) is opted into a read-only file tool over the cache dir:
+`WithFileRoots(xdg.Root("cache", appCacheDir()))` in `internal/cli/root.go`.
+Two things follow, with **no extra CLI code**:
+
+- The bridge rewrites any absolute `path` under the cache root in tool output
+  into a host-free reference `{"@type":"file","root":"cache","path":"downloads/F…"}`.
+- A native `fs` tool (`find`/`ls`/`get`) lists and reads those files relative to
+  the root; `get` returns images as MCP image blocks, text verbatim, other
+  binary as an embedded resource, refusing files over a small inline limit.
+
+Plain-CLI behavior is unchanged — `path` stays a real host path the agent Reads
+directly. The host path is never exposed over MCP. Design: lib-agent-mcp
+`design-docs/file-access.md`.
+
 ## Resolution cache
 
 **Decision: persist repeated resolutions per workspace; never message bodies.**
