@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	libcli "github.com/shhac/lib-agent-cli/cli"
+	"github.com/shhac/lib-agent-cli/xdg"
 	agentmcp "github.com/shhac/lib-agent-mcp"
 	"github.com/spf13/cobra"
 
@@ -124,7 +125,14 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	exposeGroups(root,
 		"api", "canvas", "channel", "emoji", "file", "later", "message", "search", "unreads", "user", "usergroup", "workflow")
 
-	root.AddCommand(agentmcp.Command(root, agentmcp.WithHiddenFlags("color", "expose", "images", "hyperlinks")))
+	// Expose the cache dir (downloads land in cache/downloads) as a read-only
+	// "cache" root, so an MCP client can read back a file the CLI downloaded —
+	// e.g. fs get cache downloads/F0BD….png — without filesystem access of its
+	// own and without ever seeing the host path.
+	root.AddCommand(agentmcp.Command(root,
+		agentmcp.WithHiddenFlags("color", "expose", "images", "hyperlinks"),
+		agentmcp.WithFileRoots(xdg.Root("cache", appCacheDir())),
+	))
 
 	return root
 }
