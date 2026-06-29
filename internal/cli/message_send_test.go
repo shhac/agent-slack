@@ -432,3 +432,35 @@ func TestMessageSendScheduledBrowserCreatesDraft(t *testing.T) {
 		t.Error("scheduled draft must be a composer draft")
 	}
 }
+
+func TestMessageSendUpgradesSameWorkspaceLinkToChip(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C123")
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.0", "channel": "C123"})
+
+	link := "https://acme.slack.com/archives/C0THREAD01/p1770000000000100"
+	if _, _, err := f.run(t, "message", "send", "#general", "heads up "+link); err != nil {
+		t.Fatal(err)
+	}
+	blocks := f.server.CallsFor("chat.postMessage")[0].Params.Get("blocks")
+	if !strings.Contains(blocks, `"type":"message_mention"`) {
+		t.Fatalf("a same-workspace message link should send a message_mention chip; blocks=%s", blocks)
+	}
+	if !strings.Contains(blocks, "C0THREAD01") || !strings.Contains(blocks, "1770000000.000100") {
+		t.Errorf("chip missing channel/ts; blocks=%s", blocks)
+	}
+}
+
+func TestMessageSendKeepsCrossWorkspaceLinkPlain(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C123")
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.0", "channel": "C123"})
+
+	other := "https://other.slack.com/archives/C0THREAD01/p1770000000000100"
+	if _, _, err := f.run(t, "message", "send", "#general", other); err != nil {
+		t.Fatal(err)
+	}
+	if b := f.server.CallsFor("chat.postMessage")[0].Params.Get("blocks"); strings.Contains(b, "message_mention") {
+		t.Errorf("a different-workspace link must not become a chip; blocks=%s", b)
+	}
+}

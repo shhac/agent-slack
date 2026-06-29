@@ -59,7 +59,7 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 			// real mentions and channel links.
 			text = slack.ResolveMentions(ctx, cc.Client, text)
 			text = slack.ResolveChannelMentions(ctx, cc.Client, text)
-			send, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, *flags, time.Now())
+			send, err := buildSendRequest(cmd.InOrStdin(), target.Kind, text, *flags, time.Now(), cc.WorkspaceURL)
 			if err != nil {
 				return err
 			}
@@ -141,7 +141,7 @@ func validateSendFlags(targetKind render.TargetKind, threadTS string, postAt int
 // buildSendRequest validates the flag/target matrix and assembles the
 // request: text formatting, list→rich_text conversion or --blocks loading,
 // schedule resolution, and the per-target --reply-broadcast rules.
-func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string, flags sendFlags, now time.Time) (sendRequest, error) {
+func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string, flags sendFlags, now time.Time, workspaceURL string) (sendRequest, error) {
 	if text == "" && len(flags.attach) == 0 && flags.blocksPath == "" {
 		return sendRequest{}, agenterrors.New("message text is required unless --attach or --blocks is provided", agenterrors.FixableByAgent)
 	}
@@ -155,7 +155,7 @@ func buildSendRequest(stdin io.Reader, targetKind render.TargetKind, text string
 		return sendRequest{}, err
 	}
 
-	outboundText, blocks := outboundTextAndBlocks(text, flags.slackMarkdown)
+	outboundText, blocks := outboundTextAndBlocks(text, flags.slackMarkdown, workspaceURL)
 	if flags.blocksPath != "" {
 		blocks, err = loadBlocksFromPath(stdin, flags.blocksPath)
 		if err != nil {

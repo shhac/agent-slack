@@ -28,7 +28,11 @@ Text I/O is **standard Markdown** by default (both sending and reading): use
 `[label](https://…)` for links (don't paste a bare URL and expect a nice link),
 and `@name`/`@group` handles and `#channel` names resolve to real
 mentions/links; `--slack-markdown` switches to Slack's native mrkdwn dialect.
-Full table — links, mentions, escaping: [../formatting.md](../formatting.md).
+A **same-workspace message permalink** (bare, `<url>`, or unlabeled
+`[url](url)`) is auto-upgraded to Slack's inline message-reference **chip** (the
+preview Slack's own composer makes when you paste a message link); a deliberately
+*labeled* link (`[label](url)`) stays a plain link. Full table — links, mentions,
+escaping: [../formatting.md](../formatting.md).
 
 `message get`/`list` also take `--format transcript` — a human-readable,
 chronological text rendering (not JSON; errors still go to stderr as JSON).

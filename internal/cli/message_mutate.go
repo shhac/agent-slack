@@ -93,7 +93,7 @@ func buildEditParams(ctx context.Context, c *slack.Client, ref *render.MessageRe
 	if hasText {
 		resolved := slack.ResolveMentions(ctx, c, text)
 		resolved = slack.ResolveChannelMentions(ctx, c, resolved)
-		outboundText, blocks := outboundTextAndBlocks(resolved, slackMarkdown)
+		outboundText, blocks := outboundTextAndBlocks(resolved, slackMarkdown, ref.WorkspaceURL)
 		params["text"] = outboundText
 		if blocks != nil {
 			params["blocks"] = blocks

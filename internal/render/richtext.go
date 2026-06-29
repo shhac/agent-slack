@@ -17,8 +17,9 @@ type InlineStyle struct {
 
 // InlineElement is one rich_text inline element. Type selects which of the
 // other fields are meaningful (text/style, url/text, name, user_id,
-// channel_id, usergroup_id, range); the rest stay empty and are omitted from
-// JSON, so the marshalled shape matches what Slack's API expects.
+// channel_id, usergroup_id, range; message_ts/thread_ts for a message_mention
+// "chip"); the rest stay empty and are omitted from JSON, so the marshalled
+// shape matches what Slack's API expects.
 type InlineElement struct {
 	Type        string       `json:"type"`
 	Text        string       `json:"text,omitempty"`
@@ -27,8 +28,23 @@ type InlineElement struct {
 	Name        string       `json:"name,omitempty"`
 	UserID      string       `json:"user_id,omitempty"`
 	ChannelID   string       `json:"channel_id,omitempty"`
+	MessageTS   string       `json:"message_ts,omitempty"` // message_mention
+	ThreadTS    string       `json:"thread_ts,omitempty"`  // message_mention
 	UsergroupID string       `json:"usergroup_id,omitempty"`
 	Range       string       `json:"range,omitempty"`
+}
+
+// messageMentionEl renders a same-workspace message permalink as Slack's inline
+// "chip" reference (a message_mention rich_text element) instead of a plain link
+// with a below-card unfurl. The fields are all derivable from the permalink.
+func messageMentionEl(channelID, messageTS, threadTS, url string) InlineElement {
+	return InlineElement{
+		Type:      "message_mention",
+		ChannelID: channelID,
+		MessageTS: messageTS,
+		ThreadTS:  threadTS,
+		URL:       url,
+	}
 }
 
 // RichTextElement is a section-level rich_text element. Elements holds

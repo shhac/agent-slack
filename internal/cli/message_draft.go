@@ -316,7 +316,7 @@ func buildDraftContent(ctx context.Context, cmd *cobra.Command, cc *clientContex
 	}
 	text = slack.ResolveMentions(ctx, cc.Client, text)
 	text = slack.ResolveChannelMentions(ctx, cc.Client, text)
-	req, err := buildSendRequest(cmd.InOrStdin(), targetKind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown, forward: forward, attach: attach, threadTS: threadTS}, time.Now())
+	req, err := buildSendRequest(cmd.InOrStdin(), targetKind, text, sendFlags{blocksPath: blocksPath, slackMarkdown: slackMarkdown, forward: forward, attach: attach, threadTS: threadTS}, time.Now(), cc.WorkspaceURL)
 	if err != nil {
 		return sendRequest{}, err
 	}

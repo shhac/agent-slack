@@ -78,9 +78,11 @@ func (f scheduleFlags) resolvePostAt(now time.Time) (int64, error) {
 // outboundTextAndBlocks renders authored text into the (text, blocks) pair an
 // outbound message carries: the mrkdwn-escaped fallback text and the rich_text
 // blocks, nil when the text is plain so callers omit the blocks field. Mentions
-// must already be resolved.
-func outboundTextAndBlocks(text string, slackMarkdown bool) (string, []any) {
+// must already be resolved. workspaceURL (the sending workspace) lets a
+// same-workspace message permalink render as an inline chip; pass "" to skip.
+func outboundTextAndBlocks(text string, slackMarkdown bool, workspaceURL string) (string, []any) {
 	rtBlocks, outboundText := render.RenderOutbound(text, slackMarkdown)
+	rtBlocks = render.UpgradeMessageMentions(rtBlocks, text, slackMarkdown, workspaceURL)
 	var blocks []any
 	if len(rtBlocks) > 0 {
 		blocks = toAnySlice(rtBlocks)

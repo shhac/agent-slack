@@ -33,7 +33,7 @@ func TestBuildSendRequestMatrix(t *testing.T) {
 		{"bad schedule", render.TargetChannel, "hi", sendFlags{scheduleFlags: scheduleFlags{schedule: "whenever"}}, "invalid --schedule"},
 	}
 	for _, tc := range cases {
-		req, err := buildSendRequest(strings.NewReader(""), tc.kind, tc.text, tc.flags, sendNow)
+		req, err := buildSendRequest(strings.NewReader(""), tc.kind, tc.text, tc.flags, sendNow, "")
 		if tc.wantErr == "" {
 			if err != nil {
 				t.Errorf("%s: unexpected error %v", tc.name, err)
@@ -51,7 +51,7 @@ func TestBuildSendRequestMatrix(t *testing.T) {
 }
 
 func TestBuildSendRequestFormatting(t *testing.T) {
-	req, err := buildSendRequest(strings.NewReader(""), render.TargetChannel, "ping @U05BRPTKL6A:\n- one\n- two", sendFlags{}, sendNow)
+	req, err := buildSendRequest(strings.NewReader(""), render.TargetChannel, "ping @U05BRPTKL6A:\n- one\n- two", sendFlags{}, sendNow, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestBuildSendRequestFormatting(t *testing.T) {
 		t.Error("list text should produce rich_text blocks")
 	}
 	// Plain text produces no blocks.
-	plain, err := buildSendRequest(strings.NewReader(""), render.TargetChannel, "just words", sendFlags{}, sendNow)
+	plain, err := buildSendRequest(strings.NewReader(""), render.TargetChannel, "just words", sendFlags{}, sendNow, "")
 	if err != nil || plain.blocks != nil {
 		t.Errorf("plain blocks = %v, err %v", plain.blocks, err)
 	}
