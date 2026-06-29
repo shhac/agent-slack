@@ -5,6 +5,13 @@ package credential
 // "app.paulie.lin").
 const keychainService = "app.paulie.agent-slack"
 
+// MCPKeychainService is the Keychain service for the MCP server's local-OAuth
+// secrets (signing key, pairing code, client registrations, tokens). It is the
+// CLI's service plus a ".mcp" namespace — keeping the OAuth trust axis separate
+// from the API credentials while staying within the family reverse-DNS
+// convention (so it's "app.paulie.agent-slack.mcp", not a bare "agent-slack.mcp").
+func MCPKeychainService() string { return keychainService + ".mcp" }
+
 // keychainPlaceholder is written to the on-disk credentials file in place of a
 // secret that has been stored in the Keychain instead.
 const keychainPlaceholder = "__KEYCHAIN__"

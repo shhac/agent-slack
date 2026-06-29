@@ -132,6 +132,9 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	root.AddCommand(agentmcp.Command(root,
 		agentmcp.WithHiddenFlags("color", "expose", "images", "hyperlinks"),
 		agentmcp.WithFileRoots(xdg.Root("cache", appCacheDir())),
+		// Store local-OAuth secrets under the family reverse-DNS service
+		// (app.paulie.agent-slack.mcp), separate from the API credentials.
+		agentmcp.WithOAuthKeyringService(credential.MCPKeychainService()),
 	))
 
 	return root
