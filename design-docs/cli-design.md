@@ -270,6 +270,26 @@ untouched. A channel ref is distinguished from a Markdown heading structurally �
 `#name` is flush against the `#` (a channel) whereas `# ` with a trailing space
 is a heading — and all-digit refs like `#5` are ignored.
 
+**Inline link chips (decision): an unlabeled link is upgraded to the chip Slack's
+own composer produces.** A human pasting a URL into Slack gets an inline "chip"
+(an icon + a scheme-stripped pill), not a raw-URL link or a below-card unfurl. To
+match that, `UpgradeOutboundLinks` rewrites the outbound rich_text after rendering:
+
+- A **same-workspace message permalink** → a `message_mention` element carrying
+  `channel_id`/`message_ts`/`thread_ts`/`url` (all derived from the permalink, no
+  API call). Recognised in any unlabeled form *and* bare in running text.
+- Any **other unlabeled web URL** → a `link` element whose `text` is the
+  scheme-/trailing-slash-stripped URL with `truncated: true` — byte-identical to
+  the composer's output, so Slack renders the chip. Only the explicit unlabeled
+  forms `[url](url)` and `<url>` qualify; a truly bare URL in text is left alone,
+  honoring the "bare URLs don't auto-link" contract. `message_mention` wins over a
+  plain link chip; without workspace context the permalink degrades to a link chip.
+
+A **deliberately labeled** link (`[label](url)` / `<url|label>`, label ≠ url) is
+always preserved — the chip can't carry a label. The upgrade runs in the shared
+`outboundTextAndBlocks`, so send/edit/forward/draft all get it; when a chip is the
+only thing forcing blocks, blocks are force-built so it can be carried.
+
 ## Drafts and scheduled messages
 
 **Decision: drafts and scheduled messages are the same `drafts.*` store (browser

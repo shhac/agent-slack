@@ -33,6 +33,10 @@ All collapse to one Markdown string. Forwarded content: extract
 - Detect bullet (`• - *`) and numbered (`1.`) lists → `rich_text_list` blocks.
 - Plain markdown → `rich_text` structure (preserve mentions, emoji, channel
   refs, inline bold/italic/strike/code).
+- Upgrade unlabeled links to the chips Slack's composer makes: a same-workspace
+  message permalink → a `message_mention` element; any other unlabeled web URL
+  (`[url](url)`/`<url>`) → a `link` with a scheme-stripped label + `truncated:true`.
+  Labeled links are left as-is. See `cli-design.md` "Inline link chips".
 
 ## File handling
 

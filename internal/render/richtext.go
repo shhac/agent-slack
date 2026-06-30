@@ -18,8 +18,8 @@ type InlineStyle struct {
 // InlineElement is one rich_text inline element. Type selects which of the
 // other fields are meaningful (text/style, url/text, name, user_id,
 // channel_id, usergroup_id, range; message_ts/thread_ts for a message_mention
-// "chip"); the rest stay empty and are omitted from JSON, so the marshalled
-// shape matches what Slack's API expects.
+// "chip"; truncated for a link "chip"); the rest stay empty and are omitted from
+// JSON, so the marshalled shape matches what Slack's API expects.
 type InlineElement struct {
 	Type        string       `json:"type"`
 	Text        string       `json:"text,omitempty"`
@@ -32,6 +32,7 @@ type InlineElement struct {
 	ThreadTS    string       `json:"thread_ts,omitempty"`  // message_mention
 	UsergroupID string       `json:"usergroup_id,omitempty"`
 	Range       string       `json:"range,omitempty"`
+	Truncated   bool         `json:"truncated,omitempty"` // link chip: label is a shortened url
 }
 
 // messageMentionEl renders a same-workspace message permalink as Slack's inline
@@ -44,6 +45,18 @@ func messageMentionEl(channelID, messageTS, threadTS, url string) InlineElement 
 		MessageTS: messageTS,
 		ThreadTS:  threadTS,
 		URL:       url,
+	}
+}
+
+// linkChipEl renders a web URL as Slack's inline link "chip": a link element
+// whose label is the scheme-stripped url, the form Slack's own composer produces
+// when you paste a bare URL. truncated marks the label as a shortened url.
+func linkChipEl(url, label string) InlineElement {
+	return InlineElement{
+		Type:      "link",
+		URL:       url,
+		Text:      label,
+		Truncated: true,
 	}
 }
 
@@ -79,8 +92,11 @@ func styleElement(el InlineElement, add InlineStyle) InlineElement {
 	return el
 }
 
-func styledTextEl(text string, style InlineStyle) InlineElement {
-	return InlineElement{Type: "text", Text: text, Style: &style}
+// styledTextEl builds a text element carrying style as-is — a nil style yields
+// an unstyled element. The one text-element constructor for both freshly-built
+// styles (pass &InlineStyle{…}) and a forwarded element's existing Style.
+func styledTextEl(text string, style *InlineStyle) InlineElement {
+	return InlineElement{Type: "text", Text: text, Style: style}
 }
 
 // ParseInlineElements parses mrkdwn inline formatting into rich_text inline
@@ -118,7 +134,7 @@ func ParseInlineElements(text string) []InlineElement {
 		switch text[i] {
 		case '`':
 			if content, end, ok := scanDelimited(text, i, '`'); ok {
-				emit(styledTextEl(content, InlineStyle{Code: true}))
+				emit(styledTextEl(content, &InlineStyle{Code: true}))
 				i = end
 				continue
 			}

@@ -16,7 +16,7 @@ so outbound and inbound are independent).
 | Underline     | `__underline__`         | **extension** — `__` is underline, not bold |
 | Inline code   | `` `code` ``            | contents are literal                    |
 | Code block    | ```` ```\ncode\n``` ````| language hint after ``` is dropped      |
-| Link          | `[label](https://x)`    | bare URLs auto-link in Slack            |
+| Link          | `[label](https://x)`    | unlabeled `[url](url)` → inline link chip; bare URLs don't auto-link |
 | Bulleted list | `- item` / `* item`     | indent two spaces for one sub-level     |
 | Numbered list | `1. item` / `1) item`   |                                         |
 | Blockquote    | `> quoted`              |                                         |
@@ -27,10 +27,20 @@ Nesting works: `**bold with _italic_ and `code`**` styles each span correctly.
 ### Links
 
 Prefer a **labeled link** — `[release notes](https://acme.com/releases/4.2)` —
-over pasting a bare URL. A bare URL does auto-link, but only as the raw URL
-text (`https://acme.com/releases/4.2`), which reads worse and is what agents
-reach for by reflex. Reach for `[label](url)` whenever the link has a natural
-name. In `--slack-markdown` mode the equivalent is `<https://…|label>`.
+whenever the link has a natural name. In `--slack-markdown` mode the equivalent
+is `<https://…|label>`.
+
+An **unlabeled link** — `[url](url)` (label same as the URL) or `<url>` in
+mrkdwn — is upgraded on send to Slack's inline link **chip**: a pill showing the
+scheme-stripped URL (`https://github.com/acme/widgets` → `github.com/acme/widgets`),
+exactly what Slack's own composer produces when you paste a URL. This is the nice
+rendering — reach for it when the URL itself is the thing you want to show. A
+deliberately *labeled* link is always left as a plain link. A truly bare URL in
+running text is **not** auto-linked, so wrap it in `[url](url)`/`<url>` to chip it.
+
+A same-workspace **message permalink** in either unlabeled form (or bare in text)
+becomes the richer inline message-reference chip instead — see
+[commands/message.md](commands/message.md).
 
 ## Mentions
 

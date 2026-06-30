@@ -15,7 +15,17 @@ const (
 // upgrade mirrors outboundTextAndBlocks: render the text, then upgrade.
 func upgrade(text string, slackMarkdown bool, ws string) []RichTextBlock {
 	b, _ := RenderOutbound(text, slackMarkdown)
-	return UpgradeMessageMentions(b, text, slackMarkdown, ws)
+	return UpgradeOutboundLinks(b, text, slackMarkdown, ws)
+}
+
+func linkChips(blocks []RichTextBlock) []InlineElement {
+	var out []InlineElement
+	for _, el := range inlineElems(blocks) {
+		if el.Type == "link" && el.Truncated {
+			out = append(out, el)
+		}
+	}
+	return out
 }
 
 func inlineElems(blocks []RichTextBlock) []InlineElement {
@@ -169,5 +179,134 @@ func TestMessageMentionWithFormatting(t *testing.T) {
 	}
 	if !bold {
 		t.Errorf("bold style lost alongside the chip: %+v", inlineElems(blocks))
+	}
+}
+
+const (
+	tExtURL   = "https://github.com/acme/widgets"
+	tExtLabel = "github.com/acme/widgets"
+)
+
+func TestLinkChipMarkdownUnlabeled(t *testing.T) {
+	chips := linkChips(upgrade("["+tExtURL+"]("+tExtURL+")", false, tWS))
+	if len(chips) != 1 {
+		t.Fatalf("want 1 link chip, got %d", len(chips))
+	}
+	if c := chips[0]; c.URL != tExtURL || c.Text != tExtLabel || !c.Truncated {
+		t.Errorf("chip = %+v", c)
+	}
+}
+
+func TestLinkChipMrkdwnAngleForcesBlocks(t *testing.T) {
+	// <url> in mrkdwn produces no blocks on its own — the upgrade must force them.
+	chips := linkChips(upgrade("<"+tExtURL+">", true, tWS))
+	if len(chips) != 1 || chips[0].Text != tExtLabel {
+		t.Fatalf("<url> should become a link chip: %+v", chips)
+	}
+}
+
+func TestLinkChipLabeledPreserved(t *testing.T) {
+	blocks := upgrade("[the repo]("+tExtURL+")", false, tWS)
+	if len(linkChips(blocks)) != 0 {
+		t.Error("a labeled link must stay a plain link, not a chip")
+	}
+	var ok bool
+	for _, e := range inlineElems(blocks) {
+		if e.Type == "link" && e.URL == tExtURL && e.Text == "the repo" && !e.Truncated {
+			ok = true
+		}
+	}
+	if !ok {
+		t.Errorf("labeled link missing/altered: %+v", inlineElems(blocks))
+	}
+}
+
+func TestLinkChipMrkdwnLabeledPreserved(t *testing.T) {
+	if len(linkChips(upgrade("<"+tExtURL+"|the repo>", true, tWS))) != 0 {
+		t.Error("<url|label> must stay a plain link")
+	}
+}
+
+func TestLinkChipLabelHumanizing(t *testing.T) {
+	cases := map[string]string{
+		"https://example.com/":     "example.com",
+		"http://example.com/foo":   "example.com/foo",
+		"https://example.com/a/b/": "example.com/a/b",
+		"HTTPS://example.com/Foo":  "example.com/Foo", // scheme match is case-insensitive; path case kept
+	}
+	for url, want := range cases {
+		chips := linkChips(upgrade("["+url+"]("+url+")", false, tWS))
+		if len(chips) != 1 || chips[0].Text != want {
+			t.Errorf("%q: want label %q, got %+v", url, want, chips)
+		}
+	}
+}
+
+func TestLinkChipMultipleInOneMessage(t *testing.T) {
+	blocks := upgrade("[https://a.example/x](https://a.example/x) then [https://b.example/y](https://b.example/y)", false, tWS)
+	chips := linkChips(blocks)
+	if len(chips) != 2 {
+		t.Fatalf("want 2 link chips, got %d: %+v", len(chips), chips)
+	}
+	if chips[0].Text != "a.example/x" || chips[1].Text != "b.example/y" {
+		t.Errorf("chip labels wrong/out of order: %+v", chips)
+	}
+}
+
+func TestLinkChipInsideList(t *testing.T) {
+	// The upgrade walk must recurse into rich_text_list items.
+	if got := len(linkChips(upgrade("- [https://example.com/x](https://example.com/x)", false, tWS))); got != 1 {
+		t.Errorf("a link in a bullet list should chip, got %d chips", got)
+	}
+}
+
+func TestLinkChipNonWebSkipped(t *testing.T) {
+	if len(linkChips(upgrade("<mailto:someone@example.com>", true, tWS))) != 0 {
+		t.Error("a mailto link must not become a web link chip")
+	}
+}
+
+func TestLinkChipBareURLNotChipped(t *testing.T) {
+	// A bare URL in plain text is deliberately left alone (no autolink).
+	if len(linkChips(upgrade("see "+tExtURL+" please", false, tWS))) != 0 {
+		t.Error("a bare URL must not autolink into a chip")
+	}
+}
+
+func TestLinkChipWithFormatting(t *testing.T) {
+	blocks := upgrade("**ship** ["+tExtURL+"]("+tExtURL+")", false, tWS)
+	if len(linkChips(blocks)) != 1 {
+		t.Fatalf("chip should coexist with other formatting")
+	}
+	var bold bool
+	for _, e := range inlineElems(blocks) {
+		if e.Type == "text" && e.Style != nil && e.Style.Bold {
+			bold = true
+		}
+	}
+	if !bold {
+		t.Errorf("bold style lost alongside the chip: %+v", inlineElems(blocks))
+	}
+}
+
+func TestLinkChipMessagePermalinkPrefersMention(t *testing.T) {
+	blocks := upgrade("["+tPermalink+"]("+tPermalink+")", false, tWS)
+	if len(mentions(blocks)) != 1 {
+		t.Error("a same-workspace message permalink should become a message_mention")
+	}
+	if len(linkChips(blocks)) != 0 {
+		t.Error("message_mention must win over a plain link chip")
+	}
+}
+
+func TestLinkChipMessagePermalinkNoWorkspaceFallsBack(t *testing.T) {
+	// Without workspace context there's no message_mention; the permalink still
+	// renders as a plain link chip.
+	blocks := upgrade("["+tPermalink+"]("+tPermalink+")", false, "")
+	if len(mentions(blocks)) != 0 {
+		t.Error("no workspace → no message_mention")
+	}
+	if len(linkChips(blocks)) != 1 {
+		t.Errorf("no workspace → link chip fallback, got %+v", linkChips(blocks))
 	}
 }

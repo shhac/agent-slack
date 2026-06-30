@@ -157,8 +157,11 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        that thread). Text is standard Markdown: **bold**, *italic*/_italic_,
        ~~strike~~, __underline__ (extension), inline + fenced code, [label](url),
        - bullets, 1. numbers, > quotes; backslash escapes a literal marker.
-       For links use [label](https://…) — a bare URL only ever auto-links as the
-       raw URL, so prefer a labeled link whenever it has a natural name.
+       For links use [label](https://…) when it has a natural name; an unlabeled
+       link ([url](url) or <url>) renders as Slack's inline link chip (the
+       scheme-stripped pill the composer makes from a pasted URL). A same-workspace
+       message permalink (unlabeled, or bare in text) becomes a message-reference
+       chip. A truly bare URL in text does not auto-link.
        Mentions: @here/@channel, @U… ids, and @name / @group handles all resolve.
        #channel-name resolves to a channel link (a known channel only; "# " stays
        a literal, and all-digit "#5" refs are left alone).

@@ -47,7 +47,7 @@ func parseMarkdownInto(text string, base InlineStyle) []InlineElement {
 			if content, end, ok := scanDelimited(text, i, '`'); ok {
 				st := base
 				st.Code = true
-				emit(styledTextEl(content, st))
+				emit(styledTextEl(content, &st))
 				i = end
 				continue
 			}
@@ -207,7 +207,7 @@ func styledOrPlain(s string, style InlineStyle) InlineElement {
 	if style == (InlineStyle{}) {
 		return textEl(s)
 	}
-	return styledTextEl(s, style)
+	return styledTextEl(s, &style)
 }
 
 func mergeStyle(a, b InlineStyle) InlineStyle {

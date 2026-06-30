@@ -464,3 +464,17 @@ func TestMessageSendKeepsCrossWorkspaceLinkPlain(t *testing.T) {
 		t.Errorf("a different-workspace link must not become a chip; blocks=%s", b)
 	}
 }
+
+func TestMessageSendUpgradesExternalURLToLinkChip(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C123")
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.0", "channel": "C123"})
+
+	if _, _, err := f.run(t, "message", "send", "#general", "see [https://example.com/repo](https://example.com/repo)"); err != nil {
+		t.Fatal(err)
+	}
+	blocks := f.server.CallsFor("chat.postMessage")[0].Params.Get("blocks")
+	if !strings.Contains(blocks, `"truncated":true`) || !strings.Contains(blocks, `"text":"example.com/repo"`) {
+		t.Fatalf("an unlabeled web URL should send a link chip; blocks=%s", blocks)
+	}
+}

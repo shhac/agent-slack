@@ -125,8 +125,10 @@ agent-slack message delete "<permalink>" --yes
 
 Message text is standard Markdown — `**bold**`, `*italic*`/`_italic_`,
 `~~strike~~`, `` `code` ``, fenced code, `- bullets`, `1. numbers`, `> quotes`.
-**Links:** write `[label](https://…)` for a labeled hyperlink — don't drop a bare
-URL in and hope it renders nicely (it only ever auto-links as the raw URL).
+**Links:** write `[label](https://…)` for a labeled hyperlink; an unlabeled
+`[url](url)` or `<url>` renders as Slack's inline link chip (the scheme-stripped
+pill the composer makes from a pasted URL). Don't drop a truly bare URL in and
+hope it renders nicely — it won't auto-link.
 Two gotchas: `__text__` is **underline** (our extension, not bold) and `\*`
 escapes a literal marker. Mentions auto-resolve: `@here`/`@channel`, `@U…` ids,
 and bare `@name`/`@group` handles. Pass `--slack-markdown` for Slack's native
