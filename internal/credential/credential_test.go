@@ -296,6 +296,30 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestRemoveKeepsSharedXOXDForOtherBrowserWorkspaces(t *testing.T) {
+	kc := NewMemoryKeychain()
+	s := newTestStore(t, kc)
+	_ = s.UpsertMany([]Workspace{
+		{URL: "https://acme.slack.com", Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-a", XOXD: "xoxd-shared"}},
+		{URL: "https://globex.slack.com", Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-g", XOXD: "xoxd-shared"}},
+	})
+	if err := s.Remove("https://acme.slack.com"); err != nil {
+		t.Fatal(err)
+	}
+	// The shared 'd' cookie is stored once under a single account; removing one
+	// browser workspace must NOT delete it, or the survivor stops working.
+	if _, ok := kc.Get(xoxdAccount); !ok {
+		t.Error("shared xoxd must survive removal of one browser workspace")
+	}
+	if _, ok := kc.Get(xoxcAccount("https://acme.slack.com")); ok {
+		t.Error("removed workspace's xoxc should be deleted")
+	}
+	creds, _ := s.Load()
+	if len(creds.Workspaces) != 1 || creds.Workspaces[0].Auth.XOXD != "xoxd-shared" {
+		t.Errorf("survivor lost its shared xoxd: %+v", creds.Workspaces)
+	}
+}
+
 func TestSetIdentityPersistsIDsAndKeepsSecrets(t *testing.T) {
 	kc := NewMemoryKeychain()
 	s := newTestStore(t, kc)

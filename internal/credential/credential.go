@@ -214,38 +214,48 @@ func (s *Store) upsertMany(workspaces []Workspace) (Workspace, error) {
 		ws.URL = normalized
 		last = ws
 
-		idx := -1
-		for i, existing := range creds.Workspaces {
-			if existing.URL == normalized {
-				idx = i
-				break
-			}
-		}
-		if idx == -1 {
+		if idx := findWorkspaceIndex(creds.Workspaces, normalized); idx == -1 {
 			creds.Workspaces = append(creds.Workspaces, ws)
 		} else {
-			merged := creds.Workspaces[idx]
-			merged.URL = normalized
-			if ws.Name != "" {
-				merged.Name = ws.Name
-			}
-			if ws.TeamID != "" {
-				merged.TeamID = ws.TeamID
-			}
-			if ws.UserID != "" {
-				merged.UserID = ws.UserID
-			}
-			if ws.TeamDomain != "" {
-				merged.TeamDomain = ws.TeamDomain
-			}
-			merged.Auth = ws.Auth
-			creds.Workspaces[idx] = merged
+			creds.Workspaces[idx] = mergeWorkspace(creds.Workspaces[idx], ws)
 		}
 		if creds.DefaultWorkspaceURL == "" {
 			creds.DefaultWorkspaceURL = normalized
 		}
 	}
 	return last, s.Save(creds)
+}
+
+// findWorkspaceIndex returns the index of the workspace with the given
+// normalized URL, or -1 when none matches.
+func findWorkspaceIndex(workspaces []Workspace, normalizedURL string) int {
+	for i := range workspaces {
+		if workspaces[i].URL == normalizedURL {
+			return i
+		}
+	}
+	return -1
+}
+
+// mergeWorkspace overlays incoming onto existing for an upsert: non-empty
+// metadata fields win, and Auth is replaced wholesale (an upsert always carries
+// the fresh secrets). incoming.URL is already normalized by the caller.
+func mergeWorkspace(existing, incoming Workspace) Workspace {
+	existing.URL = incoming.URL
+	if incoming.Name != "" {
+		existing.Name = incoming.Name
+	}
+	if incoming.TeamID != "" {
+		existing.TeamID = incoming.TeamID
+	}
+	if incoming.UserID != "" {
+		existing.UserID = incoming.UserID
+	}
+	if incoming.TeamDomain != "" {
+		existing.TeamDomain = incoming.TeamDomain
+	}
+	existing.Auth = incoming.Auth
+	return existing
 }
 
 // SetIdentity records the Slack team_id/user_id (resolved from auth.test) on the
@@ -261,21 +271,19 @@ func (s *Store) SetIdentity(workspaceURL, teamID, userID string) error {
 	if err != nil {
 		return err
 	}
+	idx := findWorkspaceIndex(creds.Workspaces, normalized)
+	if idx == -1 {
+		return nil
+	}
+	w := &creds.Workspaces[idx]
 	changed := false
-	for i := range creds.Workspaces {
-		w := &creds.Workspaces[i]
-		if w.URL != normalized {
-			continue
-		}
-		if teamID != "" && w.TeamID != teamID {
-			w.TeamID = teamID
-			changed = true
-		}
-		if userID != "" && w.UserID != userID {
-			w.UserID = userID
-			changed = true
-		}
-		break
+	if teamID != "" && w.TeamID != teamID {
+		w.TeamID = teamID
+		changed = true
+	}
+	if userID != "" && w.UserID != userID {
+		w.UserID = userID
+		changed = true
 	}
 	if !changed {
 		return nil

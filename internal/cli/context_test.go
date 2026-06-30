@@ -228,6 +228,22 @@ func TestDesktopAutoRefresh(t *testing.T) {
 	}
 }
 
+func TestEnvBrowserCredentialsIncompleteFallThrough(t *testing.T) {
+	env := newTestEnv(t) // empty store
+	t.Setenv("SLACK_TOKEN", "xoxc-env")
+	t.Setenv("SLACK_WORKSPACE_URL", "https://acme.slack.com")
+	// SLACK_COOKIE_D is deliberately unset: an incomplete browser-auth env must
+	// NOT serve the request (it would be missing the 'd' cookie) — it falls
+	// through to the empty store, which then reports no credentials.
+	_, stderr, err := env.run(t, "", "auth", "test")
+	if err == nil {
+		t.Fatal("expected an error: incomplete env browser credentials must not serve")
+	}
+	if errPayload(t, stderr)["fixable_by"] != "human" {
+		t.Errorf("expected a human-fixable no-credentials error, got %s", stderr)
+	}
+}
+
 func TestEnvCredentialsDoNotAutoRefresh(t *testing.T) {
 	env := newTestEnv(t)
 	server := mockslack.New()

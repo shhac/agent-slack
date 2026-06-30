@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -82,40 +81,6 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 		AuthType:     slackAuth.Type,
 		CacheKey:     key,
 	}, nil
-}
-
-// resolveIdentityKey returns the <team_id>/<user_id> cache namespace for a
-// stored workspace. The ids are persisted (non-secret) once resolved, so steady
-// state needs no network: if both are already on the credential we derive the
-// key offline. Otherwise we bootstrap a one-shot auth.test, persist via
-// SetIdentity, and key from the result. Best-effort and silent: an auth.test
-// failure yields "" (caching inert this run, retried next run) rather than
-// scoping data to a guessed key. The bootstrap deliberately omits the auth
-// refresh — a stale browser token resolves once the real command self-heals it,
-// avoiding a duplicate refresh here.
-func resolveIdentityKey(store *credential.Store, ws *credential.Workspace, baseOpts []slack.Option, slackAuth slack.Auth) string {
-	if ws.TeamID != "" && ws.UserID != "" {
-		return slack.IdentityCacheKey(ws.TeamID, ws.UserID)
-	}
-	teamID, userID := bootstrapIdentity(baseOpts, slackAuth)
-	if teamID == "" || userID == "" {
-		return ""
-	}
-	_ = store.SetIdentity(ws.URL, teamID, userID) // best-effort; keying doesn't depend on the write
-	return slack.IdentityCacheKey(teamID, userID)
-}
-
-// bootstrapIdentity calls auth.test through a cache-less client to learn the
-// team_id/user_id behind a credential. Returns empty ids on any failure —
-// silently, since the caller just treats that as "caching off this run".
-func bootstrapIdentity(baseOpts []slack.Option, slackAuth slack.Auth) (teamID, userID string) {
-	resp, err := slack.New(slackAuth, baseOpts...).API(context.Background(), "auth.test", nil)
-	if err != nil {
-		return "", ""
-	}
-	teamID, _ = resp["team_id"].(string)
-	userID, _ = resp["user_id"].(string)
-	return teamID, userID
 }
 
 // healMissingSecrets handles a stored secret that is a dangling "__KEYCHAIN__"
@@ -269,63 +234,6 @@ func desktopRefresh(globals *GlobalFlags, store *credential.Store, workspaceURL 
 		}
 		return slack.Auth{}, false
 	}
-}
-
-func mapWorkspaceResolveError(store *credential.Store, selector string, err error) error {
-	var ambiguous *credential.AmbiguousSelectorError
-	if agenterrors.As(err, &ambiguous) {
-		return agenterrors.Newf(agenterrors.FixableByAgent,
-			"--workspace %q matches multiple workspaces: %s", selector, strings.Join(ambiguous.Matches, ", ")).
-			WithHint("pass a more specific --workspace selector")
-	}
-
-	urls := storedWorkspaceURLs(store)
-	if len(urls) == 0 {
-		return agenterrors.New("no Slack credentials configured", agenterrors.FixableByHuman).
-			WithHint(noCredentialsHint)
-	}
-	if selector == "" {
-		return agenterrors.Wrap(err, agenterrors.FixableByHuman).WithHint(noCredentialsHint)
-	}
-	return agenterrors.Newf(agenterrors.FixableByAgent,
-		"no workspace matches %q; configured: %s", selector, strings.Join(urls, ", ")).
-		WithHint("pass one of the configured workspaces via --workspace, or import the missing one")
-}
-
-func storedWorkspaceURLs(store *credential.Store) []string {
-	creds, err := store.Load()
-	if err != nil {
-		return nil
-	}
-	urls := make([]string, 0, len(creds.Workspaces))
-	for _, ws := range creds.Workspaces {
-		urls = append(urls, ws.URL)
-	}
-	return urls
-}
-
-// workspaceMatches compares two workspace references by exact host. It is
-// deliberately stricter and simpler than the credential store's selector
-// matching (no substring/name/team-domain forms): it only guards whether
-// env-var credentials may serve a request, where a fuzzy match could hand the
-// wrong workspace's token to a permalink. Don't unify it with Store.Resolve.
-func workspaceMatches(a, b string) bool {
-	ha, hb := workspaceHost(a), workspaceHost(b)
-	if ha == "" || hb == "" {
-		return false
-	}
-	return ha == hb
-}
-
-func workspaceHost(s string) string {
-	s = strings.TrimSpace(strings.ToLower(s))
-	if s == "" {
-		return ""
-	}
-	if u, err := url.Parse(s); err == nil && u.Host != "" {
-		return u.Host
-	}
-	return strings.TrimSuffix(s, "/")
 }
 
 // requireYes gates destructive mutations: without --yes the command returns a
