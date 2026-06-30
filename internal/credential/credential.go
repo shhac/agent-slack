@@ -37,6 +37,7 @@ type Workspace struct {
 	URL        string `json:"workspace_url"`
 	Name       string `json:"workspace_name,omitempty"`
 	TeamID     string `json:"team_id,omitempty"`
+	UserID     string `json:"user_id,omitempty"`
 	TeamDomain string `json:"team_domain,omitempty"`
 	Auth       Auth   `json:"auth"`
 }
@@ -231,6 +232,9 @@ func (s *Store) upsertMany(workspaces []Workspace) (Workspace, error) {
 			if ws.TeamID != "" {
 				merged.TeamID = ws.TeamID
 			}
+			if ws.UserID != "" {
+				merged.UserID = ws.UserID
+			}
 			if ws.TeamDomain != "" {
 				merged.TeamDomain = ws.TeamDomain
 			}
@@ -242,6 +246,41 @@ func (s *Store) upsertMany(workspaces []Workspace) (Workspace, error) {
 		}
 	}
 	return last, s.Save(creds)
+}
+
+// SetIdentity records the Slack team_id/user_id (resolved from auth.test) on the
+// matching workspace and persists. These are non-secret and key the on-disk
+// cache namespace. It deliberately never touches Auth, so a best-effort identity
+// backfill can't clobber stored secrets. An unknown workspace is a no-op.
+func (s *Store) SetIdentity(workspaceURL, teamID, userID string) error {
+	normalized, err := normalizeURL(workspaceURL)
+	if err != nil {
+		return err
+	}
+	creds, err := s.Load()
+	if err != nil {
+		return err
+	}
+	changed := false
+	for i := range creds.Workspaces {
+		w := &creds.Workspaces[i]
+		if w.URL != normalized {
+			continue
+		}
+		if teamID != "" && w.TeamID != teamID {
+			w.TeamID = teamID
+			changed = true
+		}
+		if userID != "" && w.UserID != userID {
+			w.UserID = userID
+			changed = true
+		}
+		break
+	}
+	if !changed {
+		return nil
+	}
+	return s.Save(creds)
 }
 
 // SetDefault sets the default workspace URL.

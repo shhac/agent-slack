@@ -296,6 +296,38 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+func TestSetIdentityPersistsIDsAndKeepsSecrets(t *testing.T) {
+	kc := NewMemoryKeychain()
+	s := newTestStore(t, kc)
+	if _, err := s.Upsert(Workspace{
+		URL:  "https://acme.slack.com",
+		Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-secret", XOXD: "xoxd-secret"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.SetIdentity("https://acme.slack.com/", "T123", "U456"); err != nil {
+		t.Fatal(err)
+	}
+
+	creds, _ := s.Load()
+	w := creds.Workspaces[0]
+	if w.TeamID != "T123" || w.UserID != "U456" {
+		t.Fatalf("identity not persisted: team=%q user=%q", w.TeamID, w.UserID)
+	}
+	// Secrets must survive a SetIdentity that never carries Auth.
+	if w.Auth.XOXC != "xoxc-secret" || w.Auth.XOXD != "xoxd-secret" {
+		t.Fatalf("secrets clobbered by SetIdentity: %+v", w.Auth)
+	}
+}
+
+func TestSetIdentityUnknownWorkspaceIsNoError(t *testing.T) {
+	s := newTestStore(t, NewMemoryKeychain())
+	if err := s.SetIdentity("https://nope.slack.com", "T1", "U1"); err != nil {
+		t.Fatalf("SetIdentity on unknown workspace should be a no-op, got %v", err)
+	}
+}
+
 func TestLoadMissingFile(t *testing.T) {
 	s := newTestStore(t, NewMemoryKeychain())
 	creds, err := s.Load()
