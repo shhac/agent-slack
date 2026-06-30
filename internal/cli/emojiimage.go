@@ -26,7 +26,7 @@ import (
 // between runs, beside its downloads under the per-identity cache subtree (key
 // is <team_id>/<user_id>).
 func emojiImagesDir(key string) string {
-	return filepath.Join(appCacheDir(), key, "emoji-images")
+	return filepath.Join(appCacheDir(), key, slack.EmojiImagesSubdir)
 }
 
 // inlineEmojiResolver returns the TranscriptOptions.InlineEmoji seam, or nil to

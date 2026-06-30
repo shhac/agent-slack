@@ -114,9 +114,16 @@ func readCacheStat(path string) CacheCategory {
 	return c
 }
 
-// downloadsSubdir is the per-identity downloaded-files directory name, kept by a
-// resolution-cache purge (cleared only by --downloads or a full identity purge).
-const downloadsSubdir = "downloads"
+// The per-identity subtree holds two well-known subdirectories beside its
+// category files; the slack package owns these names so callers (CLI path
+// helpers, the legacy sweep) reference one source of truth.
+const (
+	// DownloadsSubdir holds downloaded files; kept by a resolution-cache purge
+	// (cleared only by --downloads or a full identity purge).
+	DownloadsSubdir = "downloads"
+	// EmojiImagesSubdir holds decoded custom-emoji PNGs.
+	EmojiImagesSubdir = "emoji-images"
+)
 
 // PurgeCacheDir clears one identity's regenerable resolution cache (key is
 // <team_id>/<user_id>): every category file and the emoji-image cache, but NOT
@@ -136,7 +143,7 @@ func PurgeCacheDir(cacheDir, key string) error {
 		return err
 	}
 	for _, e := range entries {
-		if e.Name() == downloadsSubdir {
+		if e.Name() == DownloadsSubdir {
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
@@ -214,7 +221,7 @@ func MigrateLegacyLayout(cacheDir string) {
 		if !e.IsDir() {
 			continue
 		}
-		if name := e.Name(); legacyHostHashRe.MatchString(name) || name == downloadsSubdir || name == "emoji-images" {
+		if name := e.Name(); legacyHostHashRe.MatchString(name) || name == DownloadsSubdir || name == EmojiImagesSubdir {
 			_ = os.RemoveAll(filepath.Join(cacheDir, name))
 		}
 	}

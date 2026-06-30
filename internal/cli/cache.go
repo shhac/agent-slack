@@ -136,5 +136,5 @@ func appCacheDir() string {
 // (identity not yet resolved) falls back to the cache root so a download still
 // has somewhere to go rather than failing.
 func downloadsDir(key string) string {
-	return filepath.Join(appCacheDir(), key, "downloads")
+	return filepath.Join(appCacheDir(), key, slack.DownloadsSubdir)
 }

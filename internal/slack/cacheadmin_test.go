@@ -64,7 +64,7 @@ func TestPurgeCacheDirKeepsDownloadsButIdentityDirRemovesAll(t *testing.T) {
 	writeCacheCategory(t, dir, key, "channels", map[string]cacheEntry[CompactChannel]{
 		"C1": {FetchedAt: 1000, Value: CompactChannel{ID: "C1", Name: "devs"}},
 	})
-	dl := filepath.Join(dir, key, downloadsSubdir, "F0FILE.txt")
+	dl := filepath.Join(dir, key, DownloadsSubdir, "F0FILE.txt")
 	if err := os.MkdirAll(filepath.Dir(dl), 0o700); err != nil {
 		t.Fatal(err)
 	}

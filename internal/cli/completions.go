@@ -100,16 +100,25 @@ func completionWorkspace(globals *GlobalFlags) *credential.Workspace {
 	return ws
 }
 
+// selectedIdentityKey resolves the --workspace selector (or the default
+// workspace) to its identity cache key and URL, reading the persisted
+// credential — no network. Both empty when no workspace resolves or its identity
+// is unresolved.
+func selectedIdentityKey(globals *GlobalFlags) (key, url string) {
+	ws := completionWorkspace(globals)
+	if ws == nil {
+		return "", ""
+	}
+	return slack.IdentityCacheKey(ws.TeamID, ws.UserID), ws.URL
+}
+
 // completionCacheKey is the identity cache key for the completion workspace,
 // read straight from the persisted credential — no network, so completions stay
 // instant. Empty (no suggestions) when the workspace is unknown or its identity
 // has not been resolved yet.
 func completionCacheKey(globals *GlobalFlags) string {
-	ws := completionWorkspace(globals)
-	if ws == nil {
-		return ""
-	}
-	return slack.IdentityCacheKey(ws.TeamID, ws.UserID)
+	key, _ := selectedIdentityKey(globals)
+	return key
 }
 
 // fixedCompletions completes a flag from a closed set of values (no file

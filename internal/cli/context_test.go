@@ -120,6 +120,63 @@ func TestBootstrapResolvesAndPersistsIdentity(t *testing.T) {
 	}
 }
 
+func TestBootstrapFailureLeavesIdentityUnresolved(t *testing.T) {
+	env := newTestEnv(t)
+	server := mockslack.New()
+	server.HandleBody("auth.test", map[string]any{"ok": false, "error": "invalid_auth"})
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	if _, err := env.store.Upsert(credential.Workspace{
+		URL:  "https://acme.slack.com",
+		Auth: credential.Auth{Type: credential.AuthStandard, Token: "xoxb-x"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The command itself fails (invalid auth); the invariant under test is that a
+	// failed bootstrap must NOT persist a guessed identity — caching stays inert.
+	_, _, _ = env.run(t, "", "--base-url", ts.URL, "auth", "test")
+
+	ws, err := env.store.Resolve("https://acme.slack.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.TeamID != "" || ws.UserID != "" {
+		t.Errorf("identity must stay unresolved after a failed bootstrap: %+v", ws)
+	}
+}
+
+func TestBootstrapPartialIdentityNotPersisted(t *testing.T) {
+	env := newTestEnv(t)
+	server := mockslack.New()
+	// auth.test succeeds but omits user_id — half an identity is not an identity.
+	server.HandleBody("auth.test", map[string]any{"ok": true, "user": "paul", "team_id": "T0BOOT"})
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	if _, err := env.store.Upsert(credential.Workspace{
+		URL:  "https://acme.slack.com",
+		Auth: credential.Auth{Type: credential.AuthStandard, Token: "xoxb-x"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, stderr, err := env.run(t, "", "--base-url", ts.URL, "auth", "test"); err != nil {
+		t.Fatalf("err = %v, stderr = %s", err, stderr)
+	}
+
+	ws, err := env.store.Resolve("https://acme.slack.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.TeamID != "" || ws.UserID != "" {
+		t.Errorf("a partial (team-only) identity must not be persisted: %+v", ws)
+	}
+}
+
 func TestDesktopAutoRefresh(t *testing.T) {
 	env := newTestEnv(t)
 	store := env.store

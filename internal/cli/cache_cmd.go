@@ -80,17 +80,6 @@ func cacheWorkspaceLabels(globals *GlobalFlags, keys []string) map[string]string
 	return labels
 }
 
-// selectedIdentityKey resolves the --workspace selector (or the default
-// workspace) to its identity cache key, reading the persisted credential — no
-// network. Empty when no workspace resolves or its identity is unresolved.
-func selectedIdentityKey(globals *GlobalFlags) (key, url string) {
-	ws := completionWorkspace(globals)
-	if ws == nil {
-		return "", ""
-	}
-	return slack.IdentityCacheKey(ws.TeamID, ws.UserID), ws.URL
-}
-
 func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
 		Use:   "info",
@@ -176,37 +165,45 @@ func registerCachePurge(parent *cobra.Command, globals *GlobalFlags) {
 				}
 			}
 
-			// Purge a resolution cache unless --downloads was the sole target.
+			// Purge a resolution cache too, unless --downloads was the sole target.
 			downloadsOnly := downloads && !allWorkspaces && globals.Workspace == ""
-			switch {
-			case downloadsOnly:
-				// nothing more
-			case allWorkspaces:
-				cleared, err := slack.PurgeAllCaches(dir)
-				if err != nil {
+			if !downloadsOnly {
+				if err := purgeResolutionCache(globals, dir, allWorkspaces, result); err != nil {
 					return err
 				}
-				result["cleared_workspaces"] = cleared
-			default:
-				key, url := selectedIdentityKey(globals)
-				if key == "" {
-					return errNoWorkspaceToPurge(url)
-				}
-				if err := slack.PurgeCacheDir(dir, key); err != nil {
-					return err
-				}
-				result["purged"] = url
 			}
 			return printSingle(globals, result)
 		},
 	}
-	cmd.Flags().BoolVar(&allWorkspaces, "all-workspaces", false, "Clear every workspace's resolution cache")
-	cmd.Flags().BoolVar(&downloads, "downloads", false, "Clear the downloaded-files cache (not workspace-scoped)")
+	cmd.Flags().BoolVar(&allWorkspaces, "all-workspaces", false, "Clear every identity's resolution cache")
+	cmd.Flags().BoolVar(&downloads, "downloads", false, "Also clear the resolved identity's downloaded files (kept by a plain purge)")
 	parent.AddCommand(cmd)
 }
 
-// purgeDownloads clears downloaded files for the resolved identity, or for every
-// cached identity with --all-workspaces.
+// purgeResolutionCache clears the resolution cache for every identity
+// (--all-workspaces) or the resolved one, recording what it cleared.
+func purgeResolutionCache(globals *GlobalFlags, dir string, allWorkspaces bool, result map[string]any) error {
+	if allWorkspaces {
+		cleared, err := slack.PurgeAllCaches(dir)
+		if err != nil {
+			return err
+		}
+		result["cleared_workspaces"] = cleared
+		return nil
+	}
+	key, url, err := requireSelectedIdentity(globals)
+	if err != nil {
+		return err
+	}
+	if err := slack.PurgeCacheDir(dir, key); err != nil {
+		return err
+	}
+	result["purged"] = url
+	return nil
+}
+
+// purgeDownloads clears downloaded files for every cached identity
+// (--all-workspaces) or the resolved one.
 func purgeDownloads(globals *GlobalFlags, dir string, allWorkspaces bool, result map[string]any) error {
 	if allWorkspaces {
 		keys, err := slack.CachedIdentityKeys(dir)
@@ -221,15 +218,26 @@ func purgeDownloads(globals *GlobalFlags, dir string, allWorkspaces bool, result
 		result["downloads"] = "cleared"
 		return nil
 	}
-	key, url := selectedIdentityKey(globals)
-	if key == "" {
-		return errNoWorkspaceToPurge(url)
+	key, _, err := requireSelectedIdentity(globals)
+	if err != nil {
+		return err
 	}
 	if err := os.RemoveAll(downloadsDir(key)); err != nil {
 		return err
 	}
 	result["downloads"] = "cleared"
 	return nil
+}
+
+// requireSelectedIdentity resolves the --workspace selector (or default) to its
+// identity key, returning a structured error when no workspace resolves or its
+// identity is unresolved — the single guard the purge paths share.
+func requireSelectedIdentity(globals *GlobalFlags) (key, url string, err error) {
+	key, url = selectedIdentityKey(globals)
+	if key == "" {
+		return "", url, errNoWorkspaceToPurge(url)
+	}
+	return key, url, nil
 }
 
 // errNoWorkspaceToPurge distinguishes "no workspace selected" from "workspace

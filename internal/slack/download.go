@@ -37,10 +37,21 @@ type DownloadOptions struct {
 	AllowHTML bool
 }
 
-var unsafeFilenameRe = regexp.MustCompile(`[\\/<>:"|?*]`)
+// unsafePathSegmentRe matches characters that must never appear in a single
+// path segment we build (download filenames, cache identity keys): directory
+// separators, shell/Windows-reserved punctuation, and control characters. Both
+// sanitizeFilename and the cache's sanitizeKeySegment share it so the safety
+// rule lives in one place.
+var unsafePathSegmentRe = regexp.MustCompile(`[\\/<>:"|?*\x00-\x1f]`)
+
+// replaceUnsafePathChars swaps every unsafe character for "_". Callers still
+// have to handle the bare "."/".." traversal forms, which survive this filter.
+func replaceUnsafePathChars(s string) string {
+	return unsafePathSegmentRe.ReplaceAllString(s, "_")
+}
 
 func sanitizeFilename(name string) string {
-	cleaned := unsafeFilenameRe.ReplaceAllString(name, "_")
+	cleaned := replaceUnsafePathChars(name)
 	// "." and ".." survive the character filter but would escape the dest
 	// dir when joined onto a path.
 	if cleaned == "." || cleaned == ".." {

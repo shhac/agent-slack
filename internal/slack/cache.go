@@ -5,7 +5,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -344,17 +343,17 @@ func IdentityCacheKey(teamID, userID string) string {
 
 // sanitizeKeySegment keeps a single path segment safe: it strips directory
 // separators and the "."/".." traversal forms, so an id can only ever name a
-// child directory of the cache root.
+// child directory of the cache root. Shares replaceUnsafePathChars with the
+// download filename sanitizer; unlike that one, an unusable id sanitizes to ""
+// (disabling caching) rather than to a placeholder.
 func sanitizeKeySegment(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" || s == "." || s == ".." {
 		return ""
 	}
-	cleaned := keyUnsafeRe.ReplaceAllString(s, "_")
+	cleaned := replaceUnsafePathChars(s)
 	if cleaned == "." || cleaned == ".." {
 		return ""
 	}
 	return cleaned
 }
-
-var keyUnsafeRe = regexp.MustCompile(`[\\/<>:"|?*\x00-\x1f]`)
