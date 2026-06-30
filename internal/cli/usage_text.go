@@ -388,9 +388,11 @@ WARM   cache warm [users|channels|usergroups|emoji|dm-channels] [--page-delay 1s
        un-armed). --stale-only re-warms only categories whose sentinel lapsed.
 PURGE  cache purge [--workspace <sel>] [--all-workspaces] [--downloads]
        Delete cached data (local + regenerable): the resolution cache for one
-       workspace's identity by default, or all identities; --downloads also
-       clears that identity's downloaded files (kept by a plain purge).
-       'auth remove <url>' clears a workspace's whole identity cache subtree.
+       workspace's identity by default, or all identities (also sweeps any
+       pre-identity-layout orphans). --downloads also clears downloaded files
+       (kept by a plain purge) at the same scope — one identity, or every
+       identity with --all-workspaces. 'auth remove <url>' clears a workspace's
+       whole identity cache subtree.
 TUNE   per-invocation --no-cache / --refresh-cache / --cache-ttl <dur>; persist
        via 'config set cache.ttl.<category>' or AGENT_SLACK_CACHE_TTL[_<CAT>].`,
 

@@ -115,8 +115,8 @@ func readCacheStat(path string) CacheCategory {
 }
 
 // The per-identity subtree holds two well-known subdirectories beside its
-// category files; the slack package owns these names so callers (CLI path
-// helpers, the legacy sweep) reference one source of truth.
+// category files; the slack package owns these names so the CLI path helpers
+// reference one source of truth.
 const (
 	// DownloadsSubdir holds downloaded files; kept by a resolution-cache purge
 	// (cleared only by --downloads or a full identity purge).
@@ -168,7 +168,9 @@ func PurgeIdentityDir(cacheDir, key string) error {
 	return nil
 }
 
-// PurgeAllCaches clears every per-identity resolution cache (downloads kept).
+// PurgeAllCaches clears every per-identity resolution cache (each identity's
+// downloads kept), then sweeps any pre-identity-layout orphans so a full purge
+// leaves nothing regenerable-but-unreachable behind.
 func PurgeAllCaches(cacheDir string) ([]string, error) {
 	keys, err := CachedIdentityKeys(cacheDir)
 	if err != nil {
@@ -179,7 +181,37 @@ func PurgeAllCaches(cacheDir string) ([]string, error) {
 			return nil, err
 		}
 	}
+	purgeLegacyArtifacts(cacheDir)
 	return keys, nil
+}
+
+// legacyHostHashRe matches a pre-identity per-workspace cache dir name (a
+// 16-hex host hash). Current team-id dirs (T…/E…) never match.
+var legacyHostHashRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
+
+// purgeLegacyArtifacts removes cache directories an older (pre-identity) layout
+// left at the cache root — the old <host-hash>/ resolution dirs and the old flat
+// downloads/ and emoji-images/, plus the defunct .layout-v2 sentinel — so an
+// --all-workspaces purge leaves no orphaned cache. The current layout nests
+// downloads/emoji-images under <team>/<user>/, so the top-level names only ever
+// match legacy artifacts. Best-effort.
+func purgeLegacyArtifacts(cacheDir string) {
+	if cacheDir == "" {
+		return
+	}
+	_ = os.Remove(filepath.Join(cacheDir, ".layout-v2"))
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if name := e.Name(); legacyHostHashRe.MatchString(name) || name == DownloadsSubdir || name == EmojiImagesSubdir {
+			_ = os.RemoveAll(filepath.Join(cacheDir, name))
+		}
+	}
 }
 
 // pruneEmptyIdentityDirs removes the identity dir and then its team parent, each
@@ -190,42 +222,6 @@ func pruneEmptyIdentityDirs(cacheDir, key string) {
 	if team := firstSegment(key); team != "" {
 		_ = os.Remove(filepath.Join(cacheDir, team)) // team dir, if empty
 	}
-}
-
-// layoutSentinel marks a cache dir as already migrated to the identity-scoped
-// layout, so the one-time legacy sweep runs at most once.
-const layoutSentinel = ".layout-v2"
-
-// legacyHostHashRe matches the pre-identity per-workspace cache dir name: a
-// 16-hex-char host hash. Team-id dirs (T…/E…) never match, so the sweep can't
-// touch the current layout.
-var legacyHostHashRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
-
-// MigrateLegacyLayout removes pre-identity cache artifacts an older version may
-// have left at the cache root — the old <host-hash>/ resolution dirs and the
-// old flat downloads/ and emoji-images/ — exactly once, recorded by a sentinel
-// file. Everything removed is regenerable, so it is fully best-effort: any error
-// (including a not-yet-created cache dir) just defers the sweep to a later run.
-func MigrateLegacyLayout(cacheDir string) {
-	if cacheDir == "" {
-		return
-	}
-	if _, err := os.Stat(filepath.Join(cacheDir, layoutSentinel)); err == nil {
-		return
-	}
-	entries, err := os.ReadDir(cacheDir)
-	if err != nil {
-		return // missing/unreadable dir — nothing to migrate yet, try again next run
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if name := e.Name(); legacyHostHashRe.MatchString(name) || name == DownloadsSubdir || name == EmojiImagesSubdir {
-			_ = os.RemoveAll(filepath.Join(cacheDir, name))
-		}
-	}
-	_ = os.WriteFile(filepath.Join(cacheDir, layoutSentinel), []byte("identity-scoped layout\n"), 0o600)
 }
 
 // firstSegment returns the leading path element of a key ("T123/U456" → "T123").

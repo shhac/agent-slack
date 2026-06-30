@@ -96,40 +96,48 @@ func TestPurgeCacheDirKeepsDownloadsButIdentityDirRemovesAll(t *testing.T) {
 	}
 }
 
-func TestMigrateLegacyLayout(t *testing.T) {
+func TestPurgeAllClearsLegacyArtifacts(t *testing.T) {
 	dir := t.TempDir()
-	// Legacy artifacts: a 16-hex host-hash cache dir and the old flat downloads/
-	// + emoji-images/. Plus a current-layout team dir that must be preserved.
+	// Legacy orphans: a 16-hex host-hash resolution dir, the old flat downloads/
+	// and emoji-images/, and the defunct sentinel.
 	legacy := filepath.Join(dir, "0123456789abcdef")
-	keep := filepath.Join(dir, "T_ACME", "U_PAUL")
-	for _, p := range []string{legacy, filepath.Join(dir, "downloads"), filepath.Join(dir, "emoji-images"), keep} {
+	for _, p := range []string{legacy, filepath.Join(dir, "downloads"), filepath.Join(dir, "emoji-images")} {
 		if err := os.MkdirAll(p, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-
-	MigrateLegacyLayout(dir)
-
-	for _, gone := range []string{legacy, filepath.Join(dir, "downloads"), filepath.Join(dir, "emoji-images")} {
-		if _, err := os.Stat(gone); !os.IsNotExist(err) {
-			t.Errorf("legacy path %s should be removed: %v", gone, err)
-		}
-	}
-	if _, err := os.Stat(keep); err != nil {
-		t.Errorf("current-layout dir must be preserved: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, layoutSentinel)); err != nil {
-		t.Errorf("sentinel should be written: %v", err)
-	}
-
-	// Idempotent: a second run with a new legacy dir present is skipped (sentinel).
-	again := filepath.Join(dir, "fedcba9876543210")
-	if err := os.MkdirAll(again, 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".layout-v2"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	MigrateLegacyLayout(dir)
-	if _, err := os.Stat(again); err != nil {
-		t.Errorf("sentinel must short-circuit the sweep; dir was removed: %v", err)
+	// A current identity whose downloads must be kept by a (downloads-preserving)
+	// purge-all.
+	key := IdentityCacheKey("T_ACME", "U_PAUL")
+	writeCacheCategory(t, dir, key, "channels", map[string]cacheEntry[CompactChannel]{
+		"C1": {FetchedAt: 1000, Value: CompactChannel{ID: "C1", Name: "devs"}},
+	})
+	keepDownload := filepath.Join(dir, key, DownloadsSubdir, "F0FILE.txt")
+	if err := os.MkdirAll(filepath.Dir(keepDownload), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keepDownload, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := PurgeAllCaches(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, gone := range []string{legacy, filepath.Join(dir, "downloads"), filepath.Join(dir, "emoji-images"), filepath.Join(dir, ".layout-v2")} {
+		if _, err := os.Stat(gone); !os.IsNotExist(err) {
+			t.Errorf("legacy orphan %s should be removed by purge-all: %v", gone, err)
+		}
+	}
+	// The current identity's resolution cache is cleared, but its downloads stay.
+	if cats, _ := InspectCacheDir(dir, key); len(cats) != 0 {
+		t.Errorf("current identity resolution cache should be purged: %+v", cats)
+	}
+	if _, err := os.Stat(keepDownload); err != nil {
+		t.Errorf("current identity's downloads must survive purge-all: %v", err)
 	}
 }
 

@@ -108,7 +108,11 @@ if re-warm cost ever bites. The nested layout is already the evolution path.
 ## Migration
 
 Old single-level `sha256(host)[:16]` cache dirs and the old flat
-`downloads/`/`emoji-images/` become orphaned. They are regenerable, so cleanup
-is best-effort: a one-time sweep (gated by a `cacheRoot/.layout-v2` sentinel)
-removes legacy-format top-level entries. No data the user can't re-fetch is at
-risk.
+`downloads/`/`emoji-images/` become orphaned. They are regenerable and harmless,
+so there is **no automatic migration** — a cleanup that runs on every invocation
+isn't worth its weight for stranded, re-fetchable data. Instead,
+`cache purge --all-workspaces` sweeps these legacy artifacts (along with the
+defunct `.layout-v2` sentinel an earlier build wrote) as part of clearing every
+identity's resolution cache, so one explicit purge leaves no orphans. Current
+identities' downloads are still preserved by that purge; only the unreachable
+legacy dirs and the resolution caches go.

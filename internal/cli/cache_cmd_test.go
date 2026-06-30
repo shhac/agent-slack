@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/shhac/agent-slack/internal/slack"
 )
 
 // seedCache writes a downloaded file and a resolution-cache category file under
@@ -70,6 +72,29 @@ func TestCachePurgeWorkspaceAndDownloads(t *testing.T) {
 	}
 	if exists(cat) || exists(dl) {
 		t.Error("--workspace + --downloads should clear both")
+	}
+}
+
+func TestCachePurgeDownloadsAllWorkspaces(t *testing.T) {
+	f := newCLIFixture(t)
+	// The fixture's own identity plus a second identity seeded directly on disk —
+	// --downloads --all-workspaces must clear every identity's downloads.
+	dlSelf := filepath.Join(downloadsDir(fixtureCacheKey()), "F0SELF.txt")
+	dlOther := filepath.Join(downloadsDir(slack.IdentityCacheKey("T_OTHER", "U_OTHER")), "F0OTHER.txt")
+	for _, p := range []string{dlSelf, dlOther} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, _, err := f.run(t, "cache", "purge", "--downloads", "--all-workspaces"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(dlSelf) || exists(dlOther) {
+		t.Error("--downloads --all-workspaces must clear every identity's downloads")
 	}
 }
 

@@ -53,8 +53,6 @@ func ttlEnvVar(category string) string {
 // namespace ("" leaves caching inert). This single helper feeds both client
 // constructors.
 func buildCache(globals *GlobalFlags, key string) *slack.Cache {
-	dir := appCacheDir()
-	slack.MigrateLegacyLayout(dir) // one-time sweep of pre-identity cache dirs
 	mode := slack.CacheNormal
 	switch {
 	case globals.NoCache || os.Getenv("AGENT_SLACK_NO_CACHE") != "":
@@ -62,7 +60,7 @@ func buildCache(globals *GlobalFlags, key string) *slack.Cache {
 	case globals.RefreshCache:
 		mode = slack.CacheRefresh
 	}
-	return slack.NewCache(dir, key, mode, resolveCacheTTL(globals), nil)
+	return slack.NewCache(appCacheDir(), key, mode, resolveCacheTTL(globals), nil)
 }
 
 // resolveCacheTTL builds the per-category TTL. Precedence, highest first:
