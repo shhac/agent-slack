@@ -59,8 +59,10 @@ CHAINING
 
 CACHE
   Awkward resolutions (channel name→ID, @handle→ID, profiles, workflow
-  metadata) are cached per workspace under ~/.cache/app.paulie.agent-slack/.
-  Never message bodies. get/list serve from cache within a short window
+  metadata) are cached per identity under
+  ~/.cache/app.paulie.agent-slack/<team_id>/<user_id>/ (downloads and emoji
+  images nest there too), so re-auth as a different user never reads the prior
+  user's data. Never message bodies. get/list serve from cache within a short window
   (5m); completions/resolution use longer TTLs. --no-cache bypasses;
   --refresh-cache re-fetches but still writes. Tune TTLs via --cache-ttl,
   AGENT_SLACK_CACHE_TTL[_<CATEGORY>], or 'config set cache.ttl.<cat>'.
@@ -348,7 +350,8 @@ SETUP   auth import-desktop — extract xoxc/xoxd from Slack Desktop (best).
 VERIFY  auth list (ls) — workspaces + where each secret is stored; flags
           secrets whose Keychain entry is gone. No secret material printed.
         auth test — calls Slack's auth.test with the resolved credentials.
-MANAGE  auth set-default <url> | auth remove <url>
+MANAGE  auth set-default <url> | auth remove <url> (also clears that
+          workspace's identity cache + downloads)
 ENV     SLACK_TOKEN (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser
           tokens) override the stored credentials for one invocation.
 NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,
@@ -365,11 +368,14 @@ NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,
 	"cache": `agent-slack cache — inspect, pre-fill, and clear the resolution cache.
 
 Awkward resolutions (channel name→ID, @handle→ID, profiles, workflow metadata,
-custom emoji) are cached per workspace under ~/.cache/app.paulie.agent-slack/.
+custom emoji) are cached per identity under
+~/.cache/app.paulie.agent-slack/<team_id>/<user_id>/ (downloads + emoji images
+nest there too). The team_id/user_id are resolved once from auth.test and stored
+in credentials.json, so re-auth as a different user gets a clean namespace.
 Never message bodies. Transparent — it fills as you work; reach for these only
 when you want to control it.
 
-INFO   cache info — what's cached per workspace (entries, bytes, age).
+INFO   cache info — what's cached per identity (entries, bytes, age).
 WARM   cache warm [users|channels|usergroups|emoji|dm-channels] [--page-delay 1s] [--no-bots] [--stale-only]
        Pre-fetch list endpoints (all categories if none named) so resolution and
        completions are instant and offline, and --resolve auto is free. Paginates
@@ -381,8 +387,10 @@ WARM   cache warm [users|channels|usergroups|emoji|dm-channels] [--page-delay 1s
        lookup). --no-bots excludes bots (leaves the user set incomplete, sentinel
        un-armed). --stale-only re-warms only categories whose sentinel lapsed.
 PURGE  cache purge [--workspace <sel>] [--all-workspaces] [--downloads]
-       Delete cached data (local + regenerable): one workspace by default, or all
-       workspaces, and/or the downloaded-files cache.
+       Delete cached data (local + regenerable): the resolution cache for one
+       workspace's identity by default, or all identities; --downloads also
+       clears that identity's downloaded files (kept by a plain purge).
+       'auth remove <url>' clears a workspace's whole identity cache subtree.
 TUNE   per-invocation --no-cache / --refresh-cache / --cache-ttl <dur>; persist
        via 'config set cache.ttl.<category>' or AGENT_SLACK_CACHE_TTL[_<CAT>].`,
 

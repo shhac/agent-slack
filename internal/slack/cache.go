@@ -13,10 +13,13 @@ import (
 
 // The CLI cold-starts on every invocation, so resolutions that would otherwise
 // be re-paid each run (channel name → ID, user handle → ID, profiles, workflow
-// metadata) are persisted on disk, one JSON file per workspace per category
-// under a per-workspace directory: <cacheDir>/<wshash>/<category>.json. The
-// subdirectory groups a workspace's caches and makes per-workspace purge a
-// single rmdir. Message bodies are never cached.
+// metadata) are persisted on disk, one JSON file per identity per category
+// under a per-identity directory: <cacheDir>/<team_id>/<user_id>/<category>.json
+// (the Cache.Key set by the CLI). Scoping by identity rather than workspace host
+// keeps a re-auth as a different user from reading the prior user's per-user
+// data. The subdirectory groups an identity's caches (and its downloads + emoji
+// images) and makes per-identity purge a single rmdir. Message bodies are never
+// cached.
 
 // CacheMode controls the read/write behavior of the resolution cache.
 type CacheMode int

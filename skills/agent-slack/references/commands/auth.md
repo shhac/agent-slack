@@ -12,4 +12,4 @@ In-binary version: `agent-slack auth usage`.
 | `auth parse-curl` | read a "Copy as cURL" Slack request on stdin, import its xoxc/xoxd |
 | `auth add --workspace-url <url> (--token … \| --xoxc … --xoxd …)` | add credentials directly |
 | `auth add --workspace-url <url> --form` | prompt for missing secrets via a native OS dialog (keeps tokens out of chat) |
-| `auth set-default <url>` / `auth remove <url>` | manage the default workspace and stored secrets |
+| `auth set-default <url>` / `auth remove <url>` | manage the default workspace and stored secrets; `auth remove` also clears that workspace's identity cache subtree (resolution cache + downloads) |

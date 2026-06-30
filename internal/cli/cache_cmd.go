@@ -94,7 +94,7 @@ func selectedIdentityKey(globals *GlobalFlags) (key, url string) {
 func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
 		Use:   "info",
-		Short: "Show what's cached per workspace (entries, size, age); all workspaces unless --workspace",
+		Short: "Show what's cached per identity (entries, size, age); all identities unless --workspace",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := appCacheDir()

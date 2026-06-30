@@ -69,14 +69,15 @@ you read those bytes depends on how you're running:
 - **Plain CLI:** the `path` is a real host path — Read it directly.
 - **MCP (`agent-slack mcp`):** the client has no filesystem, so the bridge
   rewrites each such `path` into a fetchable reference
-  `{"@type":"file","root":"cache","path":"downloads/F….png"}` (the host path is
-  never exposed). Read it with the bridge's built-in **`fs`** tool:
-  - `fs get cache downloads/F0BD….png` — returns the bytes. Images come back as
-    MCP **image blocks** (the model sees the picture); text comes back verbatim;
-    other binary as an embedded base64 resource. Files over a small inline limit
-    return a structured error rather than flooding context.
+  `{"@type":"file","root":"cache","path":"<team_id>/<user_id>/downloads/F….png"}`
+  (the host path is never exposed; downloads nest under the identity). Pass the
+  reference's `path` verbatim to the bridge's built-in **`fs`** tool:
+  - `fs get cache <team_id>/<user_id>/downloads/F0BD….png` — returns the bytes.
+    Images come back as MCP **image blocks** (the model sees the picture); text
+    comes back verbatim; other binary as an embedded base64 resource. Files over
+    a small inline limit return a structured error rather than flooding context.
   - `fs find cache -e png -e jpg` — search the cache for images.
-  - `fs ls cache downloads` — list a directory.
+  - `fs ls cache <team_id>/<user_id>/downloads` — list a directory.
   - `fs` is read-only and addresses everything **relative to the `cache` root**;
     `..` escapes and out-of-root symlinks are rejected.
 

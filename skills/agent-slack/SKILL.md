@@ -87,13 +87,16 @@ in `agent-slack message usage`.
 
 **Files over MCP (`agent-slack mcp`):** an MCP client has no filesystem, so the
 local `path`s above come back as fetchable references
-(`{"@type":"file","root":"cache","path":"downloads/F….png"}`) and you read them
-with the bridge's built-in **`fs`** tool — no host path needed:
+(`{"@type":"file","root":"cache","path":"<team_id>/<user_id>/downloads/F….png"}`)
+and you read them with the bridge's built-in **`fs`** tool — no host path
+needed. Pass the `path` from the reference verbatim; downloads nest under the
+identity (`<team_id>/<user_id>/downloads/`), so don't assume a bare
+`downloads/` prefix:
 
 ```text
-fs get  cache downloads/F0BD….png   # returns the bytes (images inline as image blocks)
-fs find cache -e png                 # discover downloaded images
-fs ls   cache downloads              # list a directory
+fs get  cache <team_id>/<user_id>/downloads/F0BD….png   # returns the bytes (images inline as image blocks)
+fs find cache -e png                                     # discover downloaded images
+fs ls   cache <team_id>/<user_id>/downloads              # list a directory
 ```
 
 `get` refuses files over a small inline limit. In plain-CLI use the `path`s are

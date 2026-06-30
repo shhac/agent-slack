@@ -87,17 +87,23 @@ caches.
   field and `path` points at a local `.download-error.txt` describing it.
 - Canvas-mode files convert to Markdown.
 
-**Download location** (re-derivable cache; safe to purge):
+**Download location** (re-derivable cache; safe to purge). Scoped by identity
+(`<team_id>/<user_id>`), so the path includes that subdir:
 
 ```
-$XDG_CACHE_HOME/app.paulie.agent-slack/downloads/   # if XDG_CACHE_HOME set
-~/.cache/app.paulie.agent-slack/downloads/          # otherwise
+$XDG_CACHE_HOME/app.paulie.agent-slack/<team_id>/<user_id>/downloads/   # if XDG_CACHE_HOME set
+~/.cache/app.paulie.agent-slack/<team_id>/<user_id>/downloads/          # otherwise
 ```
+
+Use the `path` each download result reports rather than constructing it — for
+MCP, pass the `{"@type":"file","root":"cache","path":…}` the result carries.
 
 ## Resolution cache
 
 Lookups that would otherwise be re-paid on every cold start are cached per
-workspace under `<cacheDir>/<wshash>/<category>.json` (never message bodies):
+identity under `<cacheDir>/<team_id>/<user_id>/<category>.json` (never message
+bodies). The `team_id`/`user_id` come from `auth.test` and are stored in
+`credentials.json`, so re-auth as a different user gets a clean namespace:
 
 | category | what | default TTL |
 |---|---|---|

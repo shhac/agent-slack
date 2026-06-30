@@ -60,6 +60,9 @@ All collapse to one Markdown string. Forwarded content: extract
   `~/.cache/app.paulie.agent-slack/` (see `architecture.md`).
 - macOS Keychain stores tokens; the file stores a `"__KEYCHAIN__"` placeholder.
 - The store schema is versioned (version, workspaces[], auth per workspace).
+  Each workspace also carries non-secret `team_id`/`user_id` (resolved from
+  `auth.test`, backfilled lazily) that key the per-identity cache namespace —
+  see `cache-namespacing.md`.
 - **Import-only** to start: no interactive setup; tokens arrive via the
   `import-*` / `parse-curl` commands and env vars.
 - Legacy migration: a TypeScript agent-slack stored credentials at

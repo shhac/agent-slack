@@ -6,9 +6,9 @@ Full cache contract: [../output.md](../output.md).
 
 | Command | Notes |
 |---|---|
-| `cache info` | what's cached per workspace: categories, entry counts, size, age (all workspaces unless `--workspace`) |
+| `cache info` | what's cached per identity: categories, entry counts, size, age, downloads bytes (all identities unless `--workspace`) |
 | `cache warm [users\|channels\|usergroups\|emoji\|dm-channels...] [--page-delay 1s] [--no-bots] [--stale-only]` | pre-fetch the named categories (all if none given) so completions + resolution are instant and offline, and arm the completeness sentinel (a later miss is authoritative within `cache.ttl.*-complete`, default 30m). Bots are warmed by default so the user set is complete; `--no-bots` excludes them but leaves the sentinel un-armed. `dm-channels` caches open-DM channel ids from the existing DM list (`conversations.list types=im`) — it never opens a new DM, and a `users` warm fills it for free. `--stale-only` skips categories still complete within the sentinel window (re-warm only what has gone stale — ideal for a repeated/scheduled warm; emits `skipped:true` for skipped categories). Paginates each endpoint, paced (`--page-delay 0` to disable); streams JSONL progress (filter `done:true` for the per-category summary) |
-| `cache purge [--workspace … \| --all-workspaces] [--downloads]` | clear cached data (local + regenerable; no `--yes`). `--downloads` clears the downloaded-files cache (global — see below) |
+| `cache purge [--workspace … \| --all-workspaces] [--downloads]` | clear cached data (local + regenerable; no `--yes`). A plain purge clears one identity's resolution cache and keeps its downloads; `--downloads` also clears that identity's downloaded files (see below). `auth remove <url>` clears a workspace's whole identity subtree |
 | `config list` | persisted settings + the settable keys |
 | `config get <key>` / `config set <key> <value>` / `config unset <key>` | read/write persisted settings |
 
@@ -21,8 +21,12 @@ Persist a TTL with `config set cache.ttl.<category> <dur>` (categories:
 `--no-cache`, `--refresh-cache`, `--cache-ttl`. See [../output.md](../output.md)
 for the cache contract in full.
 
-Downloaded files are **not** workspace-scoped: Slack file IDs (`F…`) are
-globally unique and immutable, so the file ID is a sufficient, workspace-
-independent key, and one flat `downloads/` dir naturally dedupes a file shared
-across workspaces. So `cache purge --downloads` is global, while
-`--workspace`/`--all-workspaces` scope only the resolution cache.
+Both the resolution cache and downloads are scoped by **identity**
+(`<team_id>/<user_id>`, resolved from `auth.test` and stored in
+`credentials.json`), under
+`~/.cache/app.paulie.agent-slack/<team_id>/<user_id>/` — so re-authing a
+workspace as a different user can't read the previous user's per-user data
+(DMs, drafts, scheduled, channel membership), and a download from a private
+channel one user can see isn't readable by another. A plain `cache purge`
+clears only the resolution cache (keeps downloads); `--downloads` clears that
+identity's downloads; `auth remove` clears the whole identity subtree.

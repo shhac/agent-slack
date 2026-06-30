@@ -33,9 +33,10 @@ family so conventions, output contract, and credential handling are shared.
 - **Multi-workspace**: disambiguate with `--workspace <url-or-substring>`.
 - **MCP server** (`agent-slack mcp`): exposes the command tree to MCP clients,
   plus a read-only `fs` tool so a client with no filesystem can read back
-  downloaded attachments — `fs get cache downloads/F….png` returns the bytes
-  (images as image blocks). Downloaded `path`s in tool output are rewritten to
-  host-free `{root,path}` references automatically.
+  downloaded attachments — `fs get cache <team_id>/<user_id>/downloads/F….png`
+  returns the bytes (images as image blocks). Downloaded `path`s in tool output
+  are rewritten to host-free `{root,path}` references automatically; pass the
+  reference's `path` verbatim.
 
 ## Installation
 
