@@ -355,13 +355,17 @@ directly. The host path is never exposed over MCP. Design: lib-agent-mcp
 **Decision: persist repeated resolutions per workspace; never message bodies.**
 The CLI cold-starts each invocation, so resolutions are re-paid every run.
 
-- **Storage: JSON files**, one per workspace per category, under a
-  per-workspace subdir `<cacheDir>/<wshash>/<category>.json`. Chosen over
-  SQLite: these are tiny key→value maps, JSON has no cross-process lock
+- **Storage: JSON files**, one per identity per category, under a
+  per-identity subdir `<cacheDir>/<team_id>/<user_id>/<category>.json`. Chosen
+  over SQLite: these are tiny key→value maps, JSON has no cross-process lock
   contention (agents fan out), needs no schema/migration, and stays
   human-debuggable. (`modernc.org/sqlite` stays in the binary for cookie DBs
-  only.) The subdir groups a workspace's caches and makes per-workspace purge
-  one rmdir.
+  only.) The subdir groups an identity's caches (and its downloads + emoji
+  images) and makes per-identity purge one rmdir. The cache is scoped by
+  `(team_id, user_id)` rather than workspace host so a re-auth as a different
+  user can't read the previous user's per-user data — see
+  **[cache-namespacing.md](cache-namespacing.md)** for the identity model,
+  lazy `auth.test` resolution, and on-disk layout.
 - **Categories + default TTL**: `users` ID→profile, `usergroups` handle→`S…`,
   `emoji` name→custom-emoji, `dm-channels` user-id-set→DM/group-DM channel id
   (24h each); `handles` @handle/email→ID,
