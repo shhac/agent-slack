@@ -168,6 +168,30 @@ func PurgeIdentityDir(cacheDir, key string) error {
 	return nil
 }
 
+// PurgeDownloads removes one identity's downloaded files (key is
+// <team_id>/<user_id>), leaving its resolution cache untouched.
+func PurgeDownloads(cacheDir, key string) error {
+	if cacheDir == "" || key == "" {
+		return nil
+	}
+	return os.RemoveAll(filepath.Join(cacheDir, key, DownloadsSubdir))
+}
+
+// PurgeAllDownloads removes every cached identity's downloaded files. Mirrors
+// PurgeAllCaches so the slack package owns both all-identity purge sweeps.
+func PurgeAllDownloads(cacheDir string) error {
+	keys, err := CachedIdentityKeys(cacheDir)
+	if err != nil {
+		return err
+	}
+	for _, k := range keys {
+		if err := PurgeDownloads(cacheDir, k); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // PurgeAllCaches clears every per-identity resolution cache (each identity's
 // downloads kept), then sweeps any pre-identity-layout orphans so a full purge
 // leaves nothing regenerable-but-unreachable behind.
@@ -205,13 +229,19 @@ func purgeLegacyArtifacts(cacheDir string) {
 		return
 	}
 	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if name := e.Name(); legacyHostHashRe.MatchString(name) || name == DownloadsSubdir || name == EmojiImagesSubdir {
-			_ = os.RemoveAll(filepath.Join(cacheDir, name))
+		if e.IsDir() && isLegacyArtifactName(e.Name()) {
+			_ = os.RemoveAll(filepath.Join(cacheDir, e.Name()))
 		}
 	}
+}
+
+// isLegacyArtifactName reports whether a cache-root directory name belongs to
+// the pre-identity layout: an old <host-hash>/ resolution dir, or the old flat
+// downloads/ and emoji-images/. Current-layout team dirs (uppercase T…/E…) never
+// match the host-hash pattern, and downloads/emoji-images now nest under an
+// identity, so this can only ever name a legacy artifact.
+func isLegacyArtifactName(name string) bool {
+	return legacyHostHashRe.MatchString(name) || name == DownloadsSubdir || name == EmojiImagesSubdir
 }
 
 // pruneEmptyIdentityDirs removes the identity dir and then its team parent, each

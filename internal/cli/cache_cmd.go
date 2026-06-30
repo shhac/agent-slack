@@ -2,7 +2,6 @@ package cli
 
 import (
 	"io/fs"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -165,9 +164,10 @@ func registerCachePurge(parent *cobra.Command, globals *GlobalFlags) {
 				}
 			}
 
-			// Purge a resolution cache too, unless --downloads was the sole target.
-			downloadsOnly := downloads && !allWorkspaces && globals.Workspace == ""
-			if !downloadsOnly {
+			// Also purge the resolution cache — except when --downloads was the
+			// sole target (a bare --downloads with no scope clears only downloads).
+			purgeResolution := !downloads || allWorkspaces || globals.Workspace != ""
+			if purgeResolution {
 				if err := purgeResolutionCache(globals, dir, allWorkspaces, result); err != nil {
 					return err
 				}
@@ -206,24 +206,17 @@ func purgeResolutionCache(globals *GlobalFlags, dir string, allWorkspaces bool, 
 // (--all-workspaces) or the resolved one.
 func purgeDownloads(globals *GlobalFlags, dir string, allWorkspaces bool, result map[string]any) error {
 	if allWorkspaces {
-		keys, err := slack.CachedIdentityKeys(dir)
+		if err := slack.PurgeAllDownloads(dir); err != nil {
+			return err
+		}
+	} else {
+		key, _, err := requireSelectedIdentity(globals)
 		if err != nil {
 			return err
 		}
-		for _, k := range keys {
-			if err := os.RemoveAll(downloadsDir(k)); err != nil {
-				return err
-			}
+		if err := slack.PurgeDownloads(dir, key); err != nil {
+			return err
 		}
-		result["downloads"] = "cleared"
-		return nil
-	}
-	key, _, err := requireSelectedIdentity(globals)
-	if err != nil {
-		return err
-	}
-	if err := os.RemoveAll(downloadsDir(key)); err != nil {
-		return err
 	}
 	result["downloads"] = "cleared"
 	return nil

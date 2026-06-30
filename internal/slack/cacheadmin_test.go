@@ -141,6 +141,23 @@ func TestPurgeAllClearsLegacyArtifacts(t *testing.T) {
 	}
 }
 
+func TestIsLegacyArtifactName(t *testing.T) {
+	legacy := []string{"0123456789abcdef", "fedcba9876543210", DownloadsSubdir, EmojiImagesSubdir}
+	for _, n := range legacy {
+		if !isLegacyArtifactName(n) {
+			t.Errorf("%q should be classified legacy", n)
+		}
+	}
+	// Current-layout team dirs (uppercase Slack ids) and anything that isn't an
+	// exact 16-lowercase-hex host hash must never be swept.
+	current := []string{"T0123456789ABCDE", "T_ACME", "E01ABCDE", "0123456789abcde" /*15*/, "0123456789abcdef0" /*17*/, "0123456789ABCDEF" /*upper*/, "users", "channels.json"}
+	for _, n := range current {
+		if isLegacyArtifactName(n) {
+			t.Errorf("%q must NOT be classified legacy (false positive)", n)
+		}
+	}
+}
+
 func TestCacheAdminEmptyDir(t *testing.T) {
 	// A never-used cache dir is not an error.
 	keys, err := CachedIdentityKeys(t.TempDir())
