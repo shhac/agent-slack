@@ -179,9 +179,9 @@ func threadRootTS(ctx context.Context, cc *clientContext, ref *render.MessageRef
 	return msg.TS, nil
 }
 
-func messageDownloadOptions(globals *GlobalFlags) slack.MessageDownloads {
+func messageDownloadOptions(globals *GlobalFlags, cc *clientContext) slack.MessageDownloads {
 	return slack.MessageDownloads{
-		DestDir:        downloadsDir(),
+		DestDir:        downloadsDir(cc.CacheKey),
 		CanvasMarkdown: htmlmd.Convert,
 		Warn:           globals.stderr,
 	}

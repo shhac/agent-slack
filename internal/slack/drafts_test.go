@@ -219,14 +219,14 @@ func TestListDraftsWarmsCompletionCache(t *testing.T) {
 	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
 	ts := httptest.NewServer(server)
 	t.Cleanup(ts.Close)
-	cache := NewCache(dir, CacheNormal, DefaultCacheTTL(), func() time.Time { return now })
+	cache := NewCache(dir, testKey, CacheNormal, DefaultCacheTTL(), func() time.Time { return now })
 	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-test", XOXD: "d", WorkspaceURL: ts.URL},
 		WithCache(cache))
 
 	if _, err := ListDrafts(context.Background(), c); err != nil {
 		t.Fatal(err)
 	}
-	items := ReadCompletions(dir, ts.URL, "Dr0", 10, CompleteDrafts)
+	items := ReadCompletions(dir, testKey, "Dr0", 10, CompleteDrafts)
 	if len(items) != 1 || items[0].Value != "Dr0PLN" || items[0].Description != "a hand-off" {
 		t.Errorf("draft completions = %+v (only the plain draft should warm)", items)
 	}
@@ -243,7 +243,7 @@ func TestListScheduledWarmsCompletionCacheBrowser(t *testing.T) {
 	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
 	ts := httptest.NewServer(server)
 	t.Cleanup(ts.Close)
-	cache := NewCache(dir, CacheNormal, DefaultCacheTTL(), func() time.Time { return now })
+	cache := NewCache(dir, testKey, CacheNormal, DefaultCacheTTL(), func() time.Time { return now })
 	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-test", XOXD: "d", WorkspaceURL: ts.URL},
 		WithCache(cache))
 
@@ -251,7 +251,7 @@ func TestListScheduledWarmsCompletionCacheBrowser(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Drafts are browser-only, so this scheduled-draft path is the real-world warm.
-	items := ReadCompletions(dir, ts.URL, "Dr0", 10, CompleteScheduled)
+	items := ReadCompletions(dir, testKey, "Dr0", 10, CompleteScheduled)
 	if len(items) != 1 || items[0].Value != "Dr0SCHED" || items[0].Description != "browser-scheduled note" {
 		t.Errorf("browser scheduled completions = %+v", items)
 	}

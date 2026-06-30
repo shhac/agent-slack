@@ -39,7 +39,7 @@ func TestListConversationsWarmsChannelCache(t *testing.T) {
 	}
 
 	// And the channel is offered as a completion.
-	items := ReadCompletions(dir, "https://acme.slack.com", "de", 10, CompleteChannels)
+	items := ReadCompletions(dir, testKey, "de", 10, CompleteChannels)
 	if len(items) != 2 {
 		t.Errorf("completions = %+v, want #devs and #design", items)
 	}
@@ -72,7 +72,7 @@ func TestListUsersWarmsUserCache(t *testing.T) {
 	if calls := len(server.CallsFor("users.info")); calls != 0 {
 		t.Errorf("expected 0 users.info after warming, got %d", calls)
 	}
-	if items := ReadCompletions(dir, "https://acme.slack.com", "", 10, CompleteUsers); len(items) != 1 {
+	if items := ReadCompletions(dir, testKey, "", 10, CompleteUsers); len(items) != 1 {
 		t.Errorf("user completions = %+v", items)
 	}
 }
@@ -122,12 +122,12 @@ func TestListScheduledWarmsCompletionCache(t *testing.T) {
 	}
 
 	// The scheduled id is now a completion candidate — no API call, just a cache read.
-	items := ReadCompletions(dir, "https://acme.slack.com", "Q0", 10, CompleteScheduled)
+	items := ReadCompletions(dir, testKey, "Q0", 10, CompleteScheduled)
 	if len(items) != 1 || items[0].Value != "Q0AAAA1111" || items[0].Description != "stand-up reminder" {
 		t.Errorf("scheduled completions = %+v", items)
 	}
 	// The command itself must never READ this cache (it always lists fresh).
-	if got := ReadCompletions(dir, "https://acme.slack.com", "", 10, CompleteChannels|CompleteUsers); len(got) != 0 {
+	if got := ReadCompletions(dir, testKey, "", 10, CompleteChannels|CompleteUsers); len(got) != 0 {
 		t.Errorf("scheduled warm must not leak into channel/user completions: %+v", got)
 	}
 }

@@ -14,6 +14,10 @@ import (
 	"testing"
 )
 
+// emojiTestKey is an arbitrary identity namespace for the on-disk emoji-image
+// cache in these unit tests (they don't go through a fixture).
+const emojiTestKey = "T_X/U_Y"
+
 // TestInlineEmojiResolverGating — the --images gate must yield no resolver
 // (leaving emoji as text, no escape bytes) for off/auto-on-non-TTY/bad modes.
 // These branches return before touching the client, so a nil clientContext is
@@ -34,11 +38,12 @@ func TestInlineEmojiResolverGating(t *testing.T) {
 func TestEmojiImageCacheDiskHit(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	const url = "u-parrot"
-	if err := os.MkdirAll(emojiImagesDir(), 0o700); err != nil {
+	dir := emojiImagesDir(emojiTestKey)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	png := pngBytesFixture(t, color.RGBA{0, 0, 255, 255})
-	if err := os.WriteFile(filepath.Join(emojiImagesDir(), emojiCacheFile(url)), png, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, emojiCacheFile(url)), png, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,7 +52,7 @@ func TestEmojiImageCacheDiskHit(t *testing.T) {
 		fetched++
 		return nil, stderrors.New("must not fetch on a disk hit")
 	}
-	cache := newEmojiImageCache(context.Background(), fetch, map[string]string{"parrot": url})
+	cache := newEmojiImageCache(context.Background(), fetch, map[string]string{"parrot": url}, dir)
 
 	if esc := cache.escape("parrot"); esc == "" {
 		t.Error("a disk-cached emoji should still produce an escape")
@@ -111,7 +116,7 @@ func TestEmojiImageCacheEscape(t *testing.T) {
 	cache := newEmojiImageCache(context.Background(), fetch, map[string]string{
 		"parrot": "u-parrot",
 		"broken": "u-broken",
-	})
+	}, emojiImagesDir(emojiTestKey))
 
 	first := cache.escape("parrot")
 	if !strings.Contains(first, "\x1b_Ga=T") {

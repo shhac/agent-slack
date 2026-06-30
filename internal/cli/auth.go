@@ -10,6 +10,7 @@ import (
 	"github.com/shhac/agent-slack/internal/auth"
 	"github.com/shhac/agent-slack/internal/credential"
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
+	"github.com/shhac/agent-slack/internal/slack"
 )
 
 func registerAuth(parent *cobra.Command, globals *GlobalFlags) {
@@ -316,10 +317,23 @@ func registerAuthRemove(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			// Capture the identity before removal so its cache subtree (resolution
+			// cache + downloads + emoji images) can be cleared too — otherwise it
+			// would linger as an orphaned directory.
+			var cacheKey string
+			if ws, rerr := store.Resolve(args[0]); rerr == nil {
+				cacheKey = slack.IdentityCacheKey(ws.TeamID, ws.UserID)
+			}
 			if err := store.Remove(args[0]); err != nil {
 				return err
 			}
-			return printSingle(globals, map[string]any{"removed": args[0]})
+			result := map[string]any{"removed": args[0]}
+			if cacheKey != "" {
+				if err := slack.PurgeIdentityDir(appCacheDir(), cacheKey); err == nil {
+					result["cache_cleared"] = true
+				}
+			}
+			return printSingle(globals, result)
 		},
 	}
 	parent.AddCommand(cmd)

@@ -62,7 +62,7 @@ func TestResolveUsergroupIDMissRefetchesWhenCompletenessOff(t *testing.T) {
 	ttl := DefaultCacheTTL()
 	ttl.UsergroupsComplete = 0
 	now := time.Now()
-	cache := NewCache(t.TempDir(), CacheNormal, ttl, func() time.Time { return now })
+	cache := NewCache(t.TempDir(), testKey, CacheNormal, ttl, func() time.Time { return now })
 	c := New(Auth{Type: AuthStandard, Token: "xoxb-test", WorkspaceURL: "https://acme.slack.com"},
 		WithBaseURL(ts.URL), WithCache(cache))
 

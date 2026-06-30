@@ -5,15 +5,21 @@ package cli
 // The client/credential resolution itself stays in context.go.
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/shhac/lib-agent-cli/xdg"
+
 	"github.com/shhac/agent-slack/internal/settings"
 	"github.com/shhac/agent-slack/internal/slack"
 )
+
+// appName is the reverse-DNS application directory shared by the cache and
+// config roots. It deviates from the family's plain-tool-name convention to
+// stay clear of the TS stablyai-agent-slack's ~/.config/agent-slack paths.
+const appName = "app.paulie.agent-slack"
 
 // ttlFields maps each cache category (the cache.ttl.<cat> suffix) to its field
 // in a CacheTTL, so config, env, and flag overrides all drive one table.
@@ -43,8 +49,12 @@ func ttlEnvVar(category string) string {
 }
 
 // buildCache assembles the per-invocation resolution cache from the global
-// flags and environment. This single helper feeds both client constructors.
-func buildCache(globals *GlobalFlags) *slack.Cache {
+// flags and environment. key is the resolved <team_id>/<user_id> identity
+// namespace ("" leaves caching inert). This single helper feeds both client
+// constructors.
+func buildCache(globals *GlobalFlags, key string) *slack.Cache {
+	dir := appCacheDir()
+	slack.MigrateLegacyLayout(dir) // one-time sweep of pre-identity cache dirs
 	mode := slack.CacheNormal
 	switch {
 	case globals.NoCache || os.Getenv("AGENT_SLACK_NO_CACHE") != "":
@@ -52,7 +62,7 @@ func buildCache(globals *GlobalFlags) *slack.Cache {
 	case globals.RefreshCache:
 		mode = slack.CacheRefresh
 	}
-	return slack.NewCache(appCacheDir(), mode, resolveCacheTTL(globals), nil)
+	return slack.NewCache(dir, key, mode, resolveCacheTTL(globals), nil)
 }
 
 // resolveCacheTTL builds the per-category TTL. Precedence, highest first:
@@ -110,25 +120,21 @@ func parseTTL(raw string) (time.Duration, bool) {
 	return d, true
 }
 
-// appCacheDir is where downloads and the user cache live. XDG_CACHE_HOME is
-// the right home for both: they are re-derivable copies (downloads re-fetch
-// by immutable file ID, the user cache has a 24h TTL), safe to purge —
-// unlike XDG_RUNTIME_DIR (size-limited tmpfs, cleared per session) or
-// XDG_DATA_HOME (data the app owns). Named like the config dir —
-// app.paulie.agent-slack — to stay clear of the TS tool's paths.
+// appCacheDir is the cache root ($XDG_CACHE_HOME/app.paulie.agent-slack, else
+// ~/.cache/app.paulie.agent-slack), via lib-agent-cli's xdg helper so the whole
+// agent-* family derives roots one way. XDG_CACHE_HOME is the right home: the
+// user cache (24h TTL) and downloads (re-fetched by immutable file ID) are
+// re-derivable and safe to purge — unlike XDG_RUNTIME_DIR (size-limited tmpfs)
+// or XDG_DATA_HOME (data the app owns). Per-identity data lives under
+// <root>/<team_id>/<user_id>/.
 func appCacheDir() string {
-	const dirName = "app.paulie.agent-slack"
-	if xdg := os.Getenv("XDG_CACHE_HOME"); xdg != "" {
-		return filepath.Join(xdg, dirName)
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		// Shared tmp: suffix the UID so another user can't pre-own the path.
-		return filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d", dirName, os.Getuid()))
-	}
-	return filepath.Join(home, ".cache", dirName)
+	return xdg.CacheDir(appName)
 }
 
-func downloadsDir() string {
-	return filepath.Join(appCacheDir(), "downloads")
+// downloadsDir is where one identity's downloaded files land, beside its
+// resolution cache under the same <team_id>/<user_id> subtree. An empty key
+// (identity not yet resolved) falls back to the cache root so a download still
+// has somewhere to go rather than failing.
+func downloadsDir(key string) string {
+	return filepath.Join(appCacheDir(), key, "downloads")
 }

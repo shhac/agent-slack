@@ -1,13 +1,11 @@
 package slack
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"maps"
-	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -90,18 +88,24 @@ func DefaultCacheTTL() CacheTTL {
 }
 
 // Cache is the per-invocation resolution cache, built by the CLI and attached
-// to a Client via WithCache. A nil *Cache, or one with an empty Dir, disables
-// caching entirely (every snapshot is usable but inert).
+// to a Client via WithCache. A nil *Cache, or one with an empty Dir or empty
+// Key, disables caching entirely (every snapshot is usable but inert).
+//
+// Key is the per-identity namespace subpath (<team_id>/<user_id>) the CLI
+// resolves from auth.test; the cache stores one identity's data under
+// <Dir>/<Key>/. It is empty until the identity is known, which keeps caching
+// inert rather than scoping data to a guessed location.
 type Cache struct {
 	Dir  string
+	Key  string
 	Mode CacheMode
 	TTL  CacheTTL
 	now  func() time.Time
 }
 
 // NewCache builds a cache handle. now may be nil (defaults to time.Now).
-func NewCache(dir string, mode CacheMode, ttl CacheTTL, now func() time.Time) *Cache {
-	return &Cache{Dir: dir, Mode: mode, TTL: ttl, now: now}
+func NewCache(dir, key string, mode CacheMode, ttl CacheTTL, now func() time.Time) *Cache {
+	return &Cache{Dir: dir, Key: key, Mode: mode, TTL: ttl, now: now}
 }
 
 func (c *Cache) clock() time.Time {
@@ -147,10 +151,10 @@ type cacheSnapshot[T any] struct {
 	changed  bool
 }
 
-// cacheFilePath locates one workspace's category file, or "" when caching
-// cannot apply (no dir, or no host to key the workspace by).
-func cacheFilePath(dir, workspaceURL, category string) string {
-	key := hashWorkspaceURL(workspaceURL)
+// cacheFilePath locates one identity's category file, or "" when caching cannot
+// apply (no dir, or no identity key). key is the namespace subpath
+// (<team_id>/<user_id>) — used verbatim, never re-derived here.
+func cacheFilePath(dir, key, category string) string {
 	if dir == "" || key == "" {
 		return ""
 	}
@@ -177,10 +181,10 @@ func readCacheFile[T any](path string) *cacheData[T] {
 	return &data
 }
 
-// openCache loads (once) the category file for the workspace. category is the
-// filename suffix; ttl is that category's freshness window; validate prunes
+// openCache loads (once) the category file for the cache's identity. category is
+// the filename suffix; ttl is that category's freshness window; validate prunes
 // corrupt entries on load (nil keeps every non-empty key).
-func openCache[T any](c *Cache, category, workspaceURL string, ttl time.Duration, validate func(string, T) bool) *cacheSnapshot[T] {
+func openCache[T any](c *Cache, category string, ttl time.Duration, validate func(string, T) bool) *cacheSnapshot[T] {
 	s := &cacheSnapshot[T]{
 		cache:    c,
 		ttlMS:    ttl.Milliseconds(),
@@ -190,7 +194,7 @@ func openCache[T any](c *Cache, category, workspaceURL string, ttl time.Duration
 	if c == nil || c.Mode == CacheOff {
 		return s // disabled: usable, all gets miss, save no-ops
 	}
-	s.path = cacheFilePath(c.Dir, workspaceURL, category)
+	s.path = cacheFilePath(c.Dir, c.Key, category)
 	if s.path == "" {
 		return s
 	}
@@ -208,11 +212,11 @@ func openCache[T any](c *Cache, category, workspaceURL string, ttl time.Duration
 	return s
 }
 
-// openCacheFor opens a per-workspace cache snapshot for this client, supplying
-// the client's cache handle and current workspace URL so each accessor only
-// names its category, TTL, and validator.
+// openCacheFor opens a per-identity cache snapshot for this client, supplying
+// the client's cache handle so each accessor only names its category, TTL, and
+// validator. The identity key lives on the cache handle (set by the CLI).
 func openCacheFor[T any](c *Client, category string, ttl time.Duration, validate func(string, T) bool) *cacheSnapshot[T] {
-	return openCache[T](c.cache, category, c.currentAuth().WorkspaceURL, ttl, validate)
+	return openCache[T](c.cache, category, ttl, validate)
 }
 
 // cacheSet writes one entry and persists it, but only when the caller deems it
@@ -322,18 +326,32 @@ func (s *cacheSnapshot[T]) pruneExpired() bool {
 	return changed
 }
 
-// hashWorkspaceURL reduces a workspace URL to a stable 16-hex filename key
-// (host only, lowercased) — one cache file per workspace, no URL in the name.
-// Returns "" when no host can be derived (caching then disables).
-func hashWorkspaceURL(workspaceURL string) string {
-	trimmed := strings.TrimSpace(workspaceURL)
-	if trimmed == "" {
+// IdentityCacheKey is the per-identity cache namespace subpath for a Slack
+// (team_id, user_id) pair: "<team_id>/<user_id>". Both ids are Slack object ids
+// (T…/U…), already filesystem-safe; they are sanitised defensively so a
+// surprising value can never escape the cache root. Returns "" when either id is
+// missing — caching then disables rather than scoping data to a partial key.
+func IdentityCacheKey(teamID, userID string) string {
+	team, user := sanitizeKeySegment(teamID), sanitizeKeySegment(userID)
+	if team == "" || user == "" {
 		return ""
 	}
-	source := strings.ToLower(trimmed)
-	if u, err := url.Parse(trimmed); err == nil && u.Hostname() != "" {
-		source = strings.ToLower(u.Hostname())
-	}
-	sum := sha256.Sum256([]byte(source))
-	return hex.EncodeToString(sum[:])[:16]
+	return filepath.Join(team, user)
 }
+
+// sanitizeKeySegment keeps a single path segment safe: it strips directory
+// separators and the "."/".." traversal forms, so an id can only ever name a
+// child directory of the cache root.
+func sanitizeKeySegment(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "." || s == ".." {
+		return ""
+	}
+	cleaned := keyUnsafeRe.ReplaceAllString(s, "_")
+	if cleaned == "." || cleaned == ".." {
+		return ""
+	}
+	return cleaned
+}
+
+var keyUnsafeRe = regexp.MustCompile(`[\\/<>:"|?*\x00-\x1f]`)

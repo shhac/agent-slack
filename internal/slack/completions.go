@@ -29,8 +29,8 @@ const (
 // loadCacheEntries reads one category file for a workspace directly (ignoring
 // TTL — completions surface even slightly-stale hints) and returns its entries
 // with their fetched_at timestamps. Pure read; no API, no credentials.
-func loadCacheEntries[T any](cacheDir, workspaceURL, category string) map[string]cacheEntry[T] {
-	data := readCacheFile[T](cacheFilePath(cacheDir, workspaceURL, category))
+func loadCacheEntries[T any](cacheDir, key, category string) map[string]cacheEntry[T] {
+	data := readCacheFile[T](cacheFilePath(cacheDir, key, category))
 	if data == nil {
 		return nil
 	}
@@ -39,12 +39,13 @@ func loadCacheEntries[T any](cacheDir, workspaceURL, category string) map[string
 
 // ReadTargetCompletions returns channel and user <target> candidates — the
 // common case for message targets that accept either.
-func ReadTargetCompletions(cacheDir, workspaceURL, toComplete string, limit int) []CompletionItem {
-	return ReadCompletions(cacheDir, workspaceURL, toComplete, limit, CompleteChannels|CompleteUsers)
+func ReadTargetCompletions(cacheDir, key, toComplete string, limit int) []CompletionItem {
+	return ReadCompletions(cacheDir, key, toComplete, limit, CompleteChannels|CompleteUsers)
 }
 
 // ReadCompletions returns candidates for the selected sources from the
-// per-workspace caches, most-recently-cached first, capped at limit.
+// identity's caches (key is the <team_id>/<user_id> namespace subpath),
+// most-recently-cached first, capped at limit.
 //
 // Each entity is offered in several value-forms so whatever the user typed has
 // a matching candidate — a channel as `#name`, its id, and the bare `name`; a
@@ -52,8 +53,8 @@ func ReadTargetCompletions(cacheDir, workspaceURL, toComplete string, limit int)
 // its VALUE prefix-matches what was typed (the shell applies the same filter,
 // so a non-matching value would be hidden anyway), and on a bare tab (no input)
 // only the primary form is offered to avoid three lines per entity.
-func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sources CompletionSource) []CompletionItem {
-	col := newCompletionCollector(cacheDir, workspaceURL, toComplete)
+func ReadCompletions(cacheDir, key, toComplete string, limit int, sources CompletionSource) []CompletionItem {
+	col := newCompletionCollector(cacheDir, key, toComplete)
 	if sources&CompleteChannels != 0 {
 		col.addChannels()
 	}
@@ -80,7 +81,7 @@ func ReadCompletions(cacheDir, workspaceURL, toComplete string, limit int, sourc
 // trio of captured closures so each source is an independently testable method.
 type completionCollector struct {
 	cacheDir     string
-	workspaceURL string
+	key string
 	needle       string
 	seen         map[string]bool
 	all          []ranked
@@ -91,10 +92,10 @@ type ranked struct {
 	fetched int64
 }
 
-func newCompletionCollector(cacheDir, workspaceURL, toComplete string) *completionCollector {
+func newCompletionCollector(cacheDir, key, toComplete string) *completionCollector {
 	return &completionCollector{
 		cacheDir:     cacheDir,
-		workspaceURL: workspaceURL,
+		key: key,
 		needle:       strings.ToLower(toComplete),
 		seen:         map[string]bool{},
 	}
@@ -127,20 +128,20 @@ func (c *completionCollector) addChannels() {
 	// Entity store first (has the topic), then the name→ID index, which the
 	// common search-resolution path populates even when no full channel object
 	// was ever fetched. Forms: #name, id, name.
-	for _, e := range loadCacheEntries[CompactChannel](c.cacheDir, c.workspaceURL, "channels") {
+	for _, e := range loadCacheEntries[CompactChannel](c.cacheDir, c.key, "channels") {
 		ch := e.Value
 		if ch.IsIM || ch.Name == "" {
 			continue // DMs have no stable name to complete
 		}
 		c.addForms(ch.Topic, e.FetchedAt, "#"+ch.Name, ch.ID, ch.Name)
 	}
-	for name, e := range loadCacheEntries[string](c.cacheDir, c.workspaceURL, "channel-names") {
+	for name, e := range loadCacheEntries[string](c.cacheDir, c.key, "channel-names") {
 		c.addForms("", e.FetchedAt, "#"+name, e.Value, name) // e.Value is the id
 	}
 }
 
 func (c *completionCollector) addUsers() {
-	for _, e := range loadCacheEntries[CompactUser](c.cacheDir, c.workspaceURL, "users") {
+	for _, e := range loadCacheEntries[CompactUser](c.cacheDir, c.key, "users") {
 		u := e.Value
 		realName := FirstNonEmpty(u.RealName, u.DisplayName)
 		if u.Name == "" {
@@ -160,7 +161,7 @@ func (c *completionCollector) addUsers() {
 }
 
 func (c *completionCollector) addUsergroups() {
-	for _, e := range loadCacheEntries[CompactUsergroup](c.cacheDir, c.workspaceURL, "usergroup-entities") {
+	for _, e := range loadCacheEntries[CompactUsergroup](c.cacheDir, c.key, "usergroup-entities") {
 		g := e.Value
 		desc := FirstNonEmpty(g.Name, g.Description)
 		if g.Handle == "" {
@@ -173,7 +174,7 @@ func (c *completionCollector) addUsergroups() {
 }
 
 func (c *completionCollector) addTriggers() {
-	for id, e := range loadCacheEntries[WorkflowPreview](c.cacheDir, c.workspaceURL, "workflow-triggers") {
+	for id, e := range loadCacheEntries[WorkflowPreview](c.cacheDir, c.key, "workflow-triggers") {
 		c.add(id, FirstNonEmpty(e.Value.Name, e.Value.Workflow.Title), e.FetchedAt)
 	}
 }
@@ -181,7 +182,7 @@ func (c *completionCollector) addTriggers() {
 // addIDText feeds a write-only {id, text} completion category (drafts,
 // scheduled) into the collector.
 func (c *completionCollector) addIDText(category string) {
-	for id, e := range loadCacheEntries[compactIDText](c.cacheDir, c.workspaceURL, category) {
+	for id, e := range loadCacheEntries[compactIDText](c.cacheDir, c.key, category) {
 		c.add(id, e.Value.Text, e.FetchedAt)
 	}
 }

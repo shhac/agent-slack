@@ -1,26 +1,36 @@
 package slack
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestCacheAdminInspectAndPurge(t *testing.T) {
 	dir := t.TempDir()
-	ws := "https://acme.slack.com"
-	other := "https://globex.slack.com"
+	// Two users on the SAME team plus a third on another team — exercises the
+	// two-level <team>/<user> walk and the team-prune on the last user's purge.
+	acmePaul := IdentityCacheKey("T_ACME", "U_PAUL")
+	acmeSue := IdentityCacheKey("T_ACME", "U_SUE")
+	other := IdentityCacheKey("T_GLOBEX", "U_PAUL")
 
-	writeCacheCategory(t, dir, ws, "channels", map[string]cacheEntry[CompactChannel]{
+	writeCacheCategory(t, dir, acmePaul, "channels", map[string]cacheEntry[CompactChannel]{
 		"C0AAAA1111": {FetchedAt: 1000, Value: CompactChannel{ID: "C0AAAA1111", Name: "devs"}},
 		"C0BBBB2222": {FetchedAt: 3000, Value: CompactChannel{ID: "C0BBBB2222", Name: "design"}},
+	})
+	writeCacheCategory(t, dir, acmeSue, "users", map[string]cacheEntry[CompactUser]{
+		"U0AAAA1111": {FetchedAt: 2000, Value: CompactUser{ID: "U0AAAA1111"}},
 	})
 	writeCacheCategory(t, dir, other, "users", map[string]cacheEntry[CompactUser]{
 		"U0AAAA1111": {FetchedAt: 2000, Value: CompactUser{ID: "U0AAAA1111"}},
 	})
 
-	keys, err := CachedWorkspaceKeys(dir)
-	if err != nil || len(keys) != 2 {
+	keys, err := CachedIdentityKeys(dir)
+	if err != nil || len(keys) != 3 {
 		t.Fatalf("keys = %v, err %v", keys, err)
 	}
 
-	cats, err := InspectCacheDir(dir, WorkspaceCacheKey(ws))
+	cats, err := InspectCacheDir(dir, acmePaul)
 	if err != nil || len(cats) != 1 || cats[0].Category != "channels" || cats[0].Entries != 2 {
 		t.Fatalf("inspect = %+v, err %v", cats, err)
 	}
@@ -28,33 +38,108 @@ func TestCacheAdminInspectAndPurge(t *testing.T) {
 		t.Errorf("stat = %+v", cats[0])
 	}
 
-	// Purge one workspace; the other survives.
-	if err := PurgeCacheDir(dir, WorkspaceCacheKey(ws)); err != nil {
+	// Purge one identity; the sibling on the same team survives (team dir kept).
+	if err := PurgeCacheDir(dir, acmePaul); err != nil {
 		t.Fatal(err)
 	}
-	if cats, _ := InspectCacheDir(dir, WorkspaceCacheKey(ws)); len(cats) != 0 {
-		t.Errorf("purged workspace still has %d categories", len(cats))
+	if cats, _ := InspectCacheDir(dir, acmePaul); len(cats) != 0 {
+		t.Errorf("purged identity still has %d categories", len(cats))
 	}
-	if keys, _ := CachedWorkspaceKeys(dir); len(keys) != 1 {
-		t.Errorf("other workspace should remain: %v", keys)
+	if keys, _ := CachedIdentityKeys(dir); len(keys) != 2 {
+		t.Errorf("two identities should remain: %v", keys)
 	}
 
-	// Purge all clears the rest.
+	// Purge all clears the rest, leaving no team dirs behind.
 	if _, err := PurgeAllCaches(dir); err != nil {
 		t.Fatal(err)
 	}
-	if keys, _ := CachedWorkspaceKeys(dir); len(keys) != 0 {
+	if keys, _ := CachedIdentityKeys(dir); len(keys) != 0 {
 		t.Errorf("purge-all left %v", keys)
+	}
+}
+
+func TestPurgeCacheDirKeepsDownloadsButIdentityDirRemovesAll(t *testing.T) {
+	dir := t.TempDir()
+	key := IdentityCacheKey("T_ACME", "U_PAUL")
+	writeCacheCategory(t, dir, key, "channels", map[string]cacheEntry[CompactChannel]{
+		"C1": {FetchedAt: 1000, Value: CompactChannel{ID: "C1", Name: "devs"}},
+	})
+	dl := filepath.Join(dir, key, downloadsSubdir, "F0FILE.txt")
+	if err := os.MkdirAll(filepath.Dir(dl), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dl, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A resolution-cache purge clears categories but preserves downloads.
+	if err := PurgeCacheDir(dir, key); err != nil {
+		t.Fatal(err)
+	}
+	if cats, _ := InspectCacheDir(dir, key); len(cats) != 0 {
+		t.Errorf("resolution cache not purged: %+v", cats)
+	}
+	if _, err := os.Stat(dl); err != nil {
+		t.Errorf("downloads must survive a resolution-cache purge: %v", err)
+	}
+
+	// A full identity purge removes everything, including downloads, and prunes
+	// the now-empty team dir.
+	if err := PurgeIdentityDir(dir, key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, key)); !os.IsNotExist(err) {
+		t.Errorf("identity dir should be gone: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "T_ACME")); !os.IsNotExist(err) {
+		t.Errorf("empty team dir should be pruned: %v", err)
+	}
+}
+
+func TestMigrateLegacyLayout(t *testing.T) {
+	dir := t.TempDir()
+	// Legacy artifacts: a 16-hex host-hash cache dir and the old flat downloads/
+	// + emoji-images/. Plus a current-layout team dir that must be preserved.
+	legacy := filepath.Join(dir, "0123456789abcdef")
+	keep := filepath.Join(dir, "T_ACME", "U_PAUL")
+	for _, p := range []string{legacy, filepath.Join(dir, "downloads"), filepath.Join(dir, "emoji-images"), keep} {
+		if err := os.MkdirAll(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	MigrateLegacyLayout(dir)
+
+	for _, gone := range []string{legacy, filepath.Join(dir, "downloads"), filepath.Join(dir, "emoji-images")} {
+		if _, err := os.Stat(gone); !os.IsNotExist(err) {
+			t.Errorf("legacy path %s should be removed: %v", gone, err)
+		}
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("current-layout dir must be preserved: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, layoutSentinel)); err != nil {
+		t.Errorf("sentinel should be written: %v", err)
+	}
+
+	// Idempotent: a second run with a new legacy dir present is skipped (sentinel).
+	again := filepath.Join(dir, "fedcba9876543210")
+	if err := os.MkdirAll(again, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	MigrateLegacyLayout(dir)
+	if _, err := os.Stat(again); err != nil {
+		t.Errorf("sentinel must short-circuit the sweep; dir was removed: %v", err)
 	}
 }
 
 func TestCacheAdminEmptyDir(t *testing.T) {
 	// A never-used cache dir is not an error.
-	keys, err := CachedWorkspaceKeys(t.TempDir())
+	keys, err := CachedIdentityKeys(t.TempDir())
 	if err != nil || len(keys) != 0 {
 		t.Errorf("keys=%v err=%v", keys, err)
 	}
-	if _, err := InspectCacheDir(t.TempDir(), "deadbeef"); err != nil {
+	if _, err := InspectCacheDir(t.TempDir(), IdentityCacheKey("T1", "U1")); err != nil {
 		t.Errorf("inspect missing = %v", err)
 	}
 }

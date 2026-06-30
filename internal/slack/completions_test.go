@@ -10,9 +10,9 @@ import (
 
 // writeCacheCategory writes a category file directly for one workspace, with
 // explicit fetched_at timestamps so recency ordering is deterministic.
-func writeCacheCategory[T any](t *testing.T, dir, workspaceURL, category string, entries map[string]cacheEntry[T]) {
+func writeCacheCategory[T any](t *testing.T, dir, key, category string, entries map[string]cacheEntry[T]) {
 	t.Helper()
-	wsDir := filepath.Join(dir, hashWorkspaceURL(workspaceURL))
+	wsDir := filepath.Join(dir, key)
 	if err := os.MkdirAll(wsDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func completionValues(items []CompletionItem) []string {
 
 func TestReadTargetCompletions(t *testing.T) {
 	dir := t.TempDir()
-	ws := "https://acme.slack.com"
+	ws := testKey
 
 	writeCacheCategory(t, dir, ws, "channels", map[string]cacheEntry[CompactChannel]{
 		"C0DEVS": {FetchedAt: 300, Value: CompactChannel{ID: "C0DEVS", Name: "devs", Topic: "engineering"}},
@@ -84,7 +84,7 @@ func TestReadTargetCompletions(t *testing.T) {
 
 func TestReadCompletionsSourceFiltering(t *testing.T) {
 	dir := t.TempDir()
-	ws := "https://acme.slack.com"
+	ws := testKey
 	writeCacheCategory(t, dir, ws, "channels", map[string]cacheEntry[CompactChannel]{
 		"C0DEVS": {FetchedAt: 100, Value: CompactChannel{ID: "C0DEVS", Name: "devs"}},
 	})
@@ -130,7 +130,7 @@ func TestReadCompletionsSourceFiltering(t *testing.T) {
 // (alphabetical), not the randomized map-iteration order.
 func TestReadCompletionsEqualFetchedIsStableAndAlphabetical(t *testing.T) {
 	dir := t.TempDir()
-	ws := "https://acme.slack.com"
+	ws := testKey
 	users := map[string]cacheEntry[CompactUser]{}
 	for _, name := range []string{"zoe", "alex", "mary", "bob", "yara"} {
 		users["U0"+strings.ToUpper(name)] = cacheEntry[CompactUser]{
@@ -160,8 +160,8 @@ func TestReadCompletionsEqualFetchedIsStableAndAlphabetical(t *testing.T) {
 
 func TestReadTargetCompletionsCorruptFile(t *testing.T) {
 	dir := t.TempDir()
-	ws := "https://acme.slack.com"
-	wsDir := filepath.Join(dir, hashWorkspaceURL(ws))
+	ws := testKey
+	wsDir := filepath.Join(dir, ws)
 	if err := os.MkdirAll(wsDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestReadTargetCompletionsColdCache(t *testing.T) {
 // id-only fallback for a handle-less group.
 func TestReadCompletionsUsergroups(t *testing.T) {
 	dir := t.TempDir()
-	ws := "https://acme.slack.com"
+	ws := testKey
 	writeCacheCategory(t, dir, ws, "usergroup-entities", map[string]cacheEntry[CompactUsergroup]{
 		"S0MKT": {FetchedAt: 100, Value: CompactUsergroup{ID: "S0MKT", Handle: "marketing", Name: "Marketing"}},
 		"S0NOH": {FetchedAt: 100, Value: CompactUsergroup{ID: "S0NOH", Name: "No Handle Group"}},

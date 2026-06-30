@@ -90,6 +90,36 @@ func TestEnvCredentialsUsed(t *testing.T) {
 	}
 }
 
+func TestBootstrapResolvesAndPersistsIdentity(t *testing.T) {
+	env := newTestEnv(t)
+	server := mockslack.New()
+	// auth.test now carries the identity the bootstrap learns and persists.
+	server.HandleBody("auth.test", map[string]any{"ok": true, "user": "paul", "team_id": "T0BOOT", "user_id": "U0BOOT"})
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	// Stored credential with no identity yet — the first command must resolve it.
+	if _, err := env.store.Upsert(credential.Workspace{
+		URL:  "https://acme.slack.com",
+		Auth: credential.Auth{Type: credential.AuthStandard, Token: "xoxb-x"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, stderr, err := env.run(t, "", "--base-url", ts.URL, "auth", "test"); err != nil {
+		t.Fatalf("err = %v, stderr = %s", err, stderr)
+	}
+
+	ws, err := env.store.Resolve("https://acme.slack.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.TeamID != "T0BOOT" || ws.UserID != "U0BOOT" {
+		t.Errorf("identity not persisted from bootstrap auth.test: %+v", ws)
+	}
+}
+
 func TestDesktopAutoRefresh(t *testing.T) {
 	env := newTestEnv(t)
 	store := env.store

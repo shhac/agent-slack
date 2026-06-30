@@ -11,7 +11,17 @@ import (
 
 	"github.com/shhac/agent-slack/internal/credential"
 	"github.com/shhac/agent-slack/internal/mockslack"
+	"github.com/shhac/agent-slack/internal/slack"
 )
+
+// Fixtures carry a resolved identity so the common command path keys its cache
+// offline (no bootstrap auth.test). Bootstrap is exercised separately.
+const (
+	fixtureTeamID = "T_ACME"
+	fixtureUserID = "U_ACME"
+)
+
+func fixtureCacheKey() string { return slack.IdentityCacheKey(fixtureTeamID, fixtureUserID) }
 
 // cliFixture is a hermetic test env + mockslack server. Commands run with
 // --base-url pointed at the mock so the standard-token transport lands there.
@@ -29,9 +39,11 @@ func newCLIFixture(t *testing.T) *cliFixture {
 	t.Cleanup(ts.Close)
 
 	if _, err := env.store.Upsert(credential.Workspace{
-		URL:  "https://acme.slack.com",
-		Name: "Acme",
-		Auth: credential.Auth{Type: credential.AuthStandard, Token: "xoxb-test-token"},
+		URL:    "https://acme.slack.com",
+		Name:   "Acme",
+		TeamID: fixtureTeamID,
+		UserID: fixtureUserID,
+		Auth:   credential.Auth{Type: credential.AuthStandard, Token: "xoxb-test-token"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +62,11 @@ func newBrowserCLIFixture(t *testing.T) *cliFixture {
 	ts := httptest.NewServer(server)
 	t.Cleanup(ts.Close)
 	if _, err := env.store.Upsert(credential.Workspace{
-		URL:  ts.URL,
-		Name: "Acme",
-		Auth: credential.Auth{Type: credential.AuthBrowser, XOXC: "xoxc-test", XOXD: "xoxd-test"},
+		URL:    ts.URL,
+		Name:   "Acme",
+		TeamID: fixtureTeamID,
+		UserID: fixtureUserID,
+		Auth:   credential.Auth{Type: credential.AuthBrowser, XOXC: "xoxc-test", XOXD: "xoxd-test"},
 	}); err != nil {
 		t.Fatal(err)
 	}

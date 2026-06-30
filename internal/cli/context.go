@@ -21,6 +21,10 @@ type clientContext struct {
 	Client       *slack.Client
 	WorkspaceURL string
 	AuthType     slack.AuthType
+	// CacheKey is the resolved <team_id>/<user_id> identity namespace for this
+	// workspace ("" when the identity could not be resolved). Commands that touch
+	// the cache subtree directly — downloads, emoji images — scope by it.
+	CacheKey string
 }
 
 // getClient resolves credentials for the --workspace selector (or default).
@@ -64,7 +68,10 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 	}
 
 	slackAuth := slackAuthFromCred(ws)
-	opts := clientOptions(globals)
+
+	key := resolveIdentityKey(store, ws, baseClientOptions(globals), slackAuth)
+
+	opts := clientOptions(globals, key)
 	if ws.Auth.Type == credential.AuthBrowser {
 		opts = append(opts, slack.WithAuthRefresh(desktopRefresh(globals, store, ws.URL)))
 	}
@@ -73,7 +80,42 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 		Client:       slack.New(slackAuth, opts...),
 		WorkspaceURL: ws.URL,
 		AuthType:     slackAuth.Type,
+		CacheKey:     key,
 	}, nil
+}
+
+// resolveIdentityKey returns the <team_id>/<user_id> cache namespace for a
+// stored workspace. The ids are persisted (non-secret) once resolved, so steady
+// state needs no network: if both are already on the credential we derive the
+// key offline. Otherwise we bootstrap a one-shot auth.test, persist via
+// SetIdentity, and key from the result. Best-effort and silent: an auth.test
+// failure yields "" (caching inert this run, retried next run) rather than
+// scoping data to a guessed key. The bootstrap deliberately omits the auth
+// refresh — a stale browser token resolves once the real command self-heals it,
+// avoiding a duplicate refresh here.
+func resolveIdentityKey(store *credential.Store, ws *credential.Workspace, baseOpts []slack.Option, slackAuth slack.Auth) string {
+	if ws.TeamID != "" && ws.UserID != "" {
+		return slack.IdentityCacheKey(ws.TeamID, ws.UserID)
+	}
+	teamID, userID := bootstrapIdentity(baseOpts, slackAuth)
+	if teamID == "" || userID == "" {
+		return ""
+	}
+	_ = store.SetIdentity(ws.URL, teamID, userID) // best-effort; keying doesn't depend on the write
+	return slack.IdentityCacheKey(teamID, userID)
+}
+
+// bootstrapIdentity calls auth.test through a cache-less client to learn the
+// team_id/user_id behind a credential. Returns empty ids on any failure —
+// silently, since the caller just treats that as "caching off this run".
+func bootstrapIdentity(baseOpts []slack.Option, slackAuth slack.Auth) (teamID, userID string) {
+	resp, err := slack.New(slackAuth, baseOpts...).API(context.Background(), "auth.test", nil)
+	if err != nil {
+		return "", ""
+	}
+	teamID, _ = resp["team_id"].(string)
+	userID, _ = resp["user_id"].(string)
+	return teamID, userID
 }
 
 // healMissingSecrets handles a stored secret that is a dangling "__KEYCHAIN__"
@@ -139,14 +181,29 @@ func clientFromEnv(globals *GlobalFlags, selector string) *clientContext {
 		slackAuth = slack.Auth{Type: slack.AuthStandard, Token: token, WorkspaceURL: envWorkspace}
 	}
 
+	// Env credentials persist nothing, so the identity (and its cache key) is
+	// resolved fresh each invocation. Inert on failure, like the stored path.
+	key := slack.IdentityCacheKey(bootstrapIdentity(baseClientOptions(globals), slackAuth))
+
 	return &clientContext{
-		Client:       slack.New(slackAuth, clientOptions(globals)...),
+		Client:       slack.New(slackAuth, clientOptions(globals, key)...),
 		WorkspaceURL: envWorkspace,
 		AuthType:     slackAuth.Type,
+		CacheKey:     key,
 	}
 }
 
-func clientOptions(globals *GlobalFlags) []slack.Option {
+// clientOptions is baseClientOptions plus the identity-scoped resolution cache.
+func clientOptions(globals *GlobalFlags, key string) []slack.Option {
+	opts := baseClientOptions(globals)
+	opts = append(opts, slack.WithCache(buildCache(globals, key)))
+	return opts
+}
+
+// baseClientOptions builds every client option except the cache: user agent,
+// timeout, debug, base URL, and the rate-limit notice. The cache is added
+// separately because the identity bootstrap needs a cache-less client.
+func baseClientOptions(globals *GlobalFlags) []slack.Option {
 	opts := []slack.Option{slack.WithUserAgent("agent-slack/" + globals.version)}
 	if globals.TimeoutMS > 0 {
 		opts = append(opts, slack.WithDoer(&http.Client{Timeout: time.Duration(globals.TimeoutMS) * time.Millisecond}))
@@ -157,7 +214,6 @@ func clientOptions(globals *GlobalFlags) []slack.Option {
 	if globals.BaseURL != "" {
 		opts = append(opts, slack.WithBaseURL(globals.BaseURL))
 	}
-	opts = append(opts, slack.WithCache(buildCache(globals)))
 	opts = append(opts, slack.WithRateLimitNotice(rateLimitNotice(globals)))
 	return opts
 }

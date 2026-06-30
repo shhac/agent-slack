@@ -16,7 +16,7 @@ func completenessClient(t *testing.T, server *mockslack.Server, mode CacheMode) 
 	ts := httptest.NewServer(server)
 	t.Cleanup(ts.Close)
 	now := time.Now()
-	cache := NewCache(t.TempDir(), mode, DefaultCacheTTL(), func() time.Time { return now })
+	cache := NewCache(t.TempDir(), testKey, mode, DefaultCacheTTL(), func() time.Time { return now })
 	return New(Auth{Type: AuthStandard, Token: "xoxb-test", WorkspaceURL: "https://acme.slack.com"},
 		WithBaseURL(ts.URL), WithCache(cache))
 }

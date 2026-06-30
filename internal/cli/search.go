@@ -63,7 +63,7 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 				MaxContentChars: maxContentChars,
 				Download:        download,
 				Resolve:         mode.policy(),
-				DownloadsDir:    downloadsDir(),
+				DownloadsDir:    downloadsDir(cc.CacheKey),
 				Warn:            globals.stderr,
 				SlackMarkdown:   slackMarkdown,
 			})

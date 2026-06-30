@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/shhac/agent-slack/internal/credential"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
@@ -22,7 +23,7 @@ func cacheCompletion(globals *GlobalFlags, sources slack.CompletionSource, first
 		if firstArgOnly && len(args) > 0 {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
-		items := slack.ReadCompletions(appCacheDir(), completionWorkspaceURL(globals), toComplete, maxCompletions, sources)
+		items := slack.ReadCompletions(appCacheDir(), completionCacheKey(globals), toComplete, maxCompletions, sources)
 		out := make([]string, 0, len(items))
 		for _, it := range items {
 			if it.Description != "" {
@@ -83,20 +84,32 @@ func registerFlagCompletion(cmd *cobra.Command, flag string, globals *GlobalFlag
 	_ = cmd.RegisterFlagCompletionFunc(flag, cacheCompletion(globals, sources, false))
 }
 
-// completionWorkspaceURL picks the workspace whose cache to read for
-// completions, via the same credential resolver every command uses (URL,
-// host, name, team-domain, or unique-substring matching; "" means the stored
-// default). Best-effort: any resolution failure just means no suggestions.
-func completionWorkspaceURL(globals *GlobalFlags) string {
+// completionWorkspace resolves the workspace whose cache backs completions, via
+// the same credential resolver every command uses (URL, host, name,
+// team-domain, or unique-substring matching; "" means the stored default).
+// Best-effort: any resolution failure just means no suggestions.
+func completionWorkspace(globals *GlobalFlags) *credential.Workspace {
 	store, err := globals.newStore()
 	if err != nil {
-		return ""
+		return nil
 	}
 	ws, err := store.Resolve(globals.Workspace)
 	if err != nil {
+		return nil
+	}
+	return ws
+}
+
+// completionCacheKey is the identity cache key for the completion workspace,
+// read straight from the persisted credential — no network, so completions stay
+// instant. Empty (no suggestions) when the workspace is unknown or its identity
+// has not been resolved yet.
+func completionCacheKey(globals *GlobalFlags) string {
+	ws := completionWorkspace(globals)
+	if ws == nil {
 		return ""
 	}
-	return ws.URL
+	return slack.IdentityCacheKey(ws.TeamID, ws.UserID)
 }
 
 // fixedCompletions completes a flag from a closed set of values (no file

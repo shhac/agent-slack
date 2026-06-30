@@ -33,7 +33,11 @@ func TestCompletionWorkspaceURL(t *testing.T) {
 		"slack":                    "",                         // ambiguous → no suggestions
 	}
 	for selector, want := range cases {
-		if got := completionWorkspaceURL(globals(selector)); got != want {
+		got := ""
+		if ws := completionWorkspace(globals(selector)); ws != nil {
+			got = ws.URL
+		}
+		if got != want {
 			t.Errorf("selector %q: got %q, want %q", selector, got, want)
 		}
 	}

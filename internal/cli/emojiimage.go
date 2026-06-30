@@ -22,10 +22,11 @@ import (
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
-// emojiImagesDir is where decoded custom-emoji PNGs are cached between runs,
-// beside downloads under the purgeable app cache.
-func emojiImagesDir() string {
-	return filepath.Join(appCacheDir(), "emoji-images")
+// emojiImagesDir is where one identity's decoded custom-emoji PNGs are cached
+// between runs, beside its downloads under the per-identity cache subtree (key
+// is <team_id>/<user_id>).
+func emojiImagesDir(key string) string {
+	return filepath.Join(appCacheDir(), key, "emoji-images")
 }
 
 // inlineEmojiResolver returns the TranscriptOptions.InlineEmoji seam, or nil to
@@ -43,7 +44,7 @@ func inlineEmojiResolver(ctx context.Context, globals *GlobalFlags, cc *clientCo
 	if err != nil || len(urls) == 0 {
 		return nil
 	}
-	cache := newEmojiImageCache(ctx, cc.Client.FetchBytes, urls)
+	cache := newEmojiImageCache(ctx, cc.Client.FetchBytes, urls, emojiImagesDir(cc.CacheKey))
 	return cache.escape
 }
 
@@ -55,17 +56,19 @@ type emojiImageCache struct {
 	ctx   context.Context
 	fetch func(ctx context.Context, url string) ([]byte, error)
 	urls  map[string]string // name → image URL (aliases pre-resolved)
+	dir   string            // on-disk emoji-image cache dir for this identity
 
 	enc *graphics.Encoder
 	ids map[string]uint32 // name → stable graphics image id
 	png map[string][]byte // name → normalized PNG bytes (in-memory)
 }
 
-func newEmojiImageCache(ctx context.Context, fetch func(ctx context.Context, url string) ([]byte, error), urls map[string]string) *emojiImageCache {
+func newEmojiImageCache(ctx context.Context, fetch func(ctx context.Context, url string) ([]byte, error), urls map[string]string, dir string) *emojiImageCache {
 	return &emojiImageCache{
 		ctx:   ctx,
 		fetch: fetch,
 		urls:  urls,
+		dir:   dir,
 		enc:   graphics.NewEncoder(),
 		ids:   map[string]uint32{},
 		png:   map[string][]byte{},
@@ -100,7 +103,7 @@ func (e *emojiImageCache) pngBytes(name, url string) []byte {
 		return data
 	}
 
-	path := filepath.Join(emojiImagesDir(), emojiCacheFile(url))
+	path := filepath.Join(e.dir, emojiCacheFile(url))
 	if data, err := os.ReadFile(path); err == nil {
 		e.png[name] = data
 		return data
@@ -115,7 +118,7 @@ func (e *emojiImageCache) pngBytes(name, url string) []byte {
 		return nil
 	}
 	e.png[name] = data
-	if err := os.MkdirAll(emojiImagesDir(), 0o700); err == nil {
+	if err := os.MkdirAll(e.dir, 0o700); err == nil {
 		_ = os.WriteFile(path, data, 0o600)
 	}
 	return data

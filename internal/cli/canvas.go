@@ -41,7 +41,7 @@ func registerCanvas(parent *cobra.Command, globals *GlobalFlags) {
 			}
 			canvas, err := slack.FetchCanvasMarkdown(ctx, cc.Client, canvasID, slack.CanvasOptions{
 				MaxChars:       maxChars,
-				DownloadsDir:   downloadsDir(),
+				DownloadsDir:   downloadsDir(cc.CacheKey),
 				HTMLToMarkdown: htmlmd.Convert,
 			})
 			if err != nil {

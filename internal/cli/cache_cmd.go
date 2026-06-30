@@ -56,8 +56,9 @@ func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(cmd)
 }
 
-// cacheWorkspaceLabels maps each present cache subdir key to its configured
-// workspace URL (or a clearly-unknown label for orphaned dirs).
+// cacheWorkspaceLabels maps each present identity-cache key (<team_id>/<user_id>)
+// to its configured workspace URL (or a clearly-unknown label for orphaned dirs,
+// e.g. a credential since removed).
 func cacheWorkspaceLabels(globals *GlobalFlags, keys []string) map[string]string {
 	labels := map[string]string{}
 	for _, k := range keys {
@@ -72,11 +73,22 @@ func cacheWorkspaceLabels(globals *GlobalFlags, keys []string) map[string]string
 		return labels
 	}
 	for _, w := range creds.Workspaces {
-		if key := slack.WorkspaceCacheKey(w.URL); labels[key] != "" {
+		if key := slack.IdentityCacheKey(w.TeamID, w.UserID); key != "" && labels[key] != "" {
 			labels[key] = w.URL
 		}
 	}
 	return labels
+}
+
+// selectedIdentityKey resolves the --workspace selector (or the default
+// workspace) to its identity cache key, reading the persisted credential — no
+// network. Empty when no workspace resolves or its identity is unresolved.
+func selectedIdentityKey(globals *GlobalFlags) (key, url string) {
+	ws := completionWorkspace(globals)
+	if ws == nil {
+		return "", ""
+	}
+	return slack.IdentityCacheKey(ws.TeamID, ws.UserID), ws.URL
 }
 
 func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
@@ -88,12 +100,12 @@ func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
 			dir := appCacheDir()
 
 			var keys []string
-			if sel := globals.Workspace; sel != "" {
-				if url := completionWorkspaceURL(globals); url != "" {
-					keys = []string{slack.WorkspaceCacheKey(url)}
+			if globals.Workspace != "" {
+				if key, _ := selectedIdentityKey(globals); key != "" {
+					keys = []string{key}
 				}
 			} else {
-				all, err := slack.CachedWorkspaceKeys(dir)
+				all, err := slack.CachedIdentityKeys(dir)
 				if err != nil {
 					return err
 				}
@@ -102,7 +114,7 @@ func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
 
 			labels := cacheWorkspaceLabels(globals, keys)
 			now := time.Now().UnixMilli()
-			var total int64
+			var total, downloads int64
 			workspaces := make([]map[string]any, 0, len(keys))
 			for _, key := range keys {
 				cats, err := slack.InspectCacheDir(dir, key)
@@ -110,13 +122,16 @@ func registerCacheInfo(parent *cobra.Command, globals *GlobalFlags) {
 					return err
 				}
 				ws, wsBytes := cacheWorkspacePayload(labels[key], key, cats, now)
+				dlBytes := dirBytes(downloadsDir(key))
+				ws["downloads_bytes"] = dlBytes
 				total += wsBytes
+				downloads += dlBytes
 				workspaces = append(workspaces, ws)
 			}
 
 			return printSingle(globals, map[string]any{
 				"cache_dir":       dir,
-				"downloads_bytes": dirBytes(filepath.Join(dir, "downloads")),
+				"downloads_bytes": downloads,
 				"total_bytes":     total,
 				"workspaces":      workspaces,
 			})
@@ -156,10 +171,9 @@ func registerCachePurge(parent *cobra.Command, globals *GlobalFlags) {
 			result := map[string]any{}
 
 			if downloads {
-				if err := os.RemoveAll(downloadsDir()); err != nil {
+				if err := purgeDownloads(globals, dir, allWorkspaces, result); err != nil {
 					return err
 				}
-				result["downloads"] = "cleared"
 			}
 
 			// Purge a resolution cache unless --downloads was the sole target.
@@ -174,12 +188,11 @@ func registerCachePurge(parent *cobra.Command, globals *GlobalFlags) {
 				}
 				result["cleared_workspaces"] = cleared
 			default:
-				url := completionWorkspaceURL(globals)
-				if url == "" {
-					return agenterrors.New("no workspace to purge", agenterrors.FixableByAgent).
-						WithHint("pass --workspace <selector>, --all-workspaces, or --downloads")
+				key, url := selectedIdentityKey(globals)
+				if key == "" {
+					return errNoWorkspaceToPurge(url)
 				}
-				if err := slack.PurgeCacheDir(dir, slack.WorkspaceCacheKey(url)); err != nil {
+				if err := slack.PurgeCacheDir(dir, key); err != nil {
 					return err
 				}
 				result["purged"] = url
@@ -190,6 +203,44 @@ func registerCachePurge(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().BoolVar(&allWorkspaces, "all-workspaces", false, "Clear every workspace's resolution cache")
 	cmd.Flags().BoolVar(&downloads, "downloads", false, "Clear the downloaded-files cache (not workspace-scoped)")
 	parent.AddCommand(cmd)
+}
+
+// purgeDownloads clears downloaded files for the resolved identity, or for every
+// cached identity with --all-workspaces.
+func purgeDownloads(globals *GlobalFlags, dir string, allWorkspaces bool, result map[string]any) error {
+	if allWorkspaces {
+		keys, err := slack.CachedIdentityKeys(dir)
+		if err != nil {
+			return err
+		}
+		for _, k := range keys {
+			if err := os.RemoveAll(downloadsDir(k)); err != nil {
+				return err
+			}
+		}
+		result["downloads"] = "cleared"
+		return nil
+	}
+	key, url := selectedIdentityKey(globals)
+	if key == "" {
+		return errNoWorkspaceToPurge(url)
+	}
+	if err := os.RemoveAll(downloadsDir(key)); err != nil {
+		return err
+	}
+	result["downloads"] = "cleared"
+	return nil
+}
+
+// errNoWorkspaceToPurge distinguishes "no workspace selected" from "workspace
+// known but its identity is unresolved" (nothing has been cached for it yet).
+func errNoWorkspaceToPurge(url string) error {
+	if url != "" {
+		return agenterrors.Newf(agenterrors.FixableByAgent, "workspace %s has no resolved identity yet; nothing is cached to purge", url).
+			WithHint("run any command (or 'agent-slack auth test') against it first to resolve its identity")
+	}
+	return agenterrors.New("no workspace to purge", agenterrors.FixableByAgent).
+		WithHint("pass --workspace <selector>, --all-workspaces, or --downloads")
 }
 
 // dirBytes sums the sizes of files under dir (0 if absent). Best-effort.

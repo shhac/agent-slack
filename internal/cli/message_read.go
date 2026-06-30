@@ -45,7 +45,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 			}
 			downloads := map[string]render.DownloadResult{}
 			if !noDownload {
-				downloads = slack.DownloadMessageFiles(ctx, cc.Client, []render.MessageSummary{msg}, messageDownloadOptions(globals))
+				downloads = slack.DownloadMessageFiles(ctx, cc.Client, []render.MessageSummary{msg}, messageDownloadOptions(globals, cc))
 			}
 			compact := render.ToCompactMessage(msg, render.CompactOptions{
 				MaxBodyChars:     flags.maxBodyChars,
@@ -258,7 +258,7 @@ func printMessages(ctx context.Context, globals *GlobalFlags, cc *clientContext,
 	}
 	downloads := map[string]render.DownloadResult{}
 	if download {
-		downloads = slack.DownloadMessageFiles(ctx, cc.Client, messages, messageDownloadOptions(globals))
+		downloads = slack.DownloadMessageFiles(ctx, cc.Client, messages, messageDownloadOptions(globals, cc))
 	}
 	items := make([]any, 0, len(messages))
 	for _, m := range messages {

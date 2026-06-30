@@ -67,9 +67,16 @@ func TestResolveUsersByIDConcurrentFanout(t *testing.T) {
 // are set, so ResolveUsersByID exercises the on-disk cache.
 func cachingClient(t *testing.T, server *mockslack.Server, workspaceURL, dir string, mode CacheMode, now time.Time) *Client {
 	t.Helper()
+	return cachingClientKey(t, server, workspaceURL, testKey, dir, mode, now)
+}
+
+// cachingClientKey is cachingClient with an explicit identity cache key, for
+// tests that need two distinct identities sharing one cache dir.
+func cachingClientKey(t *testing.T, server *mockslack.Server, workspaceURL, key, dir string, mode CacheMode, now time.Time) *Client {
+	t.Helper()
 	ts := httptest.NewServer(server)
 	t.Cleanup(ts.Close)
-	cache := NewCache(dir, mode, DefaultCacheTTL(), func() time.Time { return now })
+	cache := NewCache(dir, key, mode, DefaultCacheTTL(), func() time.Time { return now })
 	return New(Auth{Type: AuthStandard, Token: "xoxb-test", WorkspaceURL: workspaceURL},
 		WithBaseURL(ts.URL), WithCache(cache))
 }
@@ -194,21 +201,22 @@ func TestResolveUsersByIDFiltersInvalidIDs(t *testing.T) {
 	}
 }
 
-func TestResolveUsersByIDSeparateWorkspaceCaches(t *testing.T) {
+func TestResolveUsersByIDSeparateIdentityCaches(t *testing.T) {
 	server := mockslack.New()
 	server.HandleBody("users.info", userInfoBody("U12345678", "alice"))
 	dir := t.TempDir()
 	now := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
 
-	one := cachingClient(t, server, "https://one.slack.com", dir, CacheNormal, now)
+	one := cachingClientKey(t, server, "https://acme.slack.com", IdentityCacheKey("T_ACME", "U_ONE"), dir, CacheNormal, now)
 	ResolveUsersByID(context.Background(), one, []string{"U12345678"}, ResolveCacheThenFetch)
-	// A different workspace must not see the first workspace's cache.
+	// A different identity (even on the same workspace) must not see the first
+	// identity's cache.
 	server.HandleBody("users.info", userInfoBody("U12345678", "alice"))
-	two := cachingClient(t, server, "https://two.slack.com", dir, CacheNormal, now)
+	two := cachingClientKey(t, server, "https://acme.slack.com", IdentityCacheKey("T_ACME", "U_TWO"), dir, CacheNormal, now)
 	ResolveUsersByID(context.Background(), two, []string{"U12345678"}, ResolveCacheThenFetch)
 
 	if calls := len(server.CallsFor("users.info")); calls != 2 {
-		t.Errorf("API calls = %d, want 2 (per-workspace caches)", calls)
+		t.Errorf("API calls = %d, want 2 (per-identity caches)", calls)
 	}
 }
 
