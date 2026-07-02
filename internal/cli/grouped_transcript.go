@@ -111,7 +111,6 @@ func writeCanvasTranscript(globals *GlobalFlags, c slack.Canvas) error {
 	return err
 }
 
-
 // writeMessageGetFooter appends a dim `└ thread: N replies · <permalink>` line
 // after a single-message transcript, surfacing the thread summary and permalink
 // the JSON payload carries but the conversation render otherwise drops.

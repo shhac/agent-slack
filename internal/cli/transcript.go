@@ -66,7 +66,6 @@ func (f *transcriptFlags) location() (*time.Location, error) {
 	return loc, nil
 }
 
-
 // wantsTranscript reports whether the resolved --format is the transcript
 // renderer (the literal, since it lives outside the universal format enum).
 func wantsTranscript(globals *GlobalFlags) bool {
