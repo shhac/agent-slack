@@ -64,13 +64,8 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 	if err != nil {
 		return nil, err
 	}
-	// With several workspaces and no chosen default, picking one silently
-	// risks acting on the wrong Slack — refuse rather than guess.
-	if selector == "" {
-		if creds, lerr := store.Load(); lerr == nil && len(creds.Workspaces) > 1 && creds.DefaultWorkspace == "" {
-			return nil, agenterrors.New("multiple workspaces configured and no default set", agenterrors.FixableByAgent).
-				WithHint("pass --workspace <alias-or-url>, or set a default with 'agent-slack auth set-default <alias>'")
-		}
+	if err := refuseAmbiguousDefault(store, selector); err != nil {
+		return nil, err
 	}
 	ws, err := store.Resolve(selector)
 	if err != nil {
@@ -172,6 +167,22 @@ func clientFromEnv(globals *GlobalFlags, selector string) *clientContext {
 		AuthType:     slackAuth.Type,
 		CacheKey:     key,
 	}
+}
+
+// refuseAmbiguousDefault guards the empty selector: with several workspaces
+// and no chosen default, picking one silently risks acting on the wrong
+// Slack — refuse rather than guess. A load failure is not this guard's
+// concern; resolution surfaces it properly.
+func refuseAmbiguousDefault(store *credential.Store, selector string) error {
+	if selector != "" {
+		return nil
+	}
+	creds, err := store.Load()
+	if err != nil || len(creds.Workspaces) <= 1 || creds.DefaultWorkspace != "" {
+		return nil
+	}
+	return agenterrors.New("multiple workspaces configured and no default set", agenterrors.FixableByAgent).
+		WithHint("pass --workspace <alias-or-url>, or set a default with 'agent-slack auth set-default <alias>'")
 }
 
 // requireIdentity reports whether the fail-closed identity gate is on. Any

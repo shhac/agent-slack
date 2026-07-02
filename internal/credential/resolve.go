@@ -7,15 +7,6 @@ import (
 	"strings"
 )
 
-// ResolveDefault returns the default workspace, or the first one.
-func (s *Store) ResolveDefault() (*Workspace, error) {
-	creds, err := s.Load()
-	if err != nil {
-		return nil, err
-	}
-	return resolveDefault(creds)
-}
-
 func resolveDefault(creds *Credentials) (*Workspace, error) {
 	if creds.DefaultWorkspace != "" {
 		if idx := findAliasIndex(creds.Workspaces, creds.DefaultWorkspace); idx != -1 {

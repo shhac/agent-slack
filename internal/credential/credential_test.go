@@ -52,7 +52,7 @@ func TestSecretsStayInFileWhenKeychainSetFails(t *testing.T) {
 	}
 
 	// A fresh load still recovers both secrets from the file.
-	got, err := s.ResolveDefault()
+	got, err := s.Resolve("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestStore_Headless_FileFallback(t *testing.T) {
 	}
 
 	// Round-trip via the read path.
-	got, err := s.ResolveDefault()
+	got, err := s.Resolve("")
 	if err != nil {
 		t.Fatalf("ResolveDefault: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestUpsertAndResolveDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	def, err := s.ResolveDefault()
+	def, err := s.Resolve("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestSecretsGoToKeychainNotFile(t *testing.T) {
 	}
 
 	// Reload hydrates from keychain.
-	got, err := s.ResolveDefault()
+	got, err := s.Resolve("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,3 +493,12 @@ func TestConcurrentUpsertsDoNotLoseWorkspaces(t *testing.T) {
 		t.Errorf("workspaces after %d concurrent upserts = %d (lost updates)", workers, len(creds.Workspaces))
 	}
 }
+
+// readOnlyKeychain serves seeded Gets but rejects all writes — the
+// keychain-locked / degraded-host shape for migration tests.
+type readOnlyKeychain struct{ data map[string]string }
+
+func (k readOnlyKeychain) Get(a string) (string, bool) { v, ok := k.data[a]; return v, ok }
+func (k readOnlyKeychain) Set(string, string) bool     { return false }
+func (k readOnlyKeychain) Delete(string)               {}
+func (k readOnlyKeychain) Available() bool             { return true }

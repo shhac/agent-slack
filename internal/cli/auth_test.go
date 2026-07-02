@@ -354,7 +354,7 @@ func TestAuthRemoveAndSetDefault(t *testing.T) {
 	if _, _, err := env.run(t, "", "auth", "set-default", "https://globex.slack.com"); err != nil {
 		t.Fatalf("set-default: %v", err)
 	}
-	def, _ := store.ResolveDefault()
+	def, _ := store.Resolve("")
 	if def.URL != "https://globex.slack.com" {
 		t.Errorf("default not updated: %q", def.URL)
 	}
@@ -434,5 +434,35 @@ func TestAuthAddStdinEmptyIsAgentError(t *testing.T) {
 	payload := errPayload(t, stderr)
 	if payload["fixable_by"] != "agent" {
 		t.Errorf("payload = %v", payload)
+	}
+}
+
+func TestAuthAddStdinMalformedJSONIsAgentError(t *testing.T) {
+	env := newTestEnv(t)
+	_, stderr, err := env.run(t, "{ not json", "auth", "add", "--workspace-url", "https://acme.slack.com", "--stdin")
+	if err == nil {
+		t.Fatal("expected error for malformed stdin JSON")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" {
+		t.Errorf("payload = %v", payload)
+	}
+	if hint, _ := payload["hint"].(string); !strings.Contains(hint, "JSON object") {
+		t.Errorf("hint = %v", payload["hint"])
+	}
+}
+
+func TestAuthAddStdinXOXCWithoutXOXDIsIncomplete(t *testing.T) {
+	env := newTestEnv(t)
+	_, stderr, err := env.run(t, `{"xoxc": "xoxc-only"}`, "auth", "add", "--workspace-url", "https://acme.slack.com", "--stdin")
+	if err == nil {
+		t.Fatal("expected error: xoxc without xoxd is not a valid credential shape")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" {
+		t.Errorf("payload = %v", payload)
+	}
+	if msg, _ := payload["error"].(string); !strings.Contains(msg, "--xoxc") {
+		t.Errorf("error should explain the required shape: %v", payload)
 	}
 }

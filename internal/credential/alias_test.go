@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // --- alias derivation and upsert keying ---
@@ -186,7 +188,7 @@ func TestSetDefaultStoresAlias(t *testing.T) {
 	if err := s.SetDefault("two"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.ResolveDefault()
+	got, err := s.Resolve("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,5 +330,243 @@ func TestMigrateWithoutBrowserWorkspacesKeepsSharedXOXD(t *testing.T) {
 	}
 	if _, ok := kc.entries["xoxd"]; !ok {
 		t.Error("migrating a token-only store must not delete the service-global xoxd account")
+	}
+}
+
+// v1MigrationFixture writes a version-1 credentials file with one browser and
+// one standard workspace, and seeds kc with their legacy accounts.
+func v1MigrationFixture(t *testing.T, kc *MemoryKeychain) string {
+	t.Helper()
+	kc.Set("xoxc:https://acme.slack.com", "xoxc-secret")
+	kc.Set("xoxd", "xoxd-shared")
+	kc.Set("token:https://beta.slack.com", "xoxb-secret")
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	v1 := `{
+  "version": 1,
+  "default_workspace_url": "https://beta.slack.com",
+  "workspaces": [
+    {"workspace_url": "https://acme.slack.com", "workspace_name": "Acme", "team_domain": "acme",
+     "auth": {"auth_type": "browser", "xoxc_token": "__KEYCHAIN__", "xoxd_cookie": "__KEYCHAIN__"}},
+    {"workspace_url": "https://beta.slack.com", "workspace_name": "Beta",
+     "auth": {"auth_type": "standard", "token": "__KEYCHAIN__"}}
+  ]
+}`
+	if err := os.WriteFile(path, []byte(v1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// Every mutation must work against a version-1 file: migration happens on the
+// way in, without deadlocking on the non-reentrant file lock. A regression
+// here hangs rather than fails, so run each mutation under a timeout.
+func TestMutationsOnV1FileMigrateWithoutDeadlock(t *testing.T) {
+	mutations := map[string]func(s *Store) error{
+		"upsert": func(s *Store) error {
+			_, err := s.Upsert(Workspace{URL: "https://new.slack.com",
+				Auth: Auth{Type: AuthStandard, Token: "xoxb-new"}})
+			return err
+		},
+		"set-identity": func(s *Store) error { return s.SetIdentity("acme", "T1", "U1") },
+		"set-default":  func(s *Store) error { return s.SetDefault("acme") },
+		"remove":       func(s *Store) error { return s.Remove("acme") },
+		"secret-statuses": func(s *Store) error {
+			_, err := s.SecretStatuses()
+			return err
+		},
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			kc := NewMemoryKeychain()
+			s := NewWithStore(v1MigrationFixture(t, kc), kc)
+
+			done := make(chan error, 1)
+			go func() { done <- mutate(s) }()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("%s on v1 file: %v", name, err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatalf("%s on v1 file deadlocked (lock reentrancy regression)", name)
+			}
+
+			creds, err := s.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if creds.Version != 2 {
+				t.Errorf("version after %s = %d, want 2", name, creds.Version)
+			}
+		})
+	}
+}
+
+// N stores racing on one v1 file must migrate exactly once: every workspace
+// survives with its secrets re-homed per alias, and nothing is double-deleted.
+func TestConcurrentLoadsMigrateV1Once(t *testing.T) {
+	kc := NewMemoryKeychain()
+	path := v1MigrationFixture(t, kc)
+
+	const workers = 16
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, errs[i] = NewWithStore(path, kc).Load()
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("load %d: %v", i, err)
+		}
+	}
+
+	creds, err := NewWithStore(path, kc).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creds.Version != 2 || len(creds.Workspaces) != 2 {
+		t.Fatalf("after concurrent migration: version=%d workspaces=%d", creds.Version, len(creds.Workspaces))
+	}
+	byAlias := map[string]Workspace{}
+	for _, w := range creds.Workspaces {
+		byAlias[w.Alias] = w
+	}
+	if byAlias["acme"].Auth.XOXC != "xoxc-secret" || byAlias["acme"].Auth.XOXD != "xoxd-shared" {
+		t.Errorf("acme secrets lost in concurrent migration: %+v", byAlias["acme"].Auth)
+	}
+	if byAlias["beta"].Auth.Token != "xoxb-secret" {
+		t.Errorf("beta token lost in concurrent migration: %+v", byAlias["beta"].Auth)
+	}
+	entries := kc.snapshot()
+	for _, want := range []string{"xoxc:acme", "xoxd:acme", "token:beta"} {
+		if _, ok := entries[want]; !ok {
+			t.Errorf("missing re-homed account %s after concurrent migration", want)
+		}
+	}
+}
+
+// Migration on a host whose keychain rejects writes must keep the legacy
+// secrets it hydrated — in the file if nowhere else — never dropping them.
+func TestMigrationWithFailingKeychainKeepsSecretsInFile(t *testing.T) {
+	// failingKeychain rejects Sets but must still serve legacy Gets for
+	// hydration, so build a read-only view over seeded data.
+	kc := readOnlyKeychain{data: map[string]string{
+		"xoxc:https://acme.slack.com": "xoxc-secret",
+		"xoxd":                        "xoxd-shared",
+	}}
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	v1 := `{"version": 1, "workspaces": [
+    {"workspace_url": "https://acme.slack.com", "team_domain": "acme",
+     "auth": {"auth_type": "browser", "xoxc_token": "__KEYCHAIN__", "xoxd_cookie": "__KEYCHAIN__"}}]}`
+	if err := os.WriteFile(path, []byte(v1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := NewWithStore(path, kc).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Workspaces[0].Auth.XOXC != "xoxc-secret" || got.Workspaces[0].Auth.XOXD != "xoxd-shared" {
+		t.Fatalf("hydrated secrets = %+v", got.Workspaces[0].Auth)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "xoxc-secret") || !strings.Contains(string(raw), "xoxd-shared") {
+		t.Errorf("secrets dropped during keychain-degraded migration:\n%s", raw)
+	}
+}
+
+// Two v1 workspaces deriving the same alias must uniquify AND keep their
+// secrets under their own final aliases — a mix-up here is a silent
+// cross-workspace credential swap.
+func TestMigrationUniquifiesCollidingAliasesWithSeparateSecrets(t *testing.T) {
+	kc := NewMemoryKeychain()
+	kc.Set("xoxc:https://acme.slack.com", "xoxc-one")
+	kc.Set("xoxc:https://acme.example.com", "xoxc-two")
+	kc.Set("xoxd", "xoxd-shared")
+
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	v1 := `{"version": 1, "workspaces": [
+    {"workspace_url": "https://acme.slack.com",
+     "auth": {"auth_type": "browser", "xoxc_token": "__KEYCHAIN__", "xoxd_cookie": "__KEYCHAIN__"}},
+    {"workspace_url": "https://acme.example.com", "team_domain": "acme",
+     "auth": {"auth_type": "browser", "xoxc_token": "__KEYCHAIN__", "xoxd_cookie": "__KEYCHAIN__"}}]}`
+	if err := os.WriteFile(path, []byte(v1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	creds, err := NewWithStore(path, kc).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secrets := map[string]string{}
+	for _, w := range creds.Workspaces {
+		secrets[w.Alias] = w.Auth.XOXC
+	}
+	if secrets["acme"] != "xoxc-one" || secrets["acme-2"] != "xoxc-two" {
+		t.Errorf("collision migration mixed up secrets: %v", secrets)
+	}
+	entries := kc.snapshot()
+	if entries["xoxc:acme"] != "xoxc-one" || entries["xoxc:acme-2"] != "xoxc-two" {
+		t.Errorf("re-homed accounts wrong: %v", entries)
+	}
+}
+
+// relabelForV2 is the pure half of migration — table-test its edge cases
+// directly, no Keychain or lock involved.
+func TestRelabelForV2(t *testing.T) {
+	cases := map[string]struct {
+		file        credentialsFile
+		wantAliases []string
+		wantDefault string
+	}{
+		"collision uniquifies in order": {
+			file: credentialsFile{Credentials: Credentials{Workspaces: []Workspace{
+				{URL: "https://acme.slack.com"},
+				{URL: "https://acme.example.com", TeamDomain: "acme"},
+			}}},
+			wantAliases: []string{"acme", "acme-2"},
+		},
+		"default url maps to alias": {
+			file: credentialsFile{
+				Credentials:      Credentials{Workspaces: []Workspace{{URL: "https://beta.slack.com"}}},
+				LegacyDefaultURL: "https://beta.slack.com/some/path",
+			},
+			wantAliases: []string{"beta"},
+			wantDefault: "beta",
+		},
+		"unresolvable default leaves it empty": {
+			file: credentialsFile{
+				Credentials:      Credentials{Workspaces: []Workspace{{URL: "https://beta.slack.com"}}},
+				LegacyDefaultURL: "https://gone.slack.com",
+			},
+			wantAliases: []string{"beta"},
+		},
+		"unparseable url falls back to name": {
+			file: credentialsFile{Credentials: Credentials{Workspaces: []Workspace{
+				{URL: "not a url", Name: "My Team!"},
+			}}},
+			wantAliases: []string{"my-team"},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			relabelForV2(&tc.file)
+			for i, want := range tc.wantAliases {
+				if got := tc.file.Workspaces[i].Alias; got != want {
+					t.Errorf("alias[%d] = %q, want %q", i, got, want)
+				}
+			}
+			if tc.file.DefaultWorkspace != tc.wantDefault {
+				t.Errorf("default = %q, want %q", tc.file.DefaultWorkspace, tc.wantDefault)
+			}
+		})
 	}
 }

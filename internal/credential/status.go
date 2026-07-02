@@ -1,9 +1,6 @@
 package credential
 
-import (
-	"encoding/json"
-	"os"
-)
+import "github.com/shhac/agent-slack/internal/fslock"
 
 // SecretStatus says where one stored secret lives. "missing" means the file
 // holds a Keychain placeholder whose backing entry is gone — e.g. seeded by
@@ -22,29 +19,19 @@ const (
 // without returning any secret material. A version-1 file is migrated first
 // so the per-alias accounts exist to probe.
 func (s *Store) SecretStatuses() (map[string]map[string]SecretStatus, error) {
-	if err := s.ensureMigrated(); err != nil {
+	if err := s.migrateIfNeeded(); err != nil {
 		return nil, err
 	}
 	out := map[string]map[string]SecretStatus{}
-	data, err := os.ReadFile(s.path)
+	raw, _, err := fslock.ReadJSON[Credentials](s.path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return out, nil
-		}
 		return nil, err
 	}
-	raw := &Credentials{}
-	if err := json.Unmarshal(data, raw); err != nil {
-		return out, nil // corrupt file reads as empty, matching Load
-	}
-	for _, w := range raw.Workspaces {
+	for i := range raw.Workspaces {
+		w := &raw.Workspaces[i]
 		st := map[string]SecretStatus{}
-		switch w.Auth.Type {
-		case AuthBrowser:
-			st["xoxc"] = s.secretStatus(w.Auth.XOXC, xoxcAccount(w.Alias))
-			st["xoxd"] = s.secretStatus(w.Auth.XOXD, xoxdAccount(w.Alias))
-		default:
-			st["token"] = s.secretStatus(w.Auth.Token, tokenAccount(w.Alias))
+		for _, ref := range w.secretRefs() {
+			st[ref.name] = s.secretStatus(*ref.value, ref.account)
 		}
 		out[w.Alias] = st
 	}
@@ -66,17 +53,9 @@ func (s *Store) secretStatus(rawValue, account string) SecretStatus {
 // A non-empty result means the workspace cannot authenticate as stored.
 func MissingSecrets(ws Workspace) []string {
 	var missing []string
-	switch ws.Auth.Type {
-	case AuthBrowser:
-		if isPlaceholder(ws.Auth.XOXC) {
-			missing = append(missing, "xoxc")
-		}
-		if isPlaceholder(ws.Auth.XOXD) {
-			missing = append(missing, "xoxd")
-		}
-	default:
-		if isPlaceholder(ws.Auth.Token) {
-			missing = append(missing, "token")
+	for _, ref := range ws.secretRefs() {
+		if isPlaceholder(*ref.value) {
+			missing = append(missing, ref.name)
 		}
 	}
 	return missing

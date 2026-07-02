@@ -5,7 +5,6 @@
 package settings
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,20 +57,17 @@ func Path() (string, error) {
 // Load reads the settings, returning an empty (usable) config when the file is
 // absent or unreadable.
 func Load() (*Config, error) {
-	cfg := &Config{Version: 1, Settings: map[string]string{}}
+	empty := &Config{Version: 1, Settings: map[string]string{}}
 	path, err := Path()
 	if err != nil {
-		return cfg, nil
+		return empty, nil
 	}
-	raw, err := os.ReadFile(path)
+	cfg, ok, err := fslock.ReadJSON[Config](path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return cfg, nil
-		}
 		return nil, err
 	}
-	if json.Unmarshal(raw, cfg) != nil || cfg.Settings == nil {
-		return &Config{Version: 1, Settings: map[string]string{}}, nil
+	if !ok || cfg.Settings == nil {
+		return empty, nil
 	}
 	cfg.Version = 1
 	return cfg, nil
@@ -83,14 +79,7 @@ func (c *Config) save() error {
 		return err
 	}
 	c.Version = 1
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	return fslock.WriteFile(path, data, 0o600)
+	return fslock.WriteJSON(path, c)
 }
 
 // mutate runs a load-edit-save cycle holding the cross-process file lock, so

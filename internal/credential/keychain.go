@@ -1,5 +1,7 @@
 package credential
 
+import "sync"
+
 // keychainService is the macOS Keychain service name for all agent-slack
 // secrets. It follows the agent-* family reverse-DNS convention (cf. lin's
 // "app.paulie.lin").
@@ -32,9 +34,11 @@ type Keychain interface {
 	Available() bool
 }
 
-// MemoryKeychain is an in-memory Keychain for tests. The zero value is not
-// usable; use NewMemoryKeychain.
+// MemoryKeychain is an in-memory Keychain for tests, safe for concurrent use
+// so it can back concurrency tests under -race. The zero value is not usable;
+// use NewMemoryKeychain.
 type MemoryKeychain struct {
+	mu      sync.Mutex
 	entries map[string]string
 }
 
@@ -43,27 +47,61 @@ func NewMemoryKeychain() *MemoryKeychain {
 }
 
 func (m *MemoryKeychain) Get(account string) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	v, ok := m.entries[account]
 	return v, ok
 }
 
 func (m *MemoryKeychain) Set(account, value string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.entries[account] = value
 	return true
 }
 
 func (m *MemoryKeychain) Delete(account string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	delete(m.entries, account)
 }
 
 func (m *MemoryKeychain) Available() bool { return true }
 
-// noopKeychain is used on platforms without a supported secret store. Every
-// operation reports "not stored", which makes the Store fall back to the
-// plaintext file.
+// snapshot returns a copy of the stored entries for test assertions.
+func (m *MemoryKeychain) snapshot() map[string]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]string, len(m.entries))
+	for k, v := range m.entries {
+		out[k] = v
+	}
+	return out
+}
+
+// noopKeychain is a test double for the file-fallback branch: every operation
+// reports "not stored", so the Store keeps secrets in the plaintext file. The
+// real no-secret-store platform fallback lives in lib-agent-keyring's
+// unavailable backend, which credsKeychain wraps to the same effect.
 type noopKeychain struct{}
 
 func (noopKeychain) Get(string) (string, bool) { return "", false }
 func (noopKeychain) Set(string, string) bool   { return false }
 func (noopKeychain) Delete(string)             {}
 func (noopKeychain) Available() bool           { return false }
+
+func isPlaceholder(v string) bool { return v == "" || v == keychainPlaceholder }
+
+// Keychain accounts are keyed by workspace alias (store version 2): several
+// aliases may hold credentials for the same workspace URL, each — including
+// the browser d cookie — with its own entry.
+func xoxcAccount(alias string) string  { return "xoxc:" + alias }
+func tokenAccount(alias string) string { return "token:" + alias }
+func xoxdAccount(alias string) string  { return "xoxd:" + alias }
+
+// Version-1 accounts were keyed by normalized URL, with one shared xoxd
+// cookie across all browser workspaces. Read (and deleted) only by migration.
+func legacyXoxcAccount(normalizedURL string) string  { return "xoxc:" + normalizedURL }
+func legacyTokenAccount(normalizedURL string) string { return "token:" + normalizedURL }
+
+const legacyXoxdAccount = "xoxd"

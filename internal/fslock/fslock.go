@@ -6,6 +6,7 @@
 package fslock
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 )
@@ -27,6 +28,39 @@ func WithLock(path string, fn func() error) error {
 	}
 	defer unlock(f)
 	return fn()
+}
+
+// ReadJSON reads path into a fresh T. A missing or corrupt file yields the
+// zero T and ok=false — the permissive contract agent-slack's state files
+// share (an absent or torn file reads as empty, never partially decoded).
+// Read errors other than absence are returned.
+func ReadJSON[T any](path string) (v *T, ok bool, err error) {
+	var zero T
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &zero, false, nil
+		}
+		return nil, false, err
+	}
+	v = new(T)
+	if json.Unmarshal(data, v) != nil {
+		return &zero, false, nil
+	}
+	return v, true, nil
+}
+
+// WriteJSON marshals v (indented) and writes it atomically with the shared
+// state-file permissions: 0o700 directory, 0o600 file.
+func WriteJSON(path string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return WriteFile(path, data, 0o600)
 }
 
 // WriteFile replaces path's contents atomically: readers see either the old
