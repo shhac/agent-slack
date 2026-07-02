@@ -146,12 +146,15 @@ table-tested for behavior coverage:
   snapshots (LevelDB/SQLite) use `os.MkdirTemp`. `AGENT_SLACK_CREDENTIALS`
   overrides the credentials path.
 - `internal/credential`: tokens/cookies stored in the macOS Keychain under
-  service `app.paulie.agent-slack` (matching `lin`'s `app.paulie.lin`), with the
-  per-workspace key as the account field. A local index records which workspace
-  has which token kind. On non-macOS, falls back to a file with restrictive
-  permissions (`keychain_darwin.go` / `keychain_other.go` build-tag split, as in
-  the siblings). CLI commands report token presence as booleans or storage
-  names, never values.
+  service `app.paulie.agent-slack` (matching `lin`'s `app.paulie.lin`), with
+  per-alias accounts (`xoxc:<alias>`, `token:<alias>`, `xoxd:<alias>`). The
+  credentials file (version 2) keys workspaces by a unique human alias; the
+  workspace URL is metadata, so several aliases can hold credentials for the
+  same Slack workspace (two humans, one team) — see
+  `workspace-aliases.md`, including the one-shot v1 migration. On non-macOS,
+  falls back to a file with restrictive permissions (`keychain_darwin.go` /
+  `keychain_other.go` build-tag split, as in the siblings). CLI commands
+  report token presence as booleans or storage names, never values.
 - Concurrency: every read-modify-write of `credentials.json` and the settings
   `config.json` holds an exclusive advisory lock on a `<file>.lock` sidecar
   (`internal/fslock`), and writes replace the file atomically via

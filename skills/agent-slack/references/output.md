@@ -65,7 +65,7 @@ Truncated content ends with `\n…`.
   (`ts`/`permalink` absent on file-attachment sends; `scheduled_message_id`/`post_at` present for scheduled sends).
 - `channel invite` (internal) → `{ channel_id, invited_user_ids, already_in_channel_user_ids?, unresolved_users? }`;
   (external, `--external`) → `{ channel_id, external: true, invited_emails, already_invited_emails?, invalid_external_targets? }`.
-- `auth list` → `{ default_workspace_url, credentials_path, workspaces: [{ workspace_url, auth_type, secrets: {token|xoxc|xoxd: "keychain"|"file"|"missing"}, hint? }] }`.
+- `auth list` → `{ default_workspace, credentials_path, workspaces: [{ alias, workspace_url, auth_type, secrets: {token|xoxc|xoxd: "keychain"|"file"|"missing"}, hint? }] }`.
 
 Entity IDs stay canonical in payloads (`author.user_id`, reaction `users[]`, and
 `@U…`/`<#C…>`/`<!subteam^S…>` mentions in rendered content — rich_text carries

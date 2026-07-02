@@ -77,7 +77,8 @@ GLOBAL FLAGS
   -d, --debug            Log HTTP request/response trace to stderr.
   -t, --timeout <ms>     Per-request HTTP timeout in milliseconds (default 30 000).
   -f, --format <fmt>     Output format: json|yaml|jsonl (overrides default NDJSON/JSON).
-      --workspace <sel>  Workspace URL or unique substring (multi-workspace setups).
+      --workspace <sel>  Workspace alias, URL, or unique substring (multi-workspace
+                         setups; several aliases may hold the same workspace).
       --full             Return fuller API payloads where supported.
       --no-cache         Bypass the resolution cache entirely (no read, no write).
       --refresh-cache    Ignore cached reads but still write fresh entries.
@@ -104,7 +105,7 @@ AUTH
   add --form' opens a native dialog so a human can enter a token without it
   ever appearing in chat). Env override: SLACK_TOKEN
   (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser tokens).
-  Multiple workspaces: pass --workspace <substring> or 'auth set-default'.
+  Multiple workspaces: pass --workspace <alias> or 'auth set-default <alias>'.
   Expired browser tokens self-heal from Slack Desktop mid-command.
 
 Run 'agent-slack <domain> usage' for detailed per-domain documentation.
@@ -347,14 +348,20 @@ CALL  api call <method> [--params '<json>'|<file>|-] [--multipart]
 SETUP   auth import-desktop — extract xoxc/xoxd from Slack Desktop (best).
         auth import-browser <name> — chrome, brave, firefox, zen, opera, safari
         auth parse-curl — paste a copied 'Copy as cURL' Slack request (stdin)
-        auth add --workspace-url <url> (--token xoxb…|--xoxc … --xoxd …)
+        auth add [--alias <alias>] --workspace-url <url>
+          (--token xoxb…|--xoxc … --xoxd …)
         auth add --workspace-url <url> --form — native OS dialog prompts the
           human for the secret; use this so tokens never appear in chat.
-VERIFY  auth list (ls) — workspaces + where each secret is stored; flags
+ALIAS   every credential set has a unique alias (derived from the workspace
+          when omitted). Several aliases may hold the same workspace URL —
+          e.g. two humans in one Slack. Imports update the entry whose URL
+          they match; if several share it, re-run auth add with --alias.
+VERIFY  auth list (ls) — aliases + where each secret is stored; flags
           secrets whose Keychain entry is gone. No secret material printed.
         auth test — calls Slack's auth.test with the resolved credentials.
-MANAGE  auth set-default <url> | auth remove <url> (also clears that
-          workspace's identity cache + downloads)
+MANAGE  auth set-default <alias> | auth remove <alias> (also clears that
+          workspace's identity cache + downloads; both accept any
+          --workspace selector)
 ENV     SLACK_TOKEN (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser
           tokens) override the stored credentials for one invocation.
 NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,

@@ -40,8 +40,9 @@ desktop extraction yields only URL/Name/Token; the credential file had a
 
 **Resolve once, persist, never re-resolve.** The ids are not secret, so they
 live in `credentials.json` alongside the other non-secret workspace metadata
-(`workspace_url`, `team_domain`), via `Store.SetIdentity`. The cache key is then
-derived offline from the stored fields.
+(`workspace_url`, `team_domain`), via `Store.SetIdentity` (keyed by the
+workspace alias since the version-2 store — see `workspace-aliases.md`). The
+cache key is then derived offline from the stored fields.
 
 Resolution is **lazy on first use**, not at add time:
 

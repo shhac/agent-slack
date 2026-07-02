@@ -75,9 +75,10 @@ return `fixable_by: agent` telling you to use a channel or message URL instead.
 ## Multi-workspace disambiguation
 
 With several workspaces configured, commands use the **default** workspace
-(`auth set-default <url>`). To target another:
+(`auth set-default <alias>`). To target another:
 
-- pass `--workspace <unique-substring>` (URL, host, name, or any unique part), or
+- pass `--workspace <alias>` (or a URL, host, name, or any unique substring —
+  exact alias match wins), or
 - use a permalink / channel URL, which carries its own workspace.
 
 Channel **names** are workspace-relative, so resolve them against the default

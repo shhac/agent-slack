@@ -51,8 +51,8 @@ agent-slack auth import-desktop            # from Slack Desktop — best, no nee
 # …or, if you don't run Slack Desktop:
 agent-slack auth import-browser firefox    # chrome|brave|firefox|zen|opera|safari
 agent-slack auth test                      # am I set up? → who I am + which workspace
-agent-slack auth list                      # which workspaces are configured
-agent-slack auth set-default https://acme.slack.com   # if several workspaces
+agent-slack auth list                      # configured credential sets (aliases)
+agent-slack auth set-default acme          # if several workspaces (alias or URL)
 ```
 
 If no import works, `agent-slack auth add --workspace-url <url> --form` opens a
@@ -61,8 +61,10 @@ Never ask the user to paste a token into the conversation, and never read
 credentials out of the store yourself; every command authenticates internally.
 Env override: `SLACK_TOKEN` (+ `SLACK_COOKIE_D` + `SLACK_WORKSPACE_URL` for xoxc
 browser tokens); expired browser tokens self-heal from Slack Desktop. With
-several workspaces, commands use the default; pass `--workspace <substring>` to
-target another (a message permalink carries its own workspace and overrides it).
+several workspaces, commands use the default; pass `--workspace <alias>` (or any
+unique substring) to target another (a message permalink carries its own
+workspace and overrides it). Credential sets are alias-keyed — several aliases
+may hold the same workspace URL (e.g. two humans in one Slack).
 Full menu — per-browser caveats, bot tokens, cURL import: `agent-slack auth usage`.
 
 ## Reading
