@@ -367,8 +367,12 @@ Two things follow, with **no extra CLI code**:
   binary as an embedded resource, refusing files over a small inline limit.
 
 Plain-CLI behavior is unchanged — `path` stays a real host path the agent Reads
-directly. The host path is never exposed over MCP. Design: lib-agent-mcp
-`design-docs/file-access.md`.
+directly. The host path is never exposed over MCP. With OAuth named
+principals, the root is resolved per call: each principal's `fs` view (and
+FileRef rewriting) is narrowed to their alias's `<team_id>/<user_id>` cache
+subtree via `mcpFileRootScope` — fail-closed when unresolvable — so one
+principal can never list another's downloads. Design: lib-agent-mcp
+`design-docs/file-access.md` and `design-docs/multi-user.md`.
 
 ## Resolution cache
 

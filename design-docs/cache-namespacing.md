@@ -19,6 +19,10 @@ The on-disk cache and downloads need to be scoped to *who we are*, not just
 This is a **correctness** boundary (right data for the right identity), **not a
 security** boundary: two humans sharing one OS account already share the
 filesystem. Namespacing prevents stale/wrong data; it does not isolate secrets.
+One path does now lean on it as an access boundary: the MCP `fs` tool scopes a
+named principal's file access to their alias's `<team_id>/<user_id>` subtree
+(`mcpFileRootScope`, fail-closed when unresolvable) — enforcement lives in the
+MCP layer's per-call root resolution, not in the directory layout itself.
 
 ## Identity = `(team_id, user_id)`
 

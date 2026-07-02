@@ -136,8 +136,10 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 		// (app.paulie.agent-slack.mcp), separate from the API credentials.
 		agentmcp.WithOAuthKeyringService(credential.MCPKeychainService()),
 		// Named principals (mcp pair add <name> --bind workspace=<alias>) get
-		// their tool calls pinned to that alias and run fail-closed.
+		// their tool calls pinned to that alias and run fail-closed, and their
+		// fs access narrowed to that alias's identity subtree of the cache.
 		agentmcp.WithIdentityBinding(mcpIdentityBinding),
+		agentmcp.WithFileRootScope(mcpFileRootScope(globals.newStore)),
 	))
 
 	return root
