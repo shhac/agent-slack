@@ -78,8 +78,8 @@ func TestAuthAddStandardAndList(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &who); err != nil {
 		t.Fatalf("list output not JSON: %v\n%s", err, out)
 	}
-	if who["default_workspace_url"] != "https://acme.slack.com" {
-		t.Errorf("default workspace = %v", who["default_workspace_url"])
+	if who["default_workspace"] != "acme" {
+		t.Errorf("default workspace = %v", who["default_workspace"])
 	}
 	if strings.Contains(out, "xoxb") {
 		t.Errorf("list leaked token material:\n%s", out)

@@ -63,8 +63,11 @@ func registerAuthTest(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(cmd)
 }
 
-// saveTeams upserts browser-auth workspaces for the given teams + shared cookie
-// and returns a compact import summary.
+// saveTeams upserts browser-auth workspaces for the given teams + the cookie
+// they share and returns a compact import summary. Imports carry no alias:
+// each team updates the entry that uniquely holds its URL or creates one
+// under a derived alias; several aliases on one URL is a structured error
+// (see mapAmbiguousURLError).
 func saveTeams(store *credential.Store, teams []auth.Team, cookieD string, source map[string]string) (map[string]any, error) {
 	workspaces := make([]credential.Workspace, 0, len(teams))
 	imported := make([]map[string]string, 0, len(teams))
@@ -77,13 +80,25 @@ func saveTeams(store *credential.Store, teams []auth.Team, cookieD string, sourc
 		imported = append(imported, map[string]string{"workspace_url": t.URL, "workspace_name": t.Name})
 	}
 	if err := store.UpsertMany(workspaces); err != nil {
-		return nil, err
+		return nil, mapAmbiguousURLError(err)
 	}
 	summary := map[string]any{"imported": len(workspaces), "workspaces": imported}
 	if len(source) > 0 {
 		summary["source"] = source
 	}
 	return summary, nil
+}
+
+// mapAmbiguousURLError turns the store's several-aliases-share-this-URL
+// refusal into an agent-actionable error; other errors pass through.
+func mapAmbiguousURLError(err error) error {
+	var ambiguous *credential.AmbiguousURLError
+	if !agenterrors.As(err, &ambiguous) {
+		return err
+	}
+	return agenterrors.Newf(agenterrors.FixableByAgent,
+		"several stored workspaces use %s: %s", ambiguous.URL, strings.Join(ambiguous.Aliases, ", ")).
+		WithHint("re-run with 'agent-slack auth add --alias <alias>' to say which credential set to update")
 }
 
 func registerAuthList(parent *cobra.Command, globals *GlobalFlags) {
@@ -107,20 +122,21 @@ func registerAuthList(parent *cobra.Command, globals *GlobalFlags) {
 			workspaces := make([]map[string]any, 0, len(creds.Workspaces))
 			for _, w := range creds.Workspaces {
 				entry := map[string]any{
+					"alias":          w.Alias,
 					"workspace_url":  w.URL,
 					"workspace_name": w.Name,
 					"auth_type":      string(w.Auth.Type),
-					"secrets":        statuses[w.URL],
+					"secrets":        statuses[w.Alias],
 				}
 				if missing := credential.MissingSecrets(w); len(missing) > 0 {
-					entry["hint"] = "secret missing from the Keychain; re-run 'agent-slack auth import-desktop' or 'agent-slack auth add --workspace-url " + w.URL + " --form'"
+					entry["hint"] = "secret missing from the Keychain; re-run 'agent-slack auth import-desktop' or 'agent-slack auth add --alias " + w.Alias + " --workspace-url " + w.URL + " --form'"
 				}
 				workspaces = append(workspaces, entry)
 			}
 			return printSingle(globals, map[string]any{
-				"default_workspace_url": creds.DefaultWorkspaceURL,
-				"workspaces":            workspaces,
-				"credentials_path":      store.Path(),
+				"default_workspace": creds.DefaultWorkspace,
+				"workspaces":        workspaces,
+				"credentials_path":  store.Path(),
 			})
 		},
 	}
@@ -220,7 +236,7 @@ func registerAuthParseCurl(parent *cobra.Command, globals *GlobalFlags) {
 }
 
 func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
-	var workspaceURL, token, xoxc, xoxd string
+	var alias, workspaceURL, token, xoxc, xoxd string
 	var form bool
 	cmd := &cobra.Command{
 		Use:   "add",
@@ -239,20 +255,25 @@ func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 			var ws credential.Workspace
 			switch {
 			case token != "":
-				ws = credential.Workspace{URL: workspaceURL, Auth: credential.Auth{Type: credential.AuthStandard, Token: token}}
+				ws = credential.Workspace{Alias: alias, URL: workspaceURL, Auth: credential.Auth{Type: credential.AuthStandard, Token: token}}
 			case xoxc != "" && xoxd != "":
-				ws = credential.Workspace{URL: workspaceURL, Auth: credential.Auth{Type: credential.AuthBrowser, XOXC: xoxc, XOXD: xoxd}}
+				ws = credential.Workspace{Alias: alias, URL: workspaceURL, Auth: credential.Auth{Type: credential.AuthBrowser, XOXC: xoxc, XOXD: xoxd}}
 			default:
 				return agenterrors.New("provide either --token or both --xoxc and --xoxd", agenterrors.FixableByAgent).
 					WithHint("Agents should use 'auth add --workspace-url <url> --form' so the human types the secret into a native dialog and it never appears in chat.")
 			}
 			saved, err := store.Upsert(ws)
 			if err != nil {
-				return err
+				return mapAmbiguousURLError(err)
 			}
-			return printSingle(globals, map[string]any{"saved": saved.URL, "auth_type": string(saved.Auth.Type)})
+			return printSingle(globals, map[string]any{
+				"saved":         saved.Alias,
+				"workspace_url": saved.URL,
+				"auth_type":     string(saved.Auth.Type),
+			})
 		},
 	}
+	cmd.Flags().StringVar(&alias, "alias", "", "Alias for this credential set (derived from the workspace when omitted); several aliases may share one workspace URL")
 	cmd.Flags().StringVar(&workspaceURL, "workspace-url", "", "Workspace URL, e.g. https://myteam.slack.com")
 	cmd.Flags().StringVar(&token, "token", "", "Standard Slack token (xoxb-/xoxp-)")
 	cmd.Flags().StringVar(&xoxc, "xoxc", "", "Browser token (xoxc-...)")
@@ -290,8 +311,8 @@ func promptAddSecrets(ctx context.Context, globals *GlobalFlags, workspaceURL, t
 
 func registerAuthSetDefault(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
-		Use:   "set-default <workspace-url>",
-		Short: "Set the default workspace",
+		Use:   "set-default <workspace>",
+		Short: "Set the default workspace (accepts an alias, URL, or any --workspace selector)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := globals.newStore()
@@ -299,9 +320,16 @@ func registerAuthSetDefault(parent *cobra.Command, globals *GlobalFlags) {
 				return err
 			}
 			if err := store.SetDefault(args[0]); err != nil {
+				return mapWorkspaceResolveError(store, args[0], err)
+			}
+			ws, err := store.Resolve(args[0])
+			if err != nil {
 				return err
 			}
-			return printSingle(globals, map[string]any{"default_workspace_url": args[0]})
+			return printSingle(globals, map[string]any{
+				"default_workspace": ws.Alias,
+				"workspace_url":     ws.URL,
+			})
 		},
 	}
 	parent.AddCommand(cmd)
@@ -309,8 +337,8 @@ func registerAuthSetDefault(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerAuthRemove(parent *cobra.Command, globals *GlobalFlags) {
 	cmd := &cobra.Command{
-		Use:   "remove <workspace-url>",
-		Short: "Remove a workspace and its stored secrets",
+		Use:   "remove <workspace>",
+		Short: "Remove a workspace and its stored secrets (accepts an alias, URL, or any --workspace selector)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := globals.newStore()
@@ -321,13 +349,15 @@ func registerAuthRemove(parent *cobra.Command, globals *GlobalFlags) {
 			// cache + downloads + emoji images) can be cleared too — otherwise it
 			// would linger as an orphaned directory.
 			var cacheKey string
+			removed := args[0]
 			if ws, rerr := store.Resolve(args[0]); rerr == nil {
 				cacheKey = slack.IdentityCacheKey(ws.TeamID, ws.UserID)
+				removed = ws.Alias
 			}
 			if err := store.Remove(args[0]); err != nil {
-				return err
+				return mapWorkspaceResolveError(store, args[0], err)
 			}
-			result := map[string]any{"removed": args[0]}
+			result := map[string]any{"removed": removed}
 			if cacheKey != "" {
 				if err := slack.PurgeIdentityDir(appCacheDir(), cacheKey); err == nil {
 					result["cache_cleared"] = true

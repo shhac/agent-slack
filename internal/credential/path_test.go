@@ -84,9 +84,9 @@ func TestMigrateLegacyFile(t *testing.T) {
 	}
 }
 
-// Every config-shaped file this tool writes carries a schema version,
-// starting at 1.
-func TestSaveAlwaysWritesVersion1(t *testing.T) {
+// Every config-shaped file this tool writes carries the current schema
+// version, regardless of what the caller passed in.
+func TestSaveAlwaysWritesCurrentVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "credentials.json")
 	store := NewWithStore(path, NewMemoryKeychain())
 	if err := store.Save(&Credentials{Workspaces: []Workspace{}}); err != nil { // Version deliberately zero
@@ -100,7 +100,7 @@ func TestSaveAlwaysWritesVersion1(t *testing.T) {
 	if err := json.Unmarshal(raw, &onDisk); err != nil {
 		t.Fatal(err)
 	}
-	if onDisk["version"] != float64(1) {
-		t.Errorf("version = %v, want 1", onDisk["version"])
+	if onDisk["version"] != float64(storeVersion) {
+		t.Errorf("version = %v, want %d", onDisk["version"], storeVersion)
 	}
 }

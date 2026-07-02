@@ -16,11 +16,15 @@ const (
 	SecretMissing    SecretStatus = "missing"
 )
 
-// SecretStatuses reports, per workspace URL, where each secret the auth type
-// needs lives ("token" for standard auth; "xoxc"/"xoxd" for browser auth). It
-// reads the raw file (placeholders intact) and probes the Keychain without
-// returning any secret material.
+// SecretStatuses reports, per workspace alias, where each secret the auth
+// type needs lives ("token" for standard auth; "xoxc"/"xoxd" for browser
+// auth). It reads the raw file (placeholders intact) and probes the Keychain
+// without returning any secret material. A version-1 file is migrated first
+// so the per-alias accounts exist to probe.
 func (s *Store) SecretStatuses() (map[string]map[string]SecretStatus, error) {
+	if err := s.ensureMigrated(); err != nil {
+		return nil, err
+	}
 	out := map[string]map[string]SecretStatus{}
 	data, err := os.ReadFile(s.path)
 	if err != nil {
@@ -37,12 +41,12 @@ func (s *Store) SecretStatuses() (map[string]map[string]SecretStatus, error) {
 		st := map[string]SecretStatus{}
 		switch w.Auth.Type {
 		case AuthBrowser:
-			st["xoxc"] = s.secretStatus(w.Auth.XOXC, xoxcAccount(w.URL))
-			st["xoxd"] = s.secretStatus(w.Auth.XOXD, xoxdAccount)
+			st["xoxc"] = s.secretStatus(w.Auth.XOXC, xoxcAccount(w.Alias))
+			st["xoxd"] = s.secretStatus(w.Auth.XOXD, xoxdAccount(w.Alias))
 		default:
-			st["token"] = s.secretStatus(w.Auth.Token, tokenAccount(w.URL))
+			st["token"] = s.secretStatus(w.Auth.Token, tokenAccount(w.Alias))
 		}
-		out[w.URL] = st
+		out[w.Alias] = st
 	}
 	return out, nil
 }

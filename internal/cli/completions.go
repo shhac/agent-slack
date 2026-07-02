@@ -130,7 +130,7 @@ func fixedCompletions(values ...string) func(*cobra.Command, []string, string) (
 }
 
 // registerWorkspaceCompletion completes --workspace from the configured
-// workspace URLs (read-only; no API).
+// aliases (read-only; no API), each described by its workspace URL.
 func registerWorkspaceCompletion(cmd *cobra.Command, globals *GlobalFlags) {
 	_ = cmd.RegisterFlagCompletionFunc("workspace",
 		func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
@@ -142,10 +142,10 @@ func registerWorkspaceCompletion(cmd *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			urls := make([]string, 0, len(creds.Workspaces))
+			aliases := make([]string, 0, len(creds.Workspaces))
 			for _, w := range creds.Workspaces {
-				urls = append(urls, w.URL)
+				aliases = append(aliases, w.Alias+"\t"+w.URL)
 			}
-			return urls, cobra.ShellCompDirectiveNoFileComp
+			return aliases, cobra.ShellCompDirectiveNoFileComp
 		})
 }

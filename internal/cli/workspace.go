@@ -20,8 +20,8 @@ func mapWorkspaceResolveError(store *credential.Store, selector string, err erro
 			WithHint("pass a more specific --workspace selector")
 	}
 
-	urls := storedWorkspaceURLs(store)
-	if len(urls) == 0 {
+	labels := storedWorkspaceLabels(store)
+	if len(labels) == 0 {
 		return agenterrors.New("no Slack credentials configured", agenterrors.FixableByHuman).
 			WithHint(noCredentialsHint)
 	}
@@ -29,20 +29,22 @@ func mapWorkspaceResolveError(store *credential.Store, selector string, err erro
 		return agenterrors.Wrap(err, agenterrors.FixableByHuman).WithHint(noCredentialsHint)
 	}
 	return agenterrors.Newf(agenterrors.FixableByAgent,
-		"no workspace matches %q; configured: %s", selector, strings.Join(urls, ", ")).
-		WithHint("pass one of the configured workspaces via --workspace, or import the missing one")
+		"no workspace matches %q; configured: %s", selector, strings.Join(labels, ", ")).
+		WithHint("pass one of the configured aliases via --workspace, or import the missing workspace")
 }
 
-func storedWorkspaceURLs(store *credential.Store) []string {
+// storedWorkspaceLabels lists each configured credential set as
+// "alias (url)" for error messages and hints.
+func storedWorkspaceLabels(store *credential.Store) []string {
 	creds, err := store.Load()
 	if err != nil {
 		return nil
 	}
-	urls := make([]string, 0, len(creds.Workspaces))
+	labels := make([]string, 0, len(creds.Workspaces))
 	for _, ws := range creds.Workspaces {
-		urls = append(urls, ws.URL)
+		labels = append(labels, ws.Alias+" ("+ws.URL+")")
 	}
-	return urls
+	return labels
 }
 
 // workspaceMatches compares two workspace references by exact host. It is

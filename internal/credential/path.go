@@ -64,7 +64,16 @@ func normalizeURL(raw string) (string, error) {
 
 func isPlaceholder(v string) bool { return v == "" || v == keychainPlaceholder }
 
-func xoxcAccount(normalizedURL string) string  { return "xoxc:" + normalizedURL }
-func tokenAccount(normalizedURL string) string { return "token:" + normalizedURL }
+// Keychain accounts are keyed by workspace alias (store version 2): several
+// aliases may hold credentials for the same workspace URL, each — including
+// the browser d cookie — with its own entry.
+func xoxcAccount(alias string) string  { return "xoxc:" + alias }
+func tokenAccount(alias string) string { return "token:" + alias }
+func xoxdAccount(alias string) string  { return "xoxd:" + alias }
 
-const xoxdAccount = "xoxd"
+// Version-1 accounts were keyed by normalized URL, with one shared xoxd
+// cookie across all browser workspaces. Read (and deleted) only by migration.
+func legacyXoxcAccount(normalizedURL string) string  { return "xoxc:" + normalizedURL }
+func legacyTokenAccount(normalizedURL string) string { return "token:" + normalizedURL }
+
+const legacyXoxdAccount = "xoxd"

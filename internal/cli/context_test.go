@@ -38,7 +38,7 @@ func TestMultipleWorkspacesNeedSelectorOrDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	creds.DefaultWorkspaceURL = ""
+	creds.DefaultWorkspace = ""
 	if err := store.Save(creds); err != nil {
 		t.Fatal(err)
 	}

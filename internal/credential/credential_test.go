@@ -193,10 +193,10 @@ func TestSecretsGoToKeychainNotFile(t *testing.T) {
 	if !strings.Contains(string(raw), keychainPlaceholder) {
 		t.Errorf("expected %s placeholder in file:\n%s", keychainPlaceholder, raw)
 	}
-	if v, ok := kc.Get(xoxcAccount("https://acme.slack.com")); !ok || v != "xoxc-secret" {
+	if v, ok := kc.Get(xoxcAccount("acme")); !ok || v != "xoxc-secret" {
 		t.Errorf("xoxc not stored in keychain: %q ok=%v", v, ok)
 	}
-	if v, ok := kc.Get(xoxdAccount); !ok || v != "xoxd-secret" {
+	if v, ok := kc.Get(xoxdAccount("acme")); !ok || v != "xoxd-secret" {
 		t.Errorf("xoxd not stored in keychain: %q ok=%v", v, ok)
 	}
 
@@ -290,35 +290,35 @@ func TestRemove(t *testing.T) {
 	if len(creds.Workspaces) != 1 || creds.Workspaces[0].URL != "https://globex.slack.com" {
 		t.Fatalf("remove failed: %+v", creds.Workspaces)
 	}
-	if creds.DefaultWorkspaceURL != "https://globex.slack.com" {
-		t.Errorf("default not reassigned after removing default: %q", creds.DefaultWorkspaceURL)
+	if creds.DefaultWorkspace != "globex" {
+		t.Errorf("default not reassigned after removing default: %q", creds.DefaultWorkspace)
 	}
-	if _, ok := kc.Get(xoxcAccount("https://acme.slack.com")); ok {
+	if _, ok := kc.Get(xoxcAccount("acme")); ok {
 		t.Error("expected xoxc keychain entry deleted on remove")
 	}
 }
 
-func TestRemoveKeepsSharedXOXDForOtherBrowserWorkspaces(t *testing.T) {
+func TestRemoveKeepsOtherWorkspacesXOXD(t *testing.T) {
 	kc := NewMemoryKeychain()
 	s := newTestStore(t, kc)
 	_ = s.UpsertMany([]Workspace{
-		{URL: "https://acme.slack.com", Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-a", XOXD: "xoxd-shared"}},
-		{URL: "https://globex.slack.com", Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-g", XOXD: "xoxd-shared"}},
+		{URL: "https://acme.slack.com", Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-a", XOXD: "xoxd-a"}},
+		{URL: "https://globex.slack.com", Auth: Auth{Type: AuthBrowser, XOXC: "xoxc-g", XOXD: "xoxd-g"}},
 	})
-	if err := s.Remove("https://acme.slack.com"); err != nil {
+	if err := s.Remove("acme"); err != nil {
 		t.Fatal(err)
 	}
-	// The shared 'd' cookie is stored once under a single account; removing one
-	// browser workspace must NOT delete it, or the survivor stops working.
-	if _, ok := kc.Get(xoxdAccount); !ok {
-		t.Error("shared xoxd must survive removal of one browser workspace")
+	// Each browser workspace owns its d cookie; removing one must not touch
+	// another alias's cookie.
+	if _, ok := kc.Get(xoxdAccount("globex")); !ok {
+		t.Error("globex's xoxd must survive removal of acme")
 	}
-	if _, ok := kc.Get(xoxcAccount("https://acme.slack.com")); ok {
+	if _, ok := kc.Get(xoxcAccount("acme")); ok {
 		t.Error("removed workspace's xoxc should be deleted")
 	}
 	creds, _ := s.Load()
-	if len(creds.Workspaces) != 1 || creds.Workspaces[0].Auth.XOXD != "xoxd-shared" {
-		t.Errorf("survivor lost its shared xoxd: %+v", creds.Workspaces)
+	if len(creds.Workspaces) != 1 || creds.Workspaces[0].Auth.XOXD != "xoxd-g" {
+		t.Errorf("survivor lost its xoxd: %+v", creds.Workspaces)
 	}
 }
 
@@ -332,7 +332,7 @@ func TestSetIdentityPersistsIDsAndKeepsSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.SetIdentity("https://acme.slack.com/", "T123", "U456"); err != nil {
+	if err := s.SetIdentity("acme", "T123", "U456"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -349,7 +349,7 @@ func TestSetIdentityPersistsIDsAndKeepsSecrets(t *testing.T) {
 
 func TestSetIdentityUnknownWorkspaceIsNoError(t *testing.T) {
 	s := newTestStore(t, NewMemoryKeychain())
-	if err := s.SetIdentity("https://nope.slack.com", "T1", "U1"); err != nil {
+	if err := s.SetIdentity("nope", "T1", "U1"); err != nil {
 		t.Fatalf("SetIdentity on unknown workspace should be a no-op, got %v", err)
 	}
 }
@@ -360,7 +360,7 @@ func TestLoadMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if creds.Version != 1 || len(creds.Workspaces) != 0 {
+	if creds.Version != 2 || len(creds.Workspaces) != 0 {
 		t.Errorf("expected empty creds, got %+v", creds)
 	}
 }
@@ -390,8 +390,8 @@ func TestSavedFileShape(t *testing.T) {
 	if err := json.Unmarshal(raw, &generic); err != nil {
 		t.Fatalf("saved file is not valid JSON: %v", err)
 	}
-	if generic["version"].(float64) != 1 {
-		t.Errorf("version = %v, want 1", generic["version"])
+	if generic["version"].(float64) != 2 {
+		t.Errorf("version = %v, want 2", generic["version"])
 	}
 	if _, ok := generic["updated_at"]; !ok {
 		t.Error("expected updated_at timestamp")
@@ -410,13 +410,13 @@ func TestSecretStatusesAndMissingSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Orphan globex's placeholder — the legacy-migration failure shape.
-	kc.Delete(xoxcAccount("https://globex.slack.com"))
+	kc.Delete(xoxcAccount("globex"))
 
 	statuses, err := s.SecretStatuses()
 	if err != nil {
 		t.Fatal(err)
 	}
-	acme, globex := statuses["https://acme.slack.com"], statuses["https://globex.slack.com"]
+	acme, globex := statuses["acme"], statuses["globex"]
 	if acme["xoxc"] != SecretInKeychain || acme["xoxd"] != SecretInKeychain {
 		t.Errorf("acme = %v", acme)
 	}
@@ -453,7 +453,7 @@ func TestSecretStatusesFileFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := statuses["https://acme.slack.com"]["token"]; got != SecretInFile {
+	if got := statuses["acme"]["token"]; got != SecretInFile {
 		t.Errorf("token status = %q, want file", got)
 	}
 }

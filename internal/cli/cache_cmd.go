@@ -56,8 +56,8 @@ func registerCacheWarm(parent *cobra.Command, globals *GlobalFlags) {
 }
 
 // cacheWorkspaceLabels maps each present identity-cache key (<team_id>/<user_id>)
-// to its configured workspace URL (or a clearly-unknown label for orphaned dirs,
-// e.g. a credential since removed).
+// to its configured alias + workspace URL (or a clearly-unknown label for
+// orphaned dirs, e.g. a credential since removed).
 func cacheWorkspaceLabels(globals *GlobalFlags, keys []string) map[string]string {
 	labels := map[string]string{}
 	for _, k := range keys {
@@ -73,7 +73,7 @@ func cacheWorkspaceLabels(globals *GlobalFlags, keys []string) map[string]string
 	}
 	for _, w := range creds.Workspaces {
 		if key := slack.IdentityCacheKey(w.TeamID, w.UserID); key != "" && labels[key] != "" {
-			labels[key] = w.URL
+			labels[key] = w.Alias + " (" + w.URL + ")"
 		}
 	}
 	return labels

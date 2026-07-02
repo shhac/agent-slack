@@ -30,7 +30,7 @@ func resolveIdentityKey(store *credential.Store, ws *credential.Workspace, baseO
 	if teamID == "" || userID == "" {
 		return ""
 	}
-	_ = store.SetIdentity(ws.URL, teamID, userID) // best-effort; keying doesn't depend on the write
+	_ = store.SetIdentity(ws.Alias, teamID, userID) // best-effort; keying doesn't depend on the write
 	return slack.IdentityCacheKey(teamID, userID)
 }
 

@@ -17,7 +17,10 @@ const noCredentialsHint = "run 'agent-slack auth import-desktop' (or auth add / 
 
 // clientContext is everything a command needs to talk to one workspace.
 type clientContext struct {
-	Client       *slack.Client
+	Client *slack.Client
+	// Alias is the stored credential set serving this client ("" for env-var
+	// credentials, which live outside the store).
+	Alias        string
 	WorkspaceURL string
 	AuthType     slack.AuthType
 	// CacheKey is the resolved <team_id>/<user_id> identity namespace for this
@@ -52,9 +55,9 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 	// With several workspaces and no chosen default, picking one silently
 	// risks acting on the wrong Slack — refuse rather than guess.
 	if selector == "" {
-		if creds, lerr := store.Load(); lerr == nil && len(creds.Workspaces) > 1 && creds.DefaultWorkspaceURL == "" {
+		if creds, lerr := store.Load(); lerr == nil && len(creds.Workspaces) > 1 && creds.DefaultWorkspace == "" {
 			return nil, agenterrors.New("multiple workspaces configured and no default set", agenterrors.FixableByAgent).
-				WithHint("pass --workspace <url-or-substring>, or set a default with 'agent-slack auth set-default <url>'")
+				WithHint("pass --workspace <alias-or-url>, or set a default with 'agent-slack auth set-default <alias>'")
 		}
 	}
 	ws, err := store.Resolve(selector)
@@ -72,11 +75,12 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 
 	opts := clientOptions(globals, key)
 	if ws.Auth.Type == credential.AuthBrowser {
-		opts = append(opts, slack.WithAuthRefresh(desktopRefresh(globals, store, ws.URL)))
+		opts = append(opts, slack.WithAuthRefresh(desktopRefresh(globals, store, ws.Alias, ws.URL)))
 	}
 
 	return &clientContext{
 		Client:       slack.New(slackAuth, opts...),
+		Alias:        ws.Alias,
 		WorkspaceURL: ws.URL,
 		AuthType:     slackAuth.Type,
 		CacheKey:     key,
@@ -94,15 +98,15 @@ func healMissingSecrets(globals *GlobalFlags, store *credential.Store, ws *crede
 		return nil
 	}
 	if ws.Auth.Type == credential.AuthBrowser {
-		if auth, ok := desktopRefresh(globals, store, ws.URL)(context.Background()); ok {
+		if auth, ok := desktopRefresh(globals, store, ws.Alias, ws.URL)(context.Background()); ok {
 			ws.Auth.XOXC, ws.Auth.XOXD = auth.XOXC, auth.XOXD
 			return nil
 		}
 	}
 	return agenterrors.Newf(agenterrors.FixableByHuman,
-		"stored credentials for %s are missing %s (no Keychain entry behind the placeholder)",
-		ws.URL, strings.Join(missing, ", ")).
-		WithHint(fmt.Sprintf("re-run 'agent-slack auth import-desktop', or 'agent-slack auth add --workspace-url %s --form'", ws.URL))
+		"stored credentials for %s (%s) are missing %s (no Keychain entry behind the placeholder)",
+		ws.Alias, ws.URL, strings.Join(missing, ", ")).
+		WithHint(fmt.Sprintf("re-run 'agent-slack auth import-desktop', or 'agent-slack auth add --alias %s --workspace-url %s --form'", ws.Alias, ws.URL))
 }
 
 // slackAuthFromCred translates a stored credential workspace into the slack
@@ -208,8 +212,10 @@ func rateLimitNotice(globals *GlobalFlags) slack.RateLimitFunc {
 
 // desktopRefresh re-extracts credentials from Slack Desktop when a call hits
 // an auth error — xoxc tokens rotate, and this turns the #1 failure mode into
-// self-healing. Only workspaces already configured are refreshed.
-func desktopRefresh(globals *GlobalFlags, store *credential.Store, workspaceURL string) slack.RefreshFunc {
+// self-healing. Only workspaces already configured are refreshed, and the
+// persist targets the alias this refresher was built for — never a URL match,
+// which could hit another alias holding the same workspace URL.
+func desktopRefresh(globals *GlobalFlags, store *credential.Store, alias, workspaceURL string) slack.RefreshFunc {
 	return func(ctx context.Context) (slack.Auth, bool) {
 		extracted, err := globals.desktopExtract()
 		if err != nil {
@@ -220,9 +226,10 @@ func desktopRefresh(globals *GlobalFlags, store *credential.Store, workspaceURL 
 				continue
 			}
 			_, _ = store.Upsert(credential.Workspace{ // best-effort persist for the next run
-				URL:  team.URL,
-				Name: team.Name,
-				Auth: credential.Auth{Type: credential.AuthBrowser, XOXC: team.Token, XOXD: extracted.CookieD},
+				Alias: alias,
+				URL:   team.URL,
+				Name:  team.Name,
+				Auth:  credential.Auth{Type: credential.AuthBrowser, XOXC: team.Token, XOXD: extracted.CookieD},
 			})
 			emitNotice(globals, "credentials refreshed from Slack Desktop", "")
 			return slack.Auth{
