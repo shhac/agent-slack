@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/shhac/lib-agent-cli/xdg"
+
+	"github.com/shhac/agent-slack/internal/fslock"
 )
 
 // configDirName deliberately uses a reverse-DNS name rather than the family's
@@ -88,7 +90,25 @@ func (c *Config) save() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	return fslock.WriteFile(path, data, 0o600)
+}
+
+// mutate runs a load-edit-save cycle holding the cross-process file lock, so
+// concurrent Set/Unset calls (e.g. parallel MCP tool subprocesses) can't
+// clobber each other's writes.
+func mutate(edit func(cfg *Config)) error {
+	path, err := Path()
+	if err != nil {
+		return err
+	}
+	return fslock.WithLock(path, func() error {
+		cfg, err := Load()
+		if err != nil {
+			return err
+		}
+		edit(cfg)
+		return cfg.save()
+	})
 }
 
 // Set validates and persists one key/value. cache.ttl.* values must parse as a
@@ -102,22 +122,12 @@ func Set(key, value string) error {
 			return fmt.Errorf("invalid duration %q for %s (e.g. 30m, 2h, 0)", value, key)
 		}
 	}
-	cfg, err := Load()
-	if err != nil {
-		return err
-	}
-	cfg.Settings[key] = value
-	return cfg.save()
+	return mutate(func(cfg *Config) { cfg.Settings[key] = value })
 }
 
 // Unset removes a key (no error if absent).
 func Unset(key string) error {
-	cfg, err := Load()
-	if err != nil {
-		return err
-	}
-	delete(cfg.Settings, key)
-	return cfg.save()
+	return mutate(func(cfg *Config) { delete(cfg.Settings, key) })
 }
 
 // Get returns the stored value for key, or "" if unset.

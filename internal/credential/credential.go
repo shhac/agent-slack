@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/shhac/agent-slack/internal/fslock"
 )
 
 type AuthType string
@@ -152,7 +154,15 @@ func (s *Store) Save(creds *Credentials) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, data, 0o600)
+	// Atomic replace: Load is lock-free, and a torn read there degrades to
+	// "empty store" — which a later Save would happily persist.
+	return fslock.WriteFile(s.path, data, 0o600)
+}
+
+// withLock serializes this store's read-modify-write cycles against other
+// processes (e.g. parallel MCP tool-call subprocesses) mutating the same file.
+func (s *Store) withLock(fn func() error) error {
+	return fslock.WithLock(s.path, fn)
 }
 
 // pushSecretsToKeychain stores each workspace's secrets in the Keychain and
@@ -201,29 +211,35 @@ func (s *Store) UpsertMany(workspaces []Workspace) error {
 }
 
 func (s *Store) upsertMany(workspaces []Workspace) (Workspace, error) {
-	creds, err := s.Load()
+	var last Workspace
+	err := s.withLock(func() error {
+		creds, err := s.Load()
+		if err != nil {
+			return err
+		}
+		for _, ws := range workspaces {
+			normalized, err := normalizeURL(ws.URL)
+			if err != nil {
+				return err
+			}
+			ws.URL = normalized
+			last = ws
+
+			if idx := findWorkspaceIndex(creds.Workspaces, normalized); idx == -1 {
+				creds.Workspaces = append(creds.Workspaces, ws)
+			} else {
+				creds.Workspaces[idx] = mergeWorkspace(creds.Workspaces[idx], ws)
+			}
+			if creds.DefaultWorkspaceURL == "" {
+				creds.DefaultWorkspaceURL = normalized
+			}
+		}
+		return s.Save(creds)
+	})
 	if err != nil {
 		return Workspace{}, err
 	}
-	var last Workspace
-	for _, ws := range workspaces {
-		normalized, err := normalizeURL(ws.URL)
-		if err != nil {
-			return Workspace{}, err
-		}
-		ws.URL = normalized
-		last = ws
-
-		if idx := findWorkspaceIndex(creds.Workspaces, normalized); idx == -1 {
-			creds.Workspaces = append(creds.Workspaces, ws)
-		} else {
-			creds.Workspaces[idx] = mergeWorkspace(creds.Workspaces[idx], ws)
-		}
-		if creds.DefaultWorkspaceURL == "" {
-			creds.DefaultWorkspaceURL = normalized
-		}
-	}
-	return last, s.Save(creds)
+	return last, nil
 }
 
 // findWorkspaceIndex returns the index of the workspace with the given
@@ -267,69 +283,75 @@ func (s *Store) SetIdentity(workspaceURL, teamID, userID string) error {
 	if err != nil {
 		return err
 	}
-	creds, err := s.Load()
-	if err != nil {
-		return err
-	}
-	idx := findWorkspaceIndex(creds.Workspaces, normalized)
-	if idx == -1 {
-		return nil
-	}
-	w := &creds.Workspaces[idx]
-	changed := false
-	if teamID != "" && w.TeamID != teamID {
-		w.TeamID = teamID
-		changed = true
-	}
-	if userID != "" && w.UserID != userID {
-		w.UserID = userID
-		changed = true
-	}
-	if !changed {
-		return nil
-	}
-	return s.Save(creds)
+	return s.withLock(func() error {
+		creds, err := s.Load()
+		if err != nil {
+			return err
+		}
+		idx := findWorkspaceIndex(creds.Workspaces, normalized)
+		if idx == -1 {
+			return nil
+		}
+		w := &creds.Workspaces[idx]
+		changed := false
+		if teamID != "" && w.TeamID != teamID {
+			w.TeamID = teamID
+			changed = true
+		}
+		if userID != "" && w.UserID != userID {
+			w.UserID = userID
+			changed = true
+		}
+		if !changed {
+			return nil
+		}
+		return s.Save(creds)
+	})
 }
 
 // SetDefault sets the default workspace URL.
 func (s *Store) SetDefault(workspaceURL string) error {
-	creds, err := s.Load()
-	if err != nil {
-		return err
-	}
 	normalized, err := normalizeURL(workspaceURL)
 	if err != nil {
 		return err
 	}
-	creds.DefaultWorkspaceURL = normalized
-	return s.Save(creds)
+	return s.withLock(func() error {
+		creds, err := s.Load()
+		if err != nil {
+			return err
+		}
+		creds.DefaultWorkspaceURL = normalized
+		return s.Save(creds)
+	})
 }
 
 // Remove deletes a workspace and its Keychain secrets.
 func (s *Store) Remove(workspaceURL string) error {
-	creds, err := s.Load()
-	if err != nil {
-		return err
-	}
 	normalized, err := normalizeURL(workspaceURL)
 	if err != nil {
 		return err
 	}
-	kept := creds.Workspaces[:0]
-	for _, w := range creds.Workspaces {
-		if w.URL == normalized {
-			s.kc.Delete(xoxcAccount(w.URL))
-			s.kc.Delete(tokenAccount(w.URL))
-			continue
+	return s.withLock(func() error {
+		creds, err := s.Load()
+		if err != nil {
+			return err
 		}
-		kept = append(kept, w)
-	}
-	creds.Workspaces = kept
-	if creds.DefaultWorkspaceURL == normalized {
-		creds.DefaultWorkspaceURL = ""
-		if len(creds.Workspaces) > 0 {
-			creds.DefaultWorkspaceURL = creds.Workspaces[0].URL
+		kept := creds.Workspaces[:0]
+		for _, w := range creds.Workspaces {
+			if w.URL == normalized {
+				s.kc.Delete(xoxcAccount(w.URL))
+				s.kc.Delete(tokenAccount(w.URL))
+				continue
+			}
+			kept = append(kept, w)
 		}
-	}
-	return s.Save(creds)
+		creds.Workspaces = kept
+		if creds.DefaultWorkspaceURL == normalized {
+			creds.DefaultWorkspaceURL = ""
+			if len(creds.Workspaces) > 0 {
+				creds.DefaultWorkspaceURL = creds.Workspaces[0].URL
+			}
+		}
+		return s.Save(creds)
+	})
 }

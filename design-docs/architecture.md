@@ -152,6 +152,14 @@ table-tested for behavior coverage:
   permissions (`keychain_darwin.go` / `keychain_other.go` build-tag split, as in
   the siblings). CLI commands report token presence as booleans or storage
   names, never values.
+- Concurrency: every read-modify-write of `credentials.json` and the settings
+  `config.json` holds an exclusive advisory lock on a `<file>.lock` sidecar
+  (`internal/fslock`), and writes replace the file atomically via
+  temp-file-plus-rename. MCP fans tool calls out as parallel subprocesses of
+  this binary, so two mutations (e.g. `SetIdentity` backfills) can race;
+  without the lock the later save silently dropped the earlier one, and
+  without atomic writes a lock-free reader could see a torn file — which
+  `Load` treats as an empty store.
 
 Credentials are **import-only** to start: there is no interactive setup dialog
 (no `zenity` dependency). Tokens enter via `auth import-*` / `parse-curl` /

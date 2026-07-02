@@ -3,6 +3,7 @@ package settings
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -65,5 +66,37 @@ func TestLoadMissingFileIsEmpty(t *testing.T) {
 	cfg, err := Load()
 	if err != nil || len(cfg.Settings) != 0 {
 		t.Errorf("fresh config should be empty: %+v, %v", cfg, err)
+	}
+}
+
+// Concurrent Sets model parallel MCP tool-call subprocesses writing config:
+// every key must survive the read-modify-write fan-out.
+func TestConcurrentSetsDoNotLoseKeys(t *testing.T) {
+	isolate(t)
+
+	var wg sync.WaitGroup
+	errs := make([]error, len(CacheTTLCategories))
+	for i, cat := range CacheTTLCategories {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = Set("cache.ttl."+cat, "30m")
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("set %s: %v", CacheTTLCategories[i], err)
+		}
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cat := range CacheTTLCategories {
+		if got := cfg.Get("cache.ttl." + cat); got != "30m" {
+			t.Errorf("cache.ttl.%s = %q after concurrent sets (lost update)", cat, got)
+		}
 	}
 }

@@ -2,9 +2,11 @@ package credential
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -453,5 +455,41 @@ func TestSecretStatusesFileFallback(t *testing.T) {
 	}
 	if got := statuses["https://acme.slack.com"]["token"]; got != SecretInFile {
 		t.Errorf("token status = %q, want file", got)
+	}
+}
+
+// Concurrent mutations simulate the MCP fan-out case: each tool call is its
+// own process (here: its own Store) doing read-modify-write on one file. Every
+// upsert must survive — a lost update means a workspace silently vanished.
+func TestConcurrentUpsertsDoNotLoseWorkspaces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "credentials.json")
+
+	const workers = 16
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s := NewWithStore(path, noopKeychain{})
+			_, errs[i] = s.Upsert(Workspace{
+				URL:  fmt.Sprintf("https://ws-%02d.slack.com", i),
+				Auth: Auth{Type: AuthStandard, Token: fmt.Sprintf("xoxp-%02d", i)},
+			})
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("upsert %d: %v", i, err)
+		}
+	}
+
+	creds, err := NewWithStore(path, noopKeychain{}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(creds.Workspaces) != workers {
+		t.Errorf("workspaces after %d concurrent upserts = %d (lost updates)", workers, len(creds.Workspaces))
 	}
 }
