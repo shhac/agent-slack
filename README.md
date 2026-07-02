@@ -31,7 +31,9 @@ family so conventions, output contract, and credential handling are shared.
   `scheduled cancel`, `channel new|invite`, `emoji add|remove`) require `--yes`
   and describe what would happen without it.
 - **Multi-workspace**: disambiguate with `--workspace <url-or-substring>`.
-- **MCP server** (`agent-slack mcp`): exposes the command tree to MCP clients,
+- **MCP server** (`agent-slack mcp`): exposes the command tree to MCP clients;
+  with OAuth, named principals (`agent-slack mcp pair add <name> --bind
+  workspace=<alias>`) each act as their own workspace alias, fail-closed,
   plus a read-only `fs` tool so a client with no filesystem can read back
   downloaded attachments — `fs get cache <team_id>/<user_id>/downloads/F….png`
   returns the bytes (images as image blocks). Downloaded `path`s in tool output

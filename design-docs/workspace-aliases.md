@@ -100,4 +100,9 @@ Aliases are still a flat namespace in one OS user's store: this is the
 per-credential-set boundary the MCP binding layer selects among
 (`--workspace <alias>`), not a security boundary between principals. Guarding
 "which MCP principal may use which alias" is lib-agent-mcp's binding store's
-job, not the credential file's.
+job, not the credential file's. That wiring exists: `mcpIdentityBinding`
+(internal/cli/mcp_binding.go) translates a principal's `workspace` binding
+into `--workspace <alias>` + `AGENT_SLACK_REQUIRE_IDENTITY=1` on every
+principal-authenticated tool call — pair a principal with
+`agent-slack mcp pair add <name> --bind workspace=<alias>`. See
+lib-agent-mcp's design-docs/multi-user.md for the trust model.

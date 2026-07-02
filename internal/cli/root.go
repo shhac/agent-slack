@@ -135,6 +135,9 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 		// Store local-OAuth secrets under the family reverse-DNS service
 		// (app.paulie.agent-slack.mcp), separate from the API credentials.
 		agentmcp.WithOAuthKeyringService(credential.MCPKeychainService()),
+		// Named principals (mcp pair add <name> --bind workspace=<alias>) get
+		// their tool calls pinned to that alias and run fail-closed.
+		agentmcp.WithIdentityBinding(mcpIdentityBinding),
 	))
 
 	return root
