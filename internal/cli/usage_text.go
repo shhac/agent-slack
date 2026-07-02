@@ -352,6 +352,9 @@ SETUP   auth import-desktop — extract xoxc/xoxd from Slack Desktop (best).
           (--token xoxb…|--xoxc … --xoxd …)
         auth add --workspace-url <url> --form — native OS dialog prompts the
           human for the secret; use this so tokens never appear in chat.
+        auth add --workspace-url <url> --stdin — read secrets as one JSON
+          object on stdin ({"token": …} or {"xoxc": …, "xoxd": …}); the
+          machine path (scripts, enrollment) — nothing in argv or env.
 ALIAS   every credential set has a unique alias (derived from the workspace
           when omitted). Several aliases may hold the same workspace URL —
           e.g. two humans in one Slack. Imports update the entry whose URL

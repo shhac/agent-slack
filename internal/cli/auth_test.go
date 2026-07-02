@@ -384,3 +384,55 @@ func TestAuthTest(t *testing.T) {
 		t.Errorf("authorization = %q", got)
 	}
 }
+
+// --stdin is the machine path for secret entry (web enrollment, scripts):
+// secrets arrive as one JSON object on stdin, never via argv (ps-visible) or
+// process env (inherited by children).
+func TestAuthAddStdinSecrets(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdin := `{"token": "xoxb-from-stdin-1234"}`
+	out, _, err := env.run(t, stdin, "auth", "add", "--alias", "work", "--workspace-url", "https://acme.slack.com", "--stdin")
+	if err != nil {
+		t.Fatalf("auth add --stdin: %v", err)
+	}
+	payload := parseJSON(t, out)
+	if payload["saved"] != "work" || payload["auth_type"] != "standard" {
+		t.Errorf("payload = %v", payload)
+	}
+	ws, err := env.store.Resolve("work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.Auth.Token != "xoxb-from-stdin-1234" {
+		t.Errorf("token not stored from stdin: %+v", ws.Auth)
+	}
+}
+
+func TestAuthAddStdinBrowserPair(t *testing.T) {
+	env := newTestEnv(t)
+
+	stdin := `{"xoxc": "xoxc-from-stdin", "xoxd": "xoxd-from-stdin"}`
+	if _, _, err := env.run(t, stdin, "auth", "add", "--workspace-url", "https://acme.slack.com", "--stdin"); err != nil {
+		t.Fatalf("auth add --stdin browser: %v", err)
+	}
+	ws, err := env.store.Resolve("acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.Auth.XOXC != "xoxc-from-stdin" || ws.Auth.XOXD != "xoxd-from-stdin" {
+		t.Errorf("browser pair not stored from stdin: %+v", ws.Auth)
+	}
+}
+
+func TestAuthAddStdinEmptyIsAgentError(t *testing.T) {
+	env := newTestEnv(t)
+	_, stderr, err := env.run(t, "", "auth", "add", "--workspace-url", "https://acme.slack.com", "--stdin")
+	if err == nil {
+		t.Fatal("expected error for empty stdin")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" {
+		t.Errorf("payload = %v", payload)
+	}
+}

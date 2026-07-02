@@ -12,6 +12,7 @@ In-binary version: `agent-slack auth usage`.
 | `auth parse-curl` | read a "Copy as cURL" Slack request on stdin, import its xoxc/xoxd |
 | `auth add [--alias <alias>] --workspace-url <url> (--token … \| --xoxc … --xoxd …)` | add credentials directly; `--alias` names the credential set (derived from the workspace when omitted) — several aliases may hold the same workspace URL (e.g. two humans in one Slack) |
 | `auth add --workspace-url <url> --form` | prompt for missing secrets via a native OS dialog (keeps tokens out of chat) |
+| `auth add --workspace-url <url> --stdin` | read secrets as one JSON object on stdin (`{"token": …}` or `{"xoxc": …, "xoxd": …}`) — machine path for scripts/enrollment; nothing in argv or process env |
 | `auth set-default <alias>` / `auth remove <alias>` | manage the default credential set and stored secrets (both accept any `--workspace` selector); `auth remove` also clears that workspace's identity cache subtree (resolution cache + downloads) |
 
 Imports carry no alias: each imported team updates the entry whose URL it

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"strings"
 
@@ -237,7 +238,7 @@ func registerAuthParseCurl(parent *cobra.Command, globals *GlobalFlags) {
 
 func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 	var alias, workspaceURL, token, xoxc, xoxd string
-	var form bool
+	var form, stdinSecrets bool
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add credentials directly (standard xoxb/xoxp token, or browser xoxc/xoxd)",
@@ -245,6 +246,12 @@ func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 			store, err := globals.newStore()
 			if err != nil {
 				return err
+			}
+			if stdinSecrets {
+				token, xoxc, xoxd, err = readStdinSecrets(cmd.InOrStdin(), token, xoxc, xoxd)
+				if err != nil {
+					return err
+				}
 			}
 			if form {
 				token, xoxc, xoxd, err = promptAddSecrets(cmd.Context(), globals, workspaceURL, token, xoxc, xoxd)
@@ -279,8 +286,43 @@ func registerAuthAdd(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringVar(&xoxc, "xoxc", "", "Browser token (xoxc-...)")
 	cmd.Flags().StringVar(&xoxd, "xoxd", "", "Browser cookie d (xoxd-...)")
 	cmd.Flags().BoolVar(&form, "form", false, "Prompt for missing secrets via a native OS dialog (keeps them out of chat and shell history)")
+	cmd.Flags().BoolVar(&stdinSecrets, "stdin", false, "Read secrets as one JSON object on stdin: {\"token\": …} or {\"xoxc\": …, \"xoxd\": …} (keeps them out of argv and process env)")
 	_ = cmd.MarkFlagRequired("workspace-url")
 	parent.AddCommand(cmd)
+}
+
+// readStdinSecrets fills whichever secrets --stdin still needs from a single
+// JSON object — the machine path for secret entry (web enrollment, scripts),
+// where argv is ps-visible and env is inherited by children. Explicit flags
+// win over stdin values.
+func readStdinSecrets(r io.Reader, token, xoxc, xoxd string) (string, string, string, error) {
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return "", "", "", err
+	}
+	if strings.TrimSpace(string(raw)) == "" {
+		return "", "", "", agenterrors.New("expected a JSON object with secrets on stdin", agenterrors.FixableByAgent).
+			WithHint(`pipe {"token": "xoxb-…"} or {"xoxc": "xoxc-…", "xoxd": "xoxd-…"} into 'auth add --stdin'`)
+	}
+	var in struct {
+		Token string `json:"token"`
+		XOXC  string `json:"xoxc"`
+		XOXD  string `json:"xoxd"`
+	}
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return "", "", "", agenterrors.Wrap(err, agenterrors.FixableByAgent).
+			WithHint(`stdin must be one JSON object, e.g. {"token": "xoxb-…"}`)
+	}
+	if token == "" {
+		token = strings.TrimSpace(in.Token)
+	}
+	if xoxc == "" {
+		xoxc = strings.TrimSpace(in.XOXC)
+	}
+	if xoxd == "" {
+		xoxd = strings.TrimSpace(in.XOXD)
+	}
+	return token, xoxc, xoxd, nil
 }
 
 // promptAddSecrets fills whichever secrets --form still needs via native
