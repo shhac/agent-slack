@@ -364,6 +364,10 @@ MANAGE  auth set-default <alias> | auth remove <alias> (also clears that
           --workspace selector)
 ENV     SLACK_TOKEN (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser
           tokens) override the stored credentials for one invocation.
+        AGENT_SLACK_REQUIRE_IDENTITY=1 — fail closed: refuse any invocation
+          without an explicit --workspace (no default/env fallback). Set by
+          multi-user MCP runners so a missing identity binding errors loudly
+          instead of acting as the wrong user.
 NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,
 
 	"unreads": `agent-slack unreads — unread messages across channels, DMs, threads.

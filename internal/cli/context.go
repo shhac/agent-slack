@@ -44,6 +44,18 @@ func getClientForWorkspace(globals *GlobalFlags, workspaceURL string) (*clientCo
 		selector = strings.TrimSpace(globals.Workspace)
 	}
 
+	// Fail-closed identity mode: an MCP runner serving several principals sets
+	// AGENT_SLACK_REQUIRE_IDENTITY and passes an explicit --workspace on every
+	// invocation. A missing selector then means the caller's identity binding
+	// was not applied — refuse before ANY credential source (default workspace
+	// or process env) can serve the request as the wrong identity.
+	if selector == "" && requireIdentity() {
+		return nil, agenterrors.New(
+			"AGENT_SLACK_REQUIRE_IDENTITY is set but no workspace was specified",
+			agenterrors.FixableByAgent).
+			WithHint("pass --workspace <alias>; falling back to the default workspace is disabled in this environment")
+	}
+
 	if envCtx := clientFromEnv(globals, selector); envCtx != nil {
 		return envCtx, nil
 	}
@@ -159,6 +171,17 @@ func clientFromEnv(globals *GlobalFlags, selector string) *clientContext {
 		WorkspaceURL: envWorkspace,
 		AuthType:     slackAuth.Type,
 		CacheKey:     key,
+	}
+}
+
+// requireIdentity reports whether the fail-closed identity gate is on. Any
+// value except empty/0/false counts as set.
+func requireIdentity() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("AGENT_SLACK_REQUIRE_IDENTITY"))) {
+	case "", "0", "false":
+		return false
+	default:
+		return true
 	}
 }
 

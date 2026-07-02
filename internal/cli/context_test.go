@@ -284,3 +284,36 @@ func TestUnknownSubcommandIsStructuredError(t *testing.T) {
 		t.Errorf("payload = %v (want structured unknown-command error)", payload)
 	}
 }
+
+// AGENT_SLACK_REQUIRE_IDENTITY is the fail-closed contract for multi-user MCP
+// serving: with it set, silently falling back to the default workspace (or
+// process-env credentials) is a bug, not a convenience — a missing selector
+// means the caller's identity binding was not applied.
+func TestRequireIdentityRefusesImplicitDefault(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("auth.test", map[string]any{"ok": true, "user": "paul"})
+	t.Setenv("AGENT_SLACK_REQUIRE_IDENTITY", "1")
+
+	_, stderr, err := f.run(t, "auth", "test")
+	if err == nil {
+		t.Fatal("expected refusal without --workspace")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" {
+		t.Errorf("payload = %v", payload)
+	}
+	if msg, _ := payload["error"].(string); !strings.Contains(msg, "AGENT_SLACK_REQUIRE_IDENTITY") {
+		t.Errorf("error should name the env gate: %v", payload)
+	}
+
+	// Env credentials must not bypass the gate either.
+	t.Setenv("SLACK_TOKEN", "xoxb-env-token")
+	if _, _, err := f.run(t, "auth", "test"); err == nil {
+		t.Error("env credentials bypassed the identity requirement")
+	}
+
+	// An explicit selector proceeds normally.
+	if _, _, err := f.run(t, "auth", "test", "--workspace", "acme"); err != nil {
+		t.Errorf("explicit selector should pass: %v", err)
+	}
+}

@@ -18,3 +18,9 @@ Imports carry no alias: each imported team updates the entry whose URL it
 matches, or creates one under a derived alias. If several aliases share the
 URL the import fails with a `fixable_by: agent` error — re-run
 `auth add --alias <alias>` to say which credential set to update.
+
+Env: `SLACK_TOKEN` (+ `SLACK_COOKIE_D` + `SLACK_WORKSPACE_URL`) override the
+store for one invocation. `AGENT_SLACK_REQUIRE_IDENTITY=1` makes every
+invocation without an explicit `--workspace` fail with a `fixable_by: agent`
+error (no default-workspace or env fallback) — the fail-closed mode multi-user
+MCP runners set alongside a per-principal `--workspace <alias>`.

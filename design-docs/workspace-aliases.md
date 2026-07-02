@@ -85,6 +85,15 @@ A Keychain read that fails during migration leaves the placeholder intact —
 the workspace then reports its secret as `missing` in `auth list`, same as a
 dangling v1 placeholder, and heals via the usual re-import paths.
 
+## Fail-closed mode
+
+`AGENT_SLACK_REQUIRE_IDENTITY=1` disables every implicit credential source:
+an invocation with no explicit `--workspace` selector returns a structured
+`fixable_by: agent` error before the default workspace or `SLACK_TOKEN` env
+can serve it. A multi-user MCP runner sets this on every subprocess so a bug
+in its identity-binding plumbing fails loudly instead of silently acting as
+the operator's default identity.
+
 ## Not in scope
 
 Aliases are still a flat namespace in one OS user's store: this is the
