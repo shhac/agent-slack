@@ -9,6 +9,15 @@ import (
 	"github.com/shhac/agent-slack/internal/render"
 )
 
+// setIncludeMetadata flips include_all_metadata on a request when on. Reactions
+// (and other rich metadata) only come back with this flag, so every history/
+// replies call that needs them sets it the same way.
+func setIncludeMetadata(params map[string]any, on bool) {
+	if on {
+		params["include_all_metadata"] = true
+	}
+}
+
 // FetchMessage locates one message by channel+ts. conversations.history does
 // not guarantee thread replies, so the lookup cascades: recent history around
 // the ts → the thread named by the permalink's thread_ts hint → the ts itself
@@ -20,9 +29,7 @@ func FetchMessage(ctx context.Context, c *Client, ref *render.MessageRef, includ
 		"inclusive": true,
 		"limit":     5,
 	}
-	if includeReactions {
-		params["include_all_metadata"] = true
-	}
+	setIncludeMetadata(params, includeReactions)
 	history, err := c.API(ctx, "conversations.history", params)
 	if err != nil {
 		return render.MessageSummary{}, err
@@ -38,9 +45,7 @@ func FetchMessage(ctx context.Context, c *Client, ref *render.MessageRef, includ
 
 	if msg == nil {
 		rootParams := map[string]any{"channel": ref.ChannelID, "ts": ref.MessageTS, "limit": 1}
-		if includeReactions {
-			rootParams["include_all_metadata"] = true
-		}
+		setIncludeMetadata(rootParams, includeReactions)
 		if rootResp, rerr := c.API(ctx, "conversations.replies", rootParams); rerr == nil {
 			msgs := getArr(rootResp, "messages")
 			if len(msgs) > 0 {
@@ -75,9 +80,7 @@ func findByTS(messages []any, ts string) map[string]any {
 
 func findMessageInThread(ctx context.Context, c *Client, channelID, threadTS, targetTS string, includeReactions bool) (map[string]any, error) {
 	params := map[string]any{"channel": channelID, "ts": threadTS, "limit": 200}
-	if includeReactions {
-		params["include_all_metadata"] = true
-	}
+	setIncludeMetadata(params, includeReactions)
 	var found map[string]any
 	err := EachPage(ctx, c, "conversations.replies", params, func(resp map[string]any) (bool, error) {
 		if m := findByTS(getArr(resp, "messages"), targetTS); m != nil {
@@ -189,9 +192,7 @@ func FetchChannelHistory(ctx context.Context, c *Client, opts HistoryOptions) ([
 
 	params := map[string]any{"channel": opts.ChannelID, "limit": pageLimit}
 	setStr(params, "oldest", opts.Oldest)
-	if opts.IncludeReactions || hasReactionFilters {
-		params["include_all_metadata"] = true
-	}
+	setIncludeMetadata(params, opts.IncludeReactions || hasReactionFilters)
 	var out []render.MessageSummary
 	err := eachHistoryPage(ctx, c, params, opts.Latest, func(messages []map[string]any, resp map[string]any) (bool, error) {
 		for _, m := range messages {
@@ -244,9 +245,7 @@ func passesReactionNameFilters(m map[string]any, withReactions, withoutReactions
 // FetchThread returns every message of a thread, chronologically.
 func FetchThread(ctx context.Context, c *Client, channelID, threadTS string, includeReactions bool) ([]render.MessageSummary, error) {
 	params := map[string]any{"channel": channelID, "ts": threadTS, "limit": 200}
-	if includeReactions {
-		params["include_all_metadata"] = true
-	}
+	setIncludeMetadata(params, includeReactions)
 	var out []render.MessageSummary
 	err := EachPage(ctx, c, "conversations.replies", params, func(resp map[string]any) (bool, error) {
 		for _, m := range recItems(getArr(resp, "messages")) {
