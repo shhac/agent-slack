@@ -241,6 +241,59 @@ func TestChannelInvite(t *testing.T) {
 	}
 }
 
+// A stray --allow-external-user-invites without --external is a caller mistake:
+// fail fast (agent-fixable) before any API traffic.
+func TestChannelInviteAllowExternalRequiresExternal(t *testing.T) {
+	f := newCLIFixture(t)
+	_, stderr, err := f.run(t, "channel", "invite", "--channel", "C12345678",
+		"--users", "alice@example.com", "--allow-external-user-invites", "--yes")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" || !strings.Contains(payload["error"].(string), "--external") {
+		t.Errorf("payload = %v", payload)
+	}
+}
+
+// --external with no email targets can't invite anyone; the guard rejects it
+// rather than making an empty Slack Connect call.
+func TestChannelInviteExternalRequiresEmails(t *testing.T) {
+	f := newCLIFixture(t)
+	_, stderr, err := f.run(t, "channel", "invite", "--channel", "C12345678",
+		"--users", "U11111111", "--external", "--yes")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" || !strings.Contains(payload["error"].(string), "email") {
+		t.Errorf("payload = %v", payload)
+	}
+}
+
+// The Slack Connect happy path: --allow-external-user-invites clears
+// external_limited (false) both in the payload and the outgoing API call.
+func TestChannelInviteExternalAllowsInviting(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.inviteShared", map[string]any{"ok": true})
+	out, _, err := f.run(t, "channel", "invite", "--channel", "C12345678",
+		"--users", "alice@example.com", "--external", "--allow-external-user-invites", "--yes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, out)
+	if payload["external"] != true || payload["external_limited"] != false {
+		t.Errorf("external flags = %v", payload)
+	}
+	invited := payload["invited_emails"].([]any)
+	if len(invited) != 1 || invited[0] != "alice@example.com" {
+		t.Errorf("invited = %v", invited)
+	}
+	if got := f.server.CallsFor("conversations.inviteShared")[0].Params.Get("external_limited"); got != "false" {
+		t.Errorf("external_limited param = %q, want false", got)
+	}
+}
+
 func TestChannelMark(t *testing.T) {
 	f := newCLIFixture(t)
 	f.server.HandleBody("conversations.mark", map[string]any{"ok": true})
