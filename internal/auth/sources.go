@@ -25,10 +25,10 @@ type browserSource struct {
 var browserSources = []browserSource{
 	geckoSource("firefox", "Firefox profile on disk (browser need not be running)", firefoxBaseDir),
 	geckoSource("zen", "Zen Browser profile on disk (Firefox-based; browser need not be running)", zenBaseDir),
-	chromiumAppleSource("chrome", "Google Chrome — reads a logged-in Slack tab (running; macOS)", extractFromChrome),
-	chromiumAppleSource("brave", "Brave — reads a logged-in Slack tab (running; macOS)", extractFromBrave),
+	noProfileSource("chrome", "Google Chrome — reads a logged-in Slack tab (running; macOS)", extractFromChrome),
+	noProfileSource("brave", "Brave — reads a logged-in Slack tab (running; macOS)", extractFromBrave),
 	chromiumFileSource("opera", "Opera profile on disk (browser need not be running)", locateOpera),
-	webkitSource("safari", "Safari — running tab for tokens + cookie store (macOS; needs Develop-menu JS + Full Disk Access)"),
+	noProfileSource("safari", "Safari — running tab for tokens + cookie store (macOS; needs Develop-menu JS + Full Disk Access)", extractFromSafari),
 }
 
 // BrowserInfo is the public description of one supported browser.
@@ -78,22 +78,14 @@ func geckoSource(name, summary string, baseDir func() (string, error)) browserSo
 	}
 }
 
-// chromiumAppleSource builds a Chromium-family source that reads a running,
-// logged-in browser via AppleScript (macOS). It has no profile concept.
-func chromiumAppleSource(name, summary string, extract func() (*Extracted, error)) browserSource {
+// noProfileSource builds a source with no --profile concept: extract reads a
+// running browser and ignores the profile selector. It covers the Chromium
+// AppleScript readers (Chrome, Brave) and Safari, which each pull tokens from a
+// live tab plus the browser's own cookie store.
+func noProfileSource(name, summary string, extract func() (*Extracted, error)) browserSource {
 	return browserSource{
 		name: name, summary: summary, supportsProfile: false,
 		extract: func(string) (*Extracted, error) { return extract() },
-	}
-}
-
-// webkitSource builds a WebKit-family source (Safari): tokens from a running
-// tab via AppleScript, the cookie from Safari's binarycookies store. No profile
-// concept.
-func webkitSource(name, summary string) browserSource {
-	return browserSource{
-		name: name, summary: summary, supportsProfile: false,
-		extract: func(string) (*Extracted, error) { return extractFromSafari() },
 	}
 }
 
