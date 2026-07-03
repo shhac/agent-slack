@@ -50,7 +50,7 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 			if _, err := cc.Client.API(ctx, "chat.update", params); err != nil {
 				return err
 			}
-			return printSingle(globals, map[string]any{"ok": true})
+			return printOK(globals)
 		},
 	}
 	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel name/ID)")
@@ -189,7 +189,7 @@ func registerMessageDelete(parent *cobra.Command, globals *GlobalFlags) {
 			}); err != nil {
 				return err
 			}
-			return printSingle(globals, map[string]any{"ok": true})
+			return printOK(globals)
 		},
 	}
 	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel name/ID)")
@@ -228,7 +228,7 @@ func registerMessageReact(parent *cobra.Command, globals *GlobalFlags) {
 				}); err != nil {
 					return err
 				}
-				return printSingle(globals, map[string]any{"ok": true})
+				return printOK(globals)
 			},
 		}
 		cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel name/ID)")

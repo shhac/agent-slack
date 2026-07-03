@@ -116,7 +116,7 @@ func registerLaterMark(parent *cobra.Command, globals *GlobalFlags, name, short 
 			if err := action(ctx, cc.Client, channelID, messageTS); err != nil {
 				return err
 			}
-			return printSingle(globals, map[string]any{"ok": true})
+			return printOK(globals)
 		},
 	}
 	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel ID)")

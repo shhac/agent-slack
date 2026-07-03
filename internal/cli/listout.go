@@ -54,6 +54,12 @@ func printSingle(globals *GlobalFlags, payload any) error {
 	return nil
 }
 
+// printOK emits the bare `{"ok": true}` acknowledgement shared by mutations
+// that have nothing else to report.
+func printOK(globals *GlobalFlags) error {
+	return printSingle(globals, map[string]any{"ok": true})
+}
+
 // printList writes NDJSON by default: one item per line, then any meta
 // entries as `{"@key": value}` lines (referenced_users, pagination, …).
 // json/yaml formats wrap everything in one envelope instead.
