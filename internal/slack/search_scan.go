@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -182,9 +183,7 @@ func searchFilesInChannels(ctx context.Context, c *Client, opts SearchOptions) (
 		page := 1
 		for {
 			params := map[string]any{"channel": channelID, "page": page}
-			for k, v := range baseParams {
-				params[k] = v
-			}
+			maps.Copy(params, baseParams)
 			resp, ferr := c.API(ctx, "files.list", params)
 			if ferr != nil {
 				return nil, ferr
