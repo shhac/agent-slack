@@ -39,6 +39,38 @@ func TestReadSlackLocalConfigFromLevelDB(t *testing.T) {
 	}
 }
 
+// TestReadSlackLocalConfigPicksHighestRank writes both a localConfig_v2 and a
+// localConfig_v3 entry; the reader ranks by the key's trailing 8 bytes and must
+// return the newer v3 value regardless of LevelDB iteration order.
+func TestReadSlackLocalConfigPicksHighestRank(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "leveldb")
+	db, err := leveldb.OpenFile(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := []byte("_https://app.slack.com\x00\x01")
+	keyFor := func(suffix string) []byte {
+		return append(append([]byte{}, prefix...), []byte(suffix)...)
+	}
+	if err := db.Put(keyFor("localConfig_v2"), []byte("v2-old"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Put(keyFor("localConfig_v3"), []byte("v3-new"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := readSlackLocalConfig(dir)
+	if err != nil {
+		t.Fatalf("readSlackLocalConfig: %v", err)
+	}
+	if string(raw) != "v3-new" {
+		t.Errorf("ranking chose %q, want the higher-ranked v3 value", raw)
+	}
+}
+
 // TestExtractChromiumFromFiles exercises the shared file-based extractor that
 // Slack Desktop and file-based browser sources (Opera) both use: LevelDB tokens
 // + Cookies DB, returning a labelled Extracted. Asserts the source map keys are
