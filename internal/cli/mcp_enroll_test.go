@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -188,6 +189,75 @@ func TestMCPEnrollConvergenceIsAliasStrict(t *testing.T) {
 	})
 	if _, err := f.run(t, "alice", map[string]string{"token": "xoxp-alice"}); err != nil {
 		t.Fatalf("enrollment blocked by an unrelated workspace whose name matches the principal: %v", err)
+	}
+}
+
+// Slack may accept a token yet return an incomplete identity (e.g. a bot token
+// with no url, or a response missing user_id). That must be refused, not
+// stored as a half-known slot.
+func TestMCPEnrollPartialIdentity(t *testing.T) {
+	f := newEnrollFixture(t)
+	// auth.test ok, but no user_id and no url — the identity can't be pinned.
+	f.authTestReturns(map[string]any{"ok": true, "team": "Acme", "team_id": "T0ACME"})
+
+	if _, err := f.run(t, "alice", map[string]string{"token": "xoxp-alice"}); err == nil ||
+		!strings.Contains(err.Error(), "did not return a full identity") {
+		t.Errorf("err = %v, want partial-identity guidance", err)
+	}
+	if _, err := f.env.store.Resolve("alice"); err == nil {
+		t.Error("an incomplete identity must not be stored")
+	}
+}
+
+// If the credential store can't be opened, enrollment fails with operator-
+// facing guidance rather than a panic — and only after Slack already validated
+// the credentials.
+func TestMCPEnrollStoreOpenFailure(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	server.HandleBody("auth.test", map[string]any{
+		"ok": true, "url": "https://acme.slack.com", "team_id": "T0ACME", "user_id": "U0ALICE",
+	})
+
+	globals := &GlobalFlags{
+		version:  "test",
+		newStore: func() (*credential.Store, error) { return nil, errors.New("keychain locked") },
+		stderr:   &bytes.Buffer{},
+	}
+	globals.BaseURL = ts.URL
+
+	_, err := mcpEnroll(globals)(context.Background(),
+		oauth.EnrollRequest{Principal: "alice", Mode: "slack", Values: map[string]string{"token": "xoxp-alice"}})
+	if err == nil || !strings.Contains(err.Error(), "could not open its credential store") {
+		t.Errorf("err = %v, want store-open failure surfaced", err)
+	}
+}
+
+// A slot that exists but doesn't yet know its Slack identity (empty team/user)
+// must not block a first successful enrollment — convergence only guards slots
+// that already know who they are.
+func TestMCPEnrollConvergenceSkipsEmptyIdentity(t *testing.T) {
+	f := newEnrollFixture(t)
+	if _, err := f.env.store.Upsert(credential.Workspace{
+		Alias: "alice", URL: "https://acme.slack.com",
+		Auth: credential.Auth{Type: credential.AuthStandard, Token: "xoxp-placeholder"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.authTestReturns(map[string]any{
+		"ok": true, "url": "https://acme.slack.com", "team_id": "T0ACME", "user_id": "U0ALICE",
+	})
+
+	res, err := f.run(t, "alice", map[string]string{"token": "xoxp-alice"})
+	if err != nil {
+		t.Fatalf("enrollment blocked by an identity-less slot: %v", err)
+	}
+	if res.Binding["workspace"] != "alice" {
+		t.Errorf("binding = %v", res.Binding)
+	}
+	if ws, _ := f.env.store.Resolve("alice"); ws.TeamID != "T0ACME" || ws.UserID != "U0ALICE" {
+		t.Errorf("identity not populated on enroll: %+v", ws)
 	}
 }
 
