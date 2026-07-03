@@ -29,7 +29,7 @@ func (c *Client) cacheWorkflowList(channelID string, w ChannelWorkflows) {
 }
 
 func (c *Client) workflowPreviewCache() *cacheSnapshot[WorkflowPreview] {
-	return openCacheFor(c, "workflow-triggers", cacheTTLOf(c.cache).WorkflowPreview, validWorkflowPreview)
+	return openCacheFor(c, cacheCategoryWorkflowTriggers, cacheTTLOf(c.cache).WorkflowPreview, validWorkflowPreview)
 }
 
 func (c *Client) workflowSchemaCache() *cacheSnapshot[WorkflowSchema] {

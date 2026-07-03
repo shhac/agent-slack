@@ -16,7 +16,7 @@ func validUser(id string, u CompactUser) bool {
 }
 
 func (c *Client) usersCache() *cacheSnapshot[CompactUser] {
-	return openCacheFor(c, "users", cacheTTLOf(c.cache).Users, validUser)
+	return openCacheFor(c, cacheCategoryUsers, cacheTTLOf(c.cache).Users, validUser)
 }
 
 // warmUserCache records profiles a list command already fetched, so user

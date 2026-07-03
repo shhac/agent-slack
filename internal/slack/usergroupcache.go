@@ -15,7 +15,7 @@ func (c *Client) usergroupsCache() *cacheSnapshot[string] {
 }
 
 func (c *Client) usergroupEntityCache() *cacheSnapshot[CompactUsergroup] {
-	return openCacheFor(c, "usergroup-entities", cacheTTLOf(c.cache).Usergroups, validUsergroup)
+	return openCacheFor(c, cacheCategoryUsergroupEntities, cacheTTLOf(c.cache).Usergroups, validUsergroup)
 }
 
 func (c *Client) cachedUsergroupIDByHandle(key string) (string, bool) {

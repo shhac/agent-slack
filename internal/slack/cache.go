@@ -126,6 +126,21 @@ func cacheTTLOf(c *Cache) CacheTTL {
 
 const cacheFileVersion = 1
 
+// Cache category names referenced from more than one site — the accessor that
+// writes the category and the completion (or warm) reader that loads it by the
+// same on-disk stem. Naming them once makes a drift between writer and reader a
+// compile error instead of silently empty completions. Single-reader categories
+// stay inline at their sole accessor.
+const (
+	cacheCategoryUsers             = "users"
+	cacheCategoryChannels          = "channels"
+	cacheCategoryChannelNames      = "channel-names"
+	cacheCategoryUsergroupEntities = "usergroup-entities"
+	cacheCategoryWorkflowTriggers  = "workflow-triggers"
+	cacheCategoryScheduled         = "scheduled"
+	cacheCategoryDrafts            = "drafts"
+)
+
 type cacheEntry[T any] struct {
 	FetchedAt int64 `json:"fetched_at"` // unix milliseconds
 	Value     T     `json:"value"`

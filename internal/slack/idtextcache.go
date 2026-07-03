@@ -39,7 +39,7 @@ func (c *Client) warmDraftCache(drafts []Draft) {
 	for _, d := range drafts {
 		items = append(items, compactIDText{ID: d.ID, Text: d.Text})
 	}
-	warmIDTextCache(c, "drafts", cacheTTLOf(c.cache).Drafts, items)
+	warmIDTextCache(c, cacheCategoryDrafts, cacheTTLOf(c.cache).Drafts, items)
 }
 
 // warmScheduledCache write-warms the "scheduled" category from a scheduled-list
@@ -49,5 +49,5 @@ func (c *Client) warmScheduledCache(items []map[string]any) {
 	for _, m := range items {
 		entries = append(entries, compactIDText{ID: getStr(m, "id"), Text: getStr(m, "text")})
 	}
-	warmIDTextCache(c, "scheduled", cacheTTLOf(c.cache).Scheduled, entries)
+	warmIDTextCache(c, cacheCategoryScheduled, cacheTTLOf(c.cache).Scheduled, entries)
 }

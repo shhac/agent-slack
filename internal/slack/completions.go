@@ -68,10 +68,10 @@ func ReadCompletions(cacheDir, key, toComplete string, limit int, sources Comple
 		col.addTriggers()
 	}
 	if sources&CompleteScheduled != 0 {
-		col.addIDText("scheduled")
+		col.addIDText(cacheCategoryScheduled)
 	}
 	if sources&CompleteDrafts != 0 {
-		col.addIDText("drafts")
+		col.addIDText(cacheCategoryDrafts)
 	}
 	return col.rank(limit)
 }
@@ -128,20 +128,20 @@ func (c *completionCollector) addChannels() {
 	// Entity store first (has the topic), then the name→ID index, which the
 	// common search-resolution path populates even when no full channel object
 	// was ever fetched. Forms: #name, id, name.
-	for _, e := range loadCacheEntries[CompactChannel](c.cacheDir, c.key, "channels") {
+	for _, e := range loadCacheEntries[CompactChannel](c.cacheDir, c.key, cacheCategoryChannels) {
 		ch := e.Value
 		if ch.IsIM || ch.Name == "" {
 			continue // DMs have no stable name to complete
 		}
 		c.addForms(ch.Topic, e.FetchedAt, "#"+ch.Name, ch.ID, ch.Name)
 	}
-	for name, e := range loadCacheEntries[string](c.cacheDir, c.key, "channel-names") {
+	for name, e := range loadCacheEntries[string](c.cacheDir, c.key, cacheCategoryChannelNames) {
 		c.addForms("", e.FetchedAt, "#"+name, e.Value, name) // e.Value is the id
 	}
 }
 
 func (c *completionCollector) addUsers() {
-	for _, e := range loadCacheEntries[CompactUser](c.cacheDir, c.key, "users") {
+	for _, e := range loadCacheEntries[CompactUser](c.cacheDir, c.key, cacheCategoryUsers) {
 		u := e.Value
 		realName := FirstNonEmpty(u.RealName, u.DisplayName)
 		if u.Name == "" {
@@ -161,7 +161,7 @@ func (c *completionCollector) addUsers() {
 }
 
 func (c *completionCollector) addUsergroups() {
-	for _, e := range loadCacheEntries[CompactUsergroup](c.cacheDir, c.key, "usergroup-entities") {
+	for _, e := range loadCacheEntries[CompactUsergroup](c.cacheDir, c.key, cacheCategoryUsergroupEntities) {
 		g := e.Value
 		desc := FirstNonEmpty(g.Name, g.Description)
 		if g.Handle == "" {
@@ -174,7 +174,7 @@ func (c *completionCollector) addUsergroups() {
 }
 
 func (c *completionCollector) addTriggers() {
-	for id, e := range loadCacheEntries[WorkflowPreview](c.cacheDir, c.key, "workflow-triggers") {
+	for id, e := range loadCacheEntries[WorkflowPreview](c.cacheDir, c.key, cacheCategoryWorkflowTriggers) {
 		c.add(id, FirstNonEmpty(e.Value.Name, e.Value.Workflow.Title), e.FetchedAt)
 	}
 }

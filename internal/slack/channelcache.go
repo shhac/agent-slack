@@ -11,11 +11,11 @@ import "strings"
 func validChannel(_ string, ch CompactChannel) bool { return ch.ID != "" }
 
 func (c *Client) channelNameCache() *cacheSnapshot[string] {
-	return openCacheFor[string](c, "channel-names", cacheTTLOf(c.cache).ChannelNames, nil)
+	return openCacheFor[string](c, cacheCategoryChannelNames, cacheTTLOf(c.cache).ChannelNames, nil)
 }
 
 func (c *Client) channelCache() *cacheSnapshot[CompactChannel] {
-	return openCacheFor(c, "channels", cacheTTLOf(c.cache).Channels, validChannel)
+	return openCacheFor(c, cacheCategoryChannels, cacheTTLOf(c.cache).Channels, validChannel)
 }
 
 func (c *Client) cachedChannelID(name string) (string, bool) {
