@@ -128,9 +128,9 @@ func ResolveUsergroupsByID(ctx context.Context, c *Client, usergroupIDs []string
 	out := map[string]CompactUsergroup{}
 
 	if !policy.wantFetch(c.usergroupsComplete()) {
-		snap := openCacheFor[CompactUsergroup](c, "usergroup-entities", cacheTTLOf(c.cache).Get, validUsergroup)
+		snap := c.usergroupEntityCache()
 		for id := range want {
-			if g, ok := snap.get(id); ok {
+			if g, ok := snap.getWithin(id, cacheTTLOf(c.cache).Get); ok {
 				out[id] = g
 			}
 		}

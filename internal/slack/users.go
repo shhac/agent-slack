@@ -227,8 +227,8 @@ func GetUser(ctx context.Context, c *Client, input string) (CompactUser, error) 
 	}
 	// A profile cached within the short Get window is complete (users.list and
 	// users.info return the same fields), so serve it without users.info.
-	serve := openCacheFor[CompactUser](c, "users", cacheTTLOf(c.cache).Get, validUser)
-	if u, ok := serve.get(userID); ok {
+	serve := c.usersCache()
+	if u, ok := serve.getWithin(userID, cacheTTLOf(c.cache).Get); ok {
 		return u, nil
 	}
 	resp, err := c.API(ctx, "users.info", map[string]any{"user": userID})

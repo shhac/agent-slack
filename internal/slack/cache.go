@@ -232,18 +232,31 @@ func cacheSet[T any](snap *cacheSnapshot[T], key string, value T, valid bool) {
 	snap.save()
 }
 
-// get returns the cached value when present and within the category TTL.
-// Refresh and Off modes always miss (Refresh then re-fetches and overwrites).
+// get returns the cached value when present and within the category's
+// configured TTL. Refresh and Off modes always miss (Refresh then re-fetches
+// and overwrites).
 func (s *cacheSnapshot[T]) get(key string) (T, bool) {
+	return s.getWithinMS(key, s.ttlMS)
+}
+
+// getWithin returns the cached value when present and fetched within ttl — a
+// serve-time freshness check tighter than the category's warm TTL, so a
+// `get`/`list` can insist on fresher data than name resolution and completions
+// tolerate without opening a second snapshot on the same category.
+func (s *cacheSnapshot[T]) getWithin(key string, ttl time.Duration) (T, bool) {
+	return s.getWithinMS(key, ttl.Milliseconds())
+}
+
+func (s *cacheSnapshot[T]) getWithinMS(key string, ttlMS int64) (T, bool) {
 	var zero T
-	if s.path == "" || s.cache.Mode != CacheNormal || s.ttlMS <= 0 {
+	if s.path == "" || s.cache.Mode != CacheNormal || ttlMS <= 0 {
 		return zero, false
 	}
 	e, ok := s.data.Entries[key]
 	if !ok {
 		return zero, false
 	}
-	if s.cache.clock().UnixMilli()-e.FetchedAt >= s.ttlMS {
+	if s.cache.clock().UnixMilli()-e.FetchedAt >= ttlMS {
 		return zero, false
 	}
 	return e.Value, true

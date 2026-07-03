@@ -93,8 +93,8 @@ func GetUsergroup(ctx context.Context, c *Client, input string) (CompactUsergrou
 		return CompactUsergroup{}, err
 	}
 	if id != "" {
-		serve := openCacheFor[CompactUsergroup](c, "usergroup-entities", cacheTTLOf(c.cache).Get, validUsergroup)
-		if g, ok := serve.get(id); ok {
+		serve := c.usergroupEntityCache()
+		if g, ok := serve.getWithin(id, cacheTTLOf(c.cache).Get); ok {
 			return g, nil
 		}
 	} else if c.usergroupsComplete() {
