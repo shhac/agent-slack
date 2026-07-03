@@ -42,6 +42,28 @@ func mcpEnrollmentDescriptor() oauth.CredentialDescriptor {
 	}
 }
 
+// resolveEnrollAuth classifies a submitted token by its prefix into the paired
+// slack-client and credential auth shapes. A browser token (xoxc-) additionally
+// requires the session cookie and workspace URL; the returned error is
+// human-facing form text. Pure (no I/O), so the token-shape branch is
+// unit-testable in isolation.
+func resolveEnrollAuth(token, cookie, wsURL string) (slack.Auth, credential.Auth, error) {
+	if strings.HasPrefix(token, "xoxc-") {
+		if cookie == "" {
+			return slack.Auth{}, credential.Auth{}, errors.New(
+				`this is a browser token (xoxc-…), so the "d" session cookie is also needed: devtools → Application → Cookies → d`)
+		}
+		if wsURL == "" {
+			return slack.Auth{}, credential.Auth{}, errors.New(
+				"a browser token also needs the workspace URL, e.g. https://acme.slack.com")
+		}
+		return slack.Auth{Type: slack.AuthBrowser, XOXC: token, XOXD: cookie, WorkspaceURL: wsURL},
+			credential.Auth{Type: credential.AuthBrowser, XOXC: token, XOXD: cookie}, nil
+	}
+	return slack.Auth{Type: slack.AuthStandard, Token: token, WorkspaceURL: wsURL},
+		credential.Auth{Type: credential.AuthStandard, Token: token}, nil
+}
+
 // mcpEnroll validates submitted credentials against auth.test and stores them
 // under alias = principal name. Errors are human-facing form text, not the
 // CLI's structured stderr shape.
@@ -51,22 +73,9 @@ func mcpEnroll(globals *GlobalFlags) oauth.EnrollFunc {
 		cookie := strings.TrimSpace(req.Values["xoxd"])
 		wsURL := strings.TrimRight(strings.TrimSpace(req.Values["workspace_url"]), "/")
 
-		var slackAuth slack.Auth
-		var credAuth credential.Auth
-		if strings.HasPrefix(token, "xoxc-") {
-			if cookie == "" {
-				return oauth.EnrollResult{}, errors.New(
-					`this is a browser token (xoxc-…), so the "d" session cookie is also needed: devtools → Application → Cookies → d`)
-			}
-			if wsURL == "" {
-				return oauth.EnrollResult{}, errors.New(
-					"a browser token also needs the workspace URL, e.g. https://acme.slack.com")
-			}
-			slackAuth = slack.Auth{Type: slack.AuthBrowser, XOXC: token, XOXD: cookie, WorkspaceURL: wsURL}
-			credAuth = credential.Auth{Type: credential.AuthBrowser, XOXC: token, XOXD: cookie}
-		} else {
-			slackAuth = slack.Auth{Type: slack.AuthStandard, Token: token, WorkspaceURL: wsURL}
-			credAuth = credential.Auth{Type: credential.AuthStandard, Token: token}
+		slackAuth, credAuth, err := resolveEnrollAuth(token, cookie, wsURL)
+		if err != nil {
+			return oauth.EnrollResult{}, err
 		}
 
 		resp, err := slack.New(slackAuth, baseClientOptions(globals)...).API(ctx, "auth.test", nil)
