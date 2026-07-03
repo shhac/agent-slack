@@ -114,7 +114,7 @@ func safariSlackCookie() (cookie, path string, err error) {
 func selectSafariSlackCookie(cookies []binaryCookie) (string, bool) {
 	for _, c := range cookies {
 		if c.Name == "d" && strings.Contains(c.Domain, "slack.com") && strings.HasPrefix(c.Value, "xoxd-") {
-			return decodeFirefoxCookie(c.Value), true
+			return decodeCookieValue(c.Value), true
 		}
 	}
 	return "", false

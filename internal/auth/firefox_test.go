@@ -84,11 +84,11 @@ func TestExtractTeamsFromRawText(t *testing.T) {
 }
 
 func TestDecodeFirefoxCookie(t *testing.T) {
-	if got := decodeFirefoxCookie("xoxd-Ab%252FCd"); got != "xoxd-Ab/Cd" {
-		t.Errorf("decodeFirefoxCookie double-encoded = %q", got)
+	if got := decodeCookieValue("xoxd-Ab%252FCd"); got != "xoxd-Ab/Cd" {
+		t.Errorf("decodeCookieValue double-encoded = %q", got)
 	}
-	if got := decodeFirefoxCookie("xoxd-plain"); got != "xoxd-plain" {
-		t.Errorf("decodeFirefoxCookie plain = %q", got)
+	if got := decodeCookieValue("xoxd-plain"); got != "xoxd-plain" {
+		t.Errorf("decodeCookieValue plain = %q", got)
 	}
 }
 

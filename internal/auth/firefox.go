@@ -271,13 +271,13 @@ func firefoxCookieFromProfile(profilePath string) (string, bool) {
 	}
 	for _, row := range rows {
 		if v := rowString(row, "value"); strings.HasPrefix(v, "xoxd-") {
-			return decodeFirefoxCookie(v), true
+			return decodeCookieValue(v), true
 		}
 	}
 	return "", false
 }
 
-func decodeFirefoxCookie(cookie string) string {
+func decodeCookieValue(cookie string) string {
 	current := cookie
 	for i := 0; i < 3; i++ {
 		next, err := url.PathUnescape(current)
