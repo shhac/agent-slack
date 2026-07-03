@@ -4,24 +4,23 @@ package render
 // shared/forwarded-message shape. Split from message.go (which owns the
 // Block Kit path); the two meet only in renderContent.
 
-import (
-	"reflect"
-	"strings"
-)
+import "strings"
 
-// maxAttachmentDepth bounds recursion through nested/forwarded attachments;
-// the seen-set already breaks cycles, this catches pathological fan-out.
+// maxAttachmentDepth bounds recursion through nested/forwarded attachments.
+// Decoded JSON is a tree (each object is a distinct map, never aliased), so
+// there are no reference cycles to break — this depth cap is the sole guard,
+// catching pathological fan-out and any self-referential map a caller builds
+// by hand.
 const maxAttachmentDepth = 8
 
-// renderState is shared down the attachment recursion: depth increments per
-// nesting level, seen tracks attachment map identity to survive cyclic JSON.
+// renderState is threaded down the attachment recursion; depth increments per
+// nesting level so the recursion stays bounded.
 type renderState struct {
 	depth int
-	seen  map[uintptr]bool
 }
 
 func (st *renderState) next() *renderState {
-	return &renderState{depth: st.depth + 1, seen: st.seen}
+	return &renderState{depth: st.depth + 1}
 }
 
 func mrkdwnFromAttachments(attachments []any, st *renderState) string {
@@ -35,12 +34,6 @@ func mrkdwnFromAttachments(attachments []any, st *renderState) string {
 		if !ok {
 			continue
 		}
-		ptr := reflect.ValueOf(a).Pointer()
-		if st.seen[ptr] {
-			continue
-		}
-		st.seen[ptr] = true
-
 		_, hasMessageBlocks := a["message_blocks"].([]any)
 		if truthy(a["is_share"]) || (truthy(a["is_msg_unfurl"]) && hasMessageBlocks) {
 			parts = append(parts, renderSharedAttachment(a, st))

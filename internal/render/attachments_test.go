@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func newRenderState() *renderState { return &renderState{seen: map[uintptr]bool{}} }
+func newRenderState() *renderState { return &renderState{} }
 
 func TestRenderNormalAttachmentEdges(t *testing.T) {
 	// title_link without title still surfaces the link.

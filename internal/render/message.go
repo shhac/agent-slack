@@ -17,7 +17,7 @@ func RenderMessageContentDialect(msg any, slackMarkdown bool) string {
 }
 
 func renderContent(text string, blocks, attachments []any, slackMarkdown bool) string {
-	st := &renderState{seen: map[uintptr]bool{}}
+	st := &renderState{}
 	blockMd := strings.TrimSpace(mrkdwnFromBlocks(blocks))
 	attMd := strings.TrimSpace(mrkdwnFromAttachments(attachments, st))
 
