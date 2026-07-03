@@ -42,12 +42,14 @@ func mcpEnrollmentDescriptor() oauth.CredentialDescriptor {
 	}
 }
 
-// resolveEnrollAuth classifies a submitted token by its prefix into the paired
-// slack-client and credential auth shapes. A browser token (xoxc-) additionally
-// requires the session cookie and workspace URL; the returned error is
-// human-facing form text. Pure (no I/O), so the token-shape branch is
-// unit-testable in isolation.
+// resolveEnrollAuth classifies a submitted token by its prefix into the
+// credential auth shape, then derives the transport auth from it via the
+// canonical slackAuthFromCred converter — one encoding, so the two can't drift.
+// A browser token (xoxc-) additionally requires the session cookie and
+// workspace URL; the returned error is human-facing form text. Pure (no I/O),
+// so the token-shape branch is unit-testable in isolation.
 func resolveEnrollAuth(token, cookie, wsURL string) (slack.Auth, credential.Auth, error) {
+	var credAuth credential.Auth
 	if strings.HasPrefix(token, "xoxc-") {
 		if cookie == "" {
 			return slack.Auth{}, credential.Auth{}, errors.New(
@@ -57,11 +59,11 @@ func resolveEnrollAuth(token, cookie, wsURL string) (slack.Auth, credential.Auth
 			return slack.Auth{}, credential.Auth{}, errors.New(
 				"a browser token also needs the workspace URL, e.g. https://acme.slack.com")
 		}
-		return slack.Auth{Type: slack.AuthBrowser, XOXC: token, XOXD: cookie, WorkspaceURL: wsURL},
-			credential.Auth{Type: credential.AuthBrowser, XOXC: token, XOXD: cookie}, nil
+		credAuth = credential.Auth{Type: credential.AuthBrowser, XOXC: token, XOXD: cookie}
+	} else {
+		credAuth = credential.Auth{Type: credential.AuthStandard, Token: token}
 	}
-	return slack.Auth{Type: slack.AuthStandard, Token: token, WorkspaceURL: wsURL},
-		credential.Auth{Type: credential.AuthStandard, Token: token}, nil
+	return slackAuthFromCred(&credential.Workspace{URL: wsURL, Auth: credAuth}), credAuth, nil
 }
 
 // mcpEnroll validates submitted credentials against auth.test and stores them
