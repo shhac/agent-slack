@@ -106,3 +106,12 @@ into `--workspace <alias>` + `AGENT_SLACK_REQUIRE_IDENTITY=1` on every
 principal-authenticated tool call — pair a principal with
 `agent-slack mcp pair add <name> --bind workspace=<alias>`. See
 lib-agent-mcp's design-docs/multi-user.md for the trust model.
+
+A principal minted without `--bind` enrolls their own credentials in the
+browser during the OAuth approval (`mcpEnroll`, internal/cli/mcp_enroll.go):
+the pasted token is verified via auth.test, stored under alias = principal
+name, and `workspace=<principal>` is bound automatically. Enrollment
+converges on the credential-derived identity — a slot that knows its
+team_id/user_id refuses tokens proving a different Slack account (re-pointing
+an identity stays an operator act via `pair add --bind`). See lib-agent-mcp's
+design-docs/enrollment.md.

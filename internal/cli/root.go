@@ -140,6 +140,10 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 		// fs access narrowed to that alias's identity subtree of the cache.
 		agentmcp.WithIdentityBinding(mcpIdentityBinding),
 		agentmcp.WithFileRootScope(mcpFileRootScope(globals.newStore)),
+		// A named principal minted without --bind enrolls their own Slack
+		// credentials in the browser during the OAuth approval; the binding
+		// (workspace=<principal>) is written automatically on success.
+		agentmcp.WithCredentialEnrollment(mcpEnrollmentDescriptor(), mcpEnroll(globals)),
 	))
 
 	return root

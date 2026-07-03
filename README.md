@@ -34,6 +34,10 @@ family so conventions, output contract, and credential handling are shared.
 - **MCP server** (`agent-slack mcp`): exposes the command tree to MCP clients.
   With OAuth, named principals (`agent-slack mcp pair add <name> --bind
   workspace=<alias>`) each act as their own workspace alias, fail-closed.
+  A principal minted *without* `--bind` self-enrolls in the browser during
+  the OAuth approval: after entering their pairing code they paste their own
+  Slack token (xoxc + d cookie, or xoxp/xoxb), it is verified via `auth.test`
+  and stored under their name, and the binding is written automatically.
   Includes a read-only `fs` tool so a client with no filesystem can read back
   downloaded attachments — `fs get cache <team_id>/<user_id>/downloads/F….png`
   returns the bytes (images as image blocks). Downloaded `path`s in tool output

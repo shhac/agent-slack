@@ -25,3 +25,9 @@ store for one invocation. `AGENT_SLACK_REQUIRE_IDENTITY=1` makes every
 invocation without an explicit `--workspace` fail with a `fixable_by: agent`
 error (no default-workspace or env fallback) — the fail-closed mode multi-user
 MCP runners set alongside a per-principal `--workspace <alias>`.
+
+Workspace entries may also appear via MCP browser enrollment: a named MCP
+principal minted without a binding pastes their own token on the OAuth
+approval page; it is verified via `auth.test` and stored under alias =
+principal name. Such aliases are managed like any other (`auth list`,
+`auth remove`).

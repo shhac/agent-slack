@@ -371,6 +371,9 @@ ENV     SLACK_TOKEN (+ SLACK_COOKIE_D + SLACK_WORKSPACE_URL for xoxc browser
           without an explicit --workspace (no default/env fallback). Set by
           multi-user MCP runners so a missing identity binding errors loudly
           instead of acting as the wrong user.
+MCP     a named principal minted without --bind (mcp pair add <name>)
+          self-enrolls in the browser during the OAuth approval: their pasted
+          token is verified via auth.test and stored under alias = principal.
 NOTE    expired browser tokens auto-refresh from Slack Desktop mid-command.`,
 
 	"unreads": `agent-slack unreads — unread messages across channels, DMs, threads.
