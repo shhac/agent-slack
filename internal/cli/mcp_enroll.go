@@ -32,9 +32,13 @@ func mcpEnrollmentDescriptor() oauth.CredentialDescriptor {
 			Key: "slack",
 			Fields: []oauth.CredentialField{
 				{Key: "token", Label: "Slack token", Secret: true,
-					Help: "Paste whichever you have: a browser token (xoxc-…) or an API token (xoxp-…/xoxb-…). Browser token: devtools → Network → any Slack API request → form data → token."},
+					Help: "Paste whichever you have: a browser token (xoxc-…) or an API token (xoxp-…/xoxb-…). " +
+						"To grab a browser token, open your Slack tab, then devtools → Console and run: " +
+						"Object.values(JSON.parse(localStorage.localConfig_v2).teams).forEach(t => console.log(t.url, t.token)) " +
+						"— it logs each workspace's URL and its xoxc token (paste the token here, the URL below)."},
 				{Key: "xoxd", Label: "Session cookie", Secret: true, Optional: true,
-					Help: "Only needed with a browser token (xoxc): devtools → Application → Cookies → the \"d\" cookie (xoxd-…)."},
+					Help: "Only needed with a browser token (xoxc). The console can't read this one (it's HttpOnly), so grab it from " +
+						"devtools → Application → Cookies → the \"d\" cookie (xoxd-…)."},
 				{Key: "workspace_url", Label: "Workspace URL", Optional: true,
 					Help: "Only needed with a browser token, e.g. https://acme.slack.com."},
 			},
