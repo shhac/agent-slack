@@ -6,7 +6,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
 	github.com/coder/websocket v1.8.14
 	github.com/shhac/lib-agent-cli v0.17.0
-	github.com/shhac/lib-agent-mcp v0.18.0
+	github.com/shhac/lib-agent-mcp v0.21.1
 	github.com/shhac/lib-agent-output v0.10.0
 	github.com/spf13/cobra v1.10.2
 	github.com/syndtr/goleveldb v1.0.0
@@ -32,6 +32,7 @@ require (
 	github.com/randall77/makefat v0.0.0-20210315173500-7ddd0e42c844 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/shhac/lib-agent-keyring v0.1.1 // indirect
+	github.com/shhac/lib-agent-oauth v0.5.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/image v0.20.0 // indirect
