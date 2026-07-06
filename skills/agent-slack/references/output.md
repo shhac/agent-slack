@@ -53,6 +53,12 @@ for the raw Slack API payload.
 - **usergroup**: `id, handle, name, description, user_count, channels, groups` — `channels`/`groups` are the group's *default* channels/subteams (members are auto-added); the CLI lists them all and takes no view on which is "best" to post in
 - **message**: `channel_id, ts, thread_ts?, author{user_id}, content, files?, reactions?` — each `files[]` entry has `id` (the `F…` to pass to `message edit --remove-attachment`), `name`, `mimetype`, and `path` once downloaded
 
+The body field is `content`, **not** `text`: one rendered-Markdown string
+merging Slack's raw `text`, blocks, and attachment/app-card unfurls (it is
+deliberately not the raw API `text`, which is only a notification fallback and
+often empty). A message without `content` genuinely has no text body —
+re-fetching another way won't reveal more; `--full` shows the raw payload.
+
 Message bodies are capped by `--max-body-chars` (defaults: 8000 for
 get/list, 4000 for search/later/unreads, 20000 for canvas; `-1` = unlimited).
 Truncated content ends with `\n…`.

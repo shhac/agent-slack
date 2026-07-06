@@ -87,6 +87,12 @@ vs `U…` DM, `--ts`): [references/targets.md](references/targets.md). These are
 the common reads; reaction filters, body-length caps, and the full flag set are
 in `agent-slack message usage`.
 
+The message body is the **`content`** field — one rendered-Markdown string
+merging Slack's raw `text`, blocks, and attachment/app-card unfurls. There is
+no `text` field in output. A row without `content` genuinely has no text body;
+re-fetching another way won't reveal more (`--full` shows the raw payload if
+you must check).
+
 **Files over MCP (`agent-slack mcp`):** an MCP client has no filesystem, so the
 local `path`s above come back as fetchable references
 (`{"@type":"file","root":"cache","path":"<team_id>/<user_id>/downloads/F….png"}`)

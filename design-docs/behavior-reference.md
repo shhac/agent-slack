@@ -27,6 +27,28 @@ depends on. Keep this current as the handling evolves.
 All collapse to one Markdown string. Forwarded content: extract
 `message_blocks` from attachments; parse `forwarded_threads` from URLs.
 
+### Work Object unfurls (app cards)
+
+App link unfurls (issue trackers etc.) arrive as attachments carrying **only**
+`{from_url, id, work_object_entity}` — no classic fields (`text`, `title`,
+`fallback`), no blocks, empty top-level `text` — so without a dedicated path
+the whole message renders empty. Slack documents only the write side
+(`chat.unfurl` entity payloads); the read-back shape below is
+reverse-engineered from live payloads:
+
+- `work_object_entity.external_url` — the entity link; `display_type`,
+  `app_name`/`product_name` describe it.
+- `work_object_entity.layouts.{compact,expanded}` — `title.text`,
+  `subtitle.text` (e.g. "Issue EX-123 in TrackerApp"), plus app chrome we skip
+  (`header_title`, `hover_subtitle`). The `expanded` layout adds
+  `fields.elements[]`: `{label, rich_text}` where `rich_text` is a standard
+  rich_text block (status, assignee as `user` elements, links).
+
+Rendered as title(+link), subtitle, then `Label: value` field lines — a
+first-class content source in the normal-attachment chunk (before the
+`fallback` last-resort), so classic fields and work objects compose if an app
+ever sends both.
+
 ## Outbound formatting (send/edit)
 
 - Escape `& < >`; promote `@U123` → `<@U123>` mentions.

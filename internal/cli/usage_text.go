@@ -46,6 +46,10 @@ OUTPUT
   exit 1 and empty stdout.
   --format json|yaml|jsonl overrides.
   channel/user lists are compact projections; --full returns raw payloads.
+  The message body field is 'content', NOT 'text': one rendered-Markdown
+  string merging Slack's raw text, blocks, and attachment/app-card unfurls.
+  A message without 'content' has no text body — re-fetching another way
+  won't reveal more (--full shows the raw payload).
   Bodies truncate with a trailing … at --max-body-chars
   (message 8000, search/later/unreads 4000, canvas 20000; -1 = unlimited).
 
@@ -115,7 +119,9 @@ var domainUsage = map[string]string{
 	"message": `agent-slack message — read and write messages.
 
 GET    message get <target> [--ts …] [--thread-ts …]
-       One message + thread summary {ts,length} + permalink. Files
+       One message + thread summary {ts,length} + permalink. The body is the
+       'content' field (rendered Markdown merging text, blocks, and
+       attachment/app-card unfurls; there is no 'text' field). Files
        auto-download to the cache dir (paths in files[].path; --no-download
        skips). Flags: --max-body-chars 8000, --include-reactions,
        --resolve none|cached|auto|fresh.
