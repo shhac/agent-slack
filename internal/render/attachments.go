@@ -63,7 +63,8 @@ func renderSharedAttachment(a map[string]any, st *renderState) string {
 }
 
 // renderNormalAttachment renders a classic attachment: blocks, pretext,
-// title(+link), text, fields, fallback, then any nested attachments.
+// title(+link), text, fields, work object, fallback, then any nested
+// attachments.
 func renderNormalAttachment(a map[string]any, st *renderState) string {
 	var chunk []string
 	if blocks := mrkdwnFromBlocks(asSlice(a["blocks"])); strings.TrimSpace(blocks) != "" {
@@ -100,6 +101,9 @@ func renderNormalAttachment(a map[string]any, st *renderState) string {
 		case value != "":
 			chunk = append(chunk, value)
 		}
+	}
+	if workObject := renderWorkObject(a); workObject != "" {
+		chunk = append(chunk, workObject)
 	}
 	if fallback := str(a["fallback"]); len(chunk) == 0 && fallback != "" {
 		chunk = append(chunk, fallback)
