@@ -96,15 +96,7 @@ func richTextElementToMrkdwn(elAny any) string {
 		return applyMrkdwnStyle(str(el["text"]), el["style"])
 
 	case "link":
-		url := str(el["url"])
-		text := str(el["text"])
-		token := url
-		if url == "" {
-			token = text
-		} else if text != "" {
-			token = "<" + url + "|" + text + ">"
-		}
-		return applyMrkdwnStyle(token, el["style"])
+		return applyMrkdwnStyle(slackLink(str(el["url"]), str(el["text"])), el["style"])
 	}
 
 	return ""

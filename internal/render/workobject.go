@@ -23,16 +23,9 @@ func renderWorkObject(a map[string]any) string {
 	}
 	layout := workObjectLayout(woe)
 
-	title := workObjectText(layout["title"])
-	url := str(woe["external_url"])
 	var chunk []string
-	switch {
-	case title != "" && url != "":
-		chunk = append(chunk, "<"+url+"|"+title+">")
-	case title != "":
-		chunk = append(chunk, title)
-	case url != "":
-		chunk = append(chunk, url)
+	if link := slackLink(str(woe["external_url"]), workObjectText(layout["title"])); link != "" {
+		chunk = append(chunk, link)
 	}
 	if subtitle := workObjectText(layout["subtitle"]); subtitle != "" {
 		chunk = append(chunk, subtitle)
@@ -49,12 +42,7 @@ func workObjectLayout(woe map[string]any) map[string]any {
 	if !ok {
 		return nil
 	}
-	for _, name := range []string{"expanded", "compact"} {
-		if layout, ok := asRecord(layouts[name]); ok {
-			return layout
-		}
-	}
-	for _, name := range slices.Sorted(maps.Keys(layouts)) {
+	for _, name := range append([]string{"expanded", "compact"}, slices.Sorted(maps.Keys(layouts))...) {
 		if layout, ok := asRecord(layouts[name]); ok {
 			return layout
 		}
@@ -62,7 +50,9 @@ func workObjectLayout(woe map[string]any) map[string]any {
 	return nil
 }
 
-// workObjectText unwraps a work-object text object ({"text": …}).
+// workObjectText unwraps a work-object text object ({"text": …}). Not
+// mrkdwnTextValue: these objects carry no "type", so that helper would reject
+// every one.
 func workObjectText(v any) string {
 	t, ok := asRecord(v)
 	if !ok {

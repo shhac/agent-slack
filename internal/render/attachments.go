@@ -73,15 +73,8 @@ func renderNormalAttachment(a map[string]any, st *renderState) string {
 	if pretext := str(a["pretext"]); pretext != "" {
 		chunk = append(chunk, pretext)
 	}
-	title := str(a["title"])
-	titleLink := str(a["title_link"])
-	switch {
-	case titleLink != "" && title != "":
-		chunk = append(chunk, "<"+titleLink+"|"+title+">")
-	case title != "":
+	if title := slackLink(str(a["title_link"]), str(a["title"])); title != "" {
 		chunk = append(chunk, title)
-	case titleLink != "":
-		chunk = append(chunk, titleLink)
 	}
 	if text := str(a["text"]); text != "" {
 		chunk = append(chunk, text)
@@ -194,11 +187,7 @@ func fileMentions(files []any) string {
 		if url == "" {
 			url = str(f["url_private"])
 		}
-		if url != "" {
-			lines = append(lines, "<"+url+"|"+name+">")
-			continue
-		}
-		lines = append(lines, name)
+		lines = append(lines, slackLink(url, name))
 	}
 	return strings.Join(uniqueTexts(lines), "\n")
 }

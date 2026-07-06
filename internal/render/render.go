@@ -12,6 +12,19 @@ package render
 // slackToken serializes a Slack inline token from its kind and value — the one
 // place the <@…>/<#…>/<!subteam^…>/<!…>/:emoji: wire format is written, shared
 // by both element→text flatteners. Returns "" for an unknown kind.
+// slackLink serializes the <url|label> inline-link wire format, degrading to
+// whichever side is present. Returns "" when both are empty.
+func slackLink(url, label string) string {
+	switch {
+	case url != "" && label != "":
+		return "<" + url + "|" + label + ">"
+	case label != "":
+		return label
+	default:
+		return url
+	}
+}
+
 func slackToken(kind, value string) string {
 	switch kind {
 	case "emoji":
