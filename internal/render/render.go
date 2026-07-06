@@ -9,9 +9,6 @@ package render
 // These helpers mirror the loose lookups the TS code did on `unknown` values:
 // missing keys and wrong types collapse to zero values instead of erroring.
 
-// slackToken serializes a Slack inline token from its kind and value — the one
-// place the <@…>/<#…>/<!subteam^…>/<!…>/:emoji: wire format is written, shared
-// by both element→text flatteners. Returns "" for an unknown kind.
 // slackLink serializes the <url|label> inline-link wire format, degrading to
 // whichever side is present. Returns "" when both are empty.
 func slackLink(url, label string) string {
@@ -25,6 +22,9 @@ func slackLink(url, label string) string {
 	}
 }
 
+// slackToken serializes a Slack inline token from its kind and value — the one
+// place the <@…>/<#…>/<!subteam^…>/<!…>/:emoji: wire format is written, shared
+// by both element→text flatteners. Returns "" for an unknown kind.
 func slackToken(kind, value string) string {
 	switch kind {
 	case "emoji":
