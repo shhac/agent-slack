@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/golang/snappy"
+
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
@@ -222,35 +224,74 @@ func extractTeamsFromRawText(raw string) []Team {
 	return teams
 }
 
+// firefoxTeamsFromProfile recovers the xoxc workspace tokens from a Gecko
+// profile's Slack localStorage. Slack's localConfig lives under the app.slack.com
+// origin, which Firefox containers suffix with "^userContextId=N" (and may add a
+// partitionKey), so the origin directory is matched by prefix and every
+// candidate is tried until one yields tokens.
 func firefoxTeamsFromProfile(profilePath string) ([]Team, string, bool) {
-	lsDir := filepath.Join(profilePath, "storage", "default", "https+++app.slack.com", "ls")
-	dbPath := filepath.Join(lsDir, "data.sqlite")
-	if _, err := os.Stat(dbPath); err != nil {
-		return nil, "", false
-	}
-	copyPath, cleanup, err := copySqliteForRead(dbPath)
+	storageDir := filepath.Join(profilePath, "storage", "default")
+	entries, err := os.ReadDir(storageDir)
 	if err != nil {
 		return nil, "", false
 	}
-	defer cleanup()
-
-	rows, err := queryReadonlySqlite(copyPath,
-		"select key, value from data where key in ('localConfig_v2', 'localConfig_v3') order by key desc")
-	if err != nil {
-		return nil, "", false
-	}
-	for _, row := range rows {
-		blob := rowBytes(row, "value")
-		if cfg, err := parseLocalConfig(blob); err == nil {
-			if teams := teamsFromLocalConfig(cfg); len(teams) > 0 {
-				return teams, dbPath, true
-			}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), "https+++app.slack.com") {
+			continue
 		}
-		if teams := extractTeamsFromRawText(string(blob)); len(teams) > 0 {
+		dbPath := filepath.Join(storageDir, e.Name(), "ls", "data.sqlite")
+		if teams, ok := geckoTeamsFromLocalStorage(dbPath); ok {
 			return teams, dbPath, true
 		}
 	}
 	return nil, "", false
+}
+
+// geckoTeamsFromLocalStorage reads localConfig_v2/v3 from a Firefox localStorage
+// data.sqlite and returns the parsed teams. Firefox stores localStorage values
+// above a size threshold Snappy-compressed, so the value is decompressed before
+// parsing (Slack's localConfig is tens of KB and always compressed in practice).
+func geckoTeamsFromLocalStorage(dbPath string) ([]Team, bool) {
+	if _, err := os.Stat(dbPath); err != nil {
+		return nil, false
+	}
+	copyPath, cleanup, err := copySqliteForRead(dbPath)
+	if err != nil {
+		return nil, false
+	}
+	defer cleanup()
+
+	rows, err := queryReadonlySqlite(copyPath,
+		"select value, compression_type from data where key in ('localConfig_v2', 'localConfig_v3') order by key desc")
+	if err != nil {
+		return nil, false
+	}
+	for _, row := range rows {
+		blob := geckoStorageValue(rowBytes(row, "value"), rowInt(row, "compression_type"))
+		if cfg, err := parseLocalConfig(blob); err == nil {
+			if teams := teamsFromLocalConfig(cfg); len(teams) > 0 {
+				return teams, true
+			}
+		}
+		if teams := extractTeamsFromRawText(string(blob)); len(teams) > 0 {
+			return teams, true
+		}
+	}
+	return nil, false
+}
+
+// geckoStorageValue decompresses a Firefox localStorage value. A non-zero
+// compression_type means Snappy (block format, with an uncompressed-length
+// varint prefix); type 0 is stored raw. An undecodable blob is returned
+// unchanged so the caller's raw-text fallback still gets a chance.
+func geckoStorageValue(value []byte, compressionType int64) []byte {
+	if compressionType == 0 {
+		return value
+	}
+	if dec, err := snappy.Decode(nil, value); err == nil {
+		return dec
+	}
+	return value
 }
 
 func firefoxCookieFromProfile(profilePath string) (string, bool) {

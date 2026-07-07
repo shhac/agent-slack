@@ -101,3 +101,14 @@ func rowBytes(row map[string]any, key string) []byte {
 		return nil
 	}
 }
+
+func rowInt(row map[string]any, key string) int64 {
+	switch v := row[key].(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	default:
+		return 0
+	}
+}
