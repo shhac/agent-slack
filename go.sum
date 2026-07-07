@@ -58,8 +58,8 @@ github.com/sebdah/goldie/v2 v2.8.0 h1:dZb9wR8q5++oplmEiJT+U/5KyotVD+HNGCAc5gNr8r
 github.com/sebdah/goldie/v2 v2.8.0/go.mod h1:oZ9fp0+se1eapSRjfYbsV/0Hqhbuu3bJVvKI/NNtssI=
 github.com/sergi/go-diff v1.4.0 h1:n/SP9D5ad1fORl+llWyN+D6qoUETXNZARKjyY2/KVCw=
 github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepqsbeW4=
-github.com/shhac/lib-agent-cli v0.17.0 h1:9Jwvpjg6YxxcJ9B2xmKE3fqPUjZ2m738e/vsor4ds6A=
-github.com/shhac/lib-agent-cli v0.17.0/go.mod h1:Yv/GpayyZLZmwY0HpIgm5WWnXxOz9yYM/bLMuKvIy7k=
+github.com/shhac/lib-agent-cli v0.19.0 h1:fKQ8gkemoE+o4EJbRGWB0coYBgEK5ROcZEHcGlw6Svw=
+github.com/shhac/lib-agent-cli v0.19.0/go.mod h1:pXkdLWRWBJFdHWyWD9xDRFjIM2g8pU4H8kbIfnY0E60=
 github.com/shhac/lib-agent-keyring v0.1.1 h1:cAwFr0UzlQ0xsgO0zY607lmwhvSamPN6Tp1DCNJO7hg=
 github.com/shhac/lib-agent-keyring v0.1.1/go.mod h1:nTk+YfRDc2dc8Nghd1o9w4c40xU8Pqx/UgToN0yGvZ8=
 github.com/shhac/lib-agent-mcp v0.21.1 h1:OB43gmFqKtJfQiAjk8OD+sQtScv2NUL0BmGtGHfmE34=
