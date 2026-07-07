@@ -5,13 +5,14 @@ go 1.26.4
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
 	github.com/coder/websocket v1.8.14
+	github.com/shhac/lib-agent-browsercookies v0.2.0
 	github.com/shhac/lib-agent-cli v0.19.0
 	github.com/shhac/lib-agent-mcp v0.21.1
 	github.com/shhac/lib-agent-output v0.10.0
 	github.com/spf13/cobra v1.10.2
 	github.com/syndtr/goleveldb v1.0.0
-	golang.org/x/sys v0.45.0
-	modernc.org/sqlite v1.52.0
+	golang.org/x/sys v0.46.0
+	modernc.org/sqlite v1.53.0
 )
 
 require (
@@ -38,7 +39,7 @@ require (
 	golang.org/x/image v0.20.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.72.3 // indirect
+	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )

@@ -1,9 +1,12 @@
 package auth
 
 import (
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+
+	browsercookies "github.com/shhac/lib-agent-browsercookies"
 )
 
 // safeStorageQuery is a macOS Keychain lookup for a Chromium "Safe Storage"
@@ -13,20 +16,27 @@ type safeStorageQuery struct {
 	account string
 }
 
-// safeStoragePasswords returns candidate Chromium cookie-encryption passwords
-// from the OS secret store. On macOS it reads the given Keychain queries via
-// `security`; on Linux it tries `secret-tool` plus the well-known Chromium
-// fallbacks. The caller tries each password until one decrypts the cookie.
-func safeStoragePasswords(macQueries []safeStorageQuery, prefix string) []string {
-	switch runtime.GOOS {
-	case "darwin":
-		return dedupe(macSafeStoragePasswords(macQueries))
-	case "linux":
-		// The Linux fallbacks deliberately include an empty password (Chromium
-		// OSCrypt v11), so we dedupe without dropping it.
-		return dedupe(linuxSafeStoragePasswords(prefix))
-	default:
-		return nil
+// slackPlatform builds a browsercookies.Platform whose Keychain closure runs
+// Slack's account/attribute-aware secret-store lookups. The library owns the
+// snapshot/decrypt mechanism — including Chromium's Linux OSCrypt fallbacks
+// (empty passphrase for v11, then "peanuts") — so only the password source is
+// injected here.
+func slackPlatform(queries []safeStorageQuery) browsercookies.Platform {
+	home, _ := os.UserHomeDir()
+	return browsercookies.Platform{
+		GOOS:   runtime.GOOS,
+		Home:   home,
+		Getenv: os.Getenv,
+		Keychain: func([]string) []string {
+			switch runtime.GOOS {
+			case "darwin":
+				return dedupe(macSafeStoragePasswords(queries))
+			case "linux":
+				return dedupe(linuxSecretToolPasswords())
+			default:
+				return nil
+			}
+		},
 	}
 }
 
@@ -46,7 +56,10 @@ func macSafeStoragePasswords(queries []safeStorageQuery) []string {
 	return out
 }
 
-func linuxSafeStoragePasswords(prefix string) []string {
+// linuxSecretToolPasswords reads Slack's Safe Storage password from the login
+// keyring via secret-tool, trying the attribute pairs Slack builds are known to
+// use. Chromium's OSCrypt fallbacks are added by the library, not here.
+func linuxSecretToolPasswords() []string {
 	var out []string
 	attrs := [][]string{
 		{"application", "com.slack.Slack"},
@@ -61,11 +74,6 @@ func linuxSafeStoragePasswords(prefix string) []string {
 			}
 		}
 	}
-	// Chromium Linux OSCrypt fallbacks (see os_crypt_linux.cc).
-	if prefix == "v11" {
-		out = append(out, "")
-	}
-	out = append(out, "peanuts")
 	return out
 }
 
@@ -80,12 +88,4 @@ func dedupe(in []string) []string {
 		out = append(out, s)
 	}
 	return out
-}
-
-// chromiumIterations returns the PBKDF2 iteration count for the current OS.
-func chromiumIterations() int {
-	if runtime.GOOS == "linux" {
-		return 1
-	}
-	return 1003
 }

@@ -1,9 +1,9 @@
 package auth
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
+
+	browsercookies "github.com/shhac/lib-agent-browsercookies"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
@@ -64,58 +64,21 @@ func safariTeamsAppleScript() string {
 		end tell`
 }
 
-// safariCookiePaths are the candidate Cookies.binarycookies locations, the
-// sandboxed container (modern Safari) first, then the legacy location.
-func safariCookiePaths() ([]string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	return []string{
-		filepath.Join(home, "Library", "Containers", "com.apple.Safari", "Data", "Library", "Cookies", "Cookies.binarycookies"),
-		filepath.Join(home, "Library", "Cookies", "Cookies.binarycookies"),
-	}, nil
-}
-
-// safariSlackCookie finds the decrypted Slack `d` cookie in Safari's cookie
-// store. A permission error means Full Disk Access is missing.
+// safariSlackCookie reads the Slack `d` cookie from Safari's cookie store via
+// the shared library (which owns the Cookies.binarycookies parser and the
+// sandboxed-container path resolution), then applies Slack's URL-decoding. A
+// permission error means Full Disk Access is missing.
 func safariSlackCookie() (cookie, path string, err error) {
-	paths, err := safariCookiePaths()
-	if err != nil {
-		return "", "", err
-	}
-	readAny := false
-	for _, p := range paths {
-		data, readErr := os.ReadFile(p)
-		if readErr != nil {
-			if os.IsPermission(readErr) {
-				return "", "", agenterrors.New("could not read Safari's cookie store (permission denied)", agenterrors.FixableByHuman).WithHint(safariFDAHint)
-			}
-			continue // not present here — try the next location
-		}
-		readAny = true
-		cookies, perr := parseBinaryCookies(data)
-		if perr != nil {
-			continue
-		}
-		if cookie, ok := selectSafariSlackCookie(cookies); ok {
-			return cookie, p, nil
+	res, lerr := browsercookies.Extract("safari", slackCookieTarget)
+	if lerr != nil {
+		switch {
+		case strings.Contains(lerr.Error(), "permission denied"):
+			return "", "", agenterrors.New("could not read Safari's cookie store (permission denied)", agenterrors.FixableByHuman).WithHint(safariFDAHint)
+		case strings.Contains(lerr.Error(), "could not find"):
+			return "", "", agenterrors.New("could not read Safari's cookie store", agenterrors.FixableByHuman).WithHint(safariFDAHint)
+		default:
+			return "", "", agenterrors.New("no Slack 'd' cookie found in Safari; open Slack in Safari and sign in, then retry", agenterrors.FixableByHuman)
 		}
 	}
-	if !readAny {
-		return "", "", agenterrors.New("could not read Safari's cookie store", agenterrors.FixableByHuman).WithHint(safariFDAHint)
-	}
-	return "", "", agenterrors.New("no Slack 'd' cookie found in Safari; open Slack in Safari and sign in, then retry", agenterrors.FixableByHuman)
-}
-
-// selectSafariSlackCookie returns the decoded Slack `d` cookie value from a
-// parsed cookie set: the entry named "d" on a slack.com domain whose value is
-// an xoxd- token. The value is URL-decoded like the other browser paths.
-func selectSafariSlackCookie(cookies []binaryCookie) (string, bool) {
-	for _, c := range cookies {
-		if c.Name == "d" && strings.Contains(c.Domain, "slack.com") && strings.HasPrefix(c.Value, "xoxd-") {
-			return decodeCookieValue(c.Value), true
-		}
-	}
-	return "", false
+	return decodeCookieValue(res.Value), res.Source["cookies_path"], nil
 }
