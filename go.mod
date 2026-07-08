@@ -7,7 +7,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
 	github.com/shhac/lib-agent-browsercookies v0.2.0
-	github.com/shhac/lib-agent-cli v0.19.0
+	github.com/shhac/lib-agent-cli v0.20.0
 	github.com/shhac/lib-agent-mcp v0.21.1
 	github.com/shhac/lib-agent-output v0.10.0
 	github.com/spf13/cobra v1.10.2
