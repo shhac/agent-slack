@@ -73,12 +73,10 @@ make build
 ### Claude Code / AI agent skill
 
 ```bash
-npx skills add shhac/agent-slack
+npx skills add shhac/agent-skills --skill agent-slack --global
 ```
 
-This installs the `agent-slack` skill so Claude Code (and other AI agents) can
-discover and drive `agent-slack` automatically. See
-[skills.sh](https://skills.sh) for details.
+Installs the `agent-slack` skill globally so Claude Code (and other AI agents) can discover and use it automatically. It ships from [`shhac/agent-skills`](https://github.com/shhac/agent-skills) — the whole family's skills in one repo, so `npx skills update` checks a single source no matter how many you use. Want several at once? Run `npx skills add shhac/agent-skills --global` and pick from the list.
 
 ## Getting started
 
