@@ -327,5 +327,4 @@ func ResolveShortcut(ctx context.Context, c *Client, channelID, triggerID string
 		WithHint("'agent-slack workflow list <channel>' shows the channel's workflow bookmarks")
 }
 
-// Trigger preview and workflow schema (read-only introspection) live in
-// workflows_schema.go.
+// Workflow schema introspection (read-only) lives in workflows_schema.go.
