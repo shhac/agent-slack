@@ -116,6 +116,23 @@ func annotateStaleTriggers(ctx context.Context, c *Client, result *ChannelWorkfl
 	}
 }
 
+// bookmarkTrigger extracts the workflow-trigger identity of one bookmark:
+// shortcut_id when present, else the Ft… id parsed from a shortcut link. An
+// empty triggerID means the bookmark is not a workflow shortcut. The one
+// place this rule lives — list and run must agree on it, or a bookmark could
+// be listed but not runnable.
+func bookmarkTrigger(b map[string]any) (triggerID, link, bookmarkID string) {
+	link = getStr(b, "link")
+	bookmarkID = getStr(b, "id")
+	triggerID = getStr(b, "shortcut_id")
+	if triggerID == "" {
+		if m := shortcutLinkRe.FindStringSubmatch(link); m != nil {
+			triggerID = m[1]
+		}
+	}
+	return triggerID, link, bookmarkID
+}
+
 func listBookmarkedWorkflows(ctx context.Context, c *Client, channelID string) ([]ChannelWorkflow, error) {
 	resp, err := c.API(ctx, "bookmarks.list", map[string]any{"channel_id": channelID})
 	if err != nil {
@@ -123,17 +140,9 @@ func listBookmarkedWorkflows(ctx context.Context, c *Client, channelID string) (
 	}
 	var out []ChannelWorkflow
 	for _, b := range recItems(getArr(resp, "bookmarks")) {
-		link := getStr(b, "link")
-		shortcutID := getStr(b, "shortcut_id")
-		isWorkflow := shortcutID != "" || shortcutLinkRe.MatchString(link)
-		if !isWorkflow {
-			continue
-		}
-		triggerID := shortcutID
+		triggerID, link, _ := bookmarkTrigger(b)
 		if triggerID == "" {
-			if m := shortcutLinkRe.FindStringSubmatch(link); m != nil {
-				triggerID = m[1]
-			}
+			continue
 		}
 		out = append(out, ChannelWorkflow{
 			Title:     getStr(b, "title"),
@@ -308,12 +317,8 @@ func ResolveShortcut(ctx context.Context, c *Client, channelID, triggerID string
 		return ResolvedShortcut{}, err
 	}
 	for _, b := range recItems(getArr(resp, "bookmarks")) {
-		if getStr(b, "shortcut_id") != triggerID {
-			continue
-		}
-		link := getStr(b, "link")
-		bookmarkID := getStr(b, "id")
-		if link != "" && bookmarkID != "" {
+		id, link, bookmarkID := bookmarkTrigger(b)
+		if id != "" && id == triggerID && link != "" && bookmarkID != "" {
 			return ResolvedShortcut{URL: link, BookmarkID: bookmarkID}, nil
 		}
 	}

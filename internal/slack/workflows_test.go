@@ -18,6 +18,27 @@ func newWorkflowClient(t *testing.T, server *mockslack.Server) *Client {
 	return New(Auth{Type: AuthStandard, Token: "xoxb-test", WorkspaceURL: ts.URL}, WithBaseURL(ts.URL))
 }
 
+// A bookmark whose trigger id is only derivable from its shortcut link (no
+// shortcut_id field) is listed by ListChannelWorkflows, so ResolveShortcut
+// must resolve it too — list and run share bookmarkTrigger for exactly this.
+func TestResolveShortcutLinkOnlyBookmark(t *testing.T) {
+	server := mockslack.New()
+	server.HandleBody("bookmarks.list", map[string]any{
+		"ok": true,
+		"bookmarks": []any{
+			map[string]any{"id": "Bk0", "title": "Docs", "link": "https://example.com/not-a-workflow"},
+			map[string]any{"id": "Bk1", "title": "Link only", "link": "https://slack.com/shortcuts/Ft0LINKONLY1/abc"},
+		},
+	})
+	got, err := ResolveShortcut(context.Background(), newWorkflowClient(t, server), "C1", "Ft0LINKONLY1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.BookmarkID != "Bk1" || !strings.Contains(got.URL, "Ft0LINKONLY1") {
+		t.Errorf("got = %+v", got)
+	}
+}
+
 func previewRejection(t *testing.T, code string) *agenterrors.APIError {
 	t.Helper()
 	server := mockslack.New()
