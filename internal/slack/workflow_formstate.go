@@ -29,7 +29,7 @@ func ValidateWorkflowFields(fields map[string]string, schema WorkflowSchema) []s
 		}
 	}
 	for _, f := range schema.Fields {
-		if _, ok := lookupField(fields, f.Title); f.Required && !ok {
+		if f.Required && !hasField(fields, f.Title) {
 			errs = append(errs, fmt.Sprintf("required field %q is missing", f.Title))
 		}
 	}
@@ -195,14 +195,14 @@ func matchElementOption(element map[string]any, title, value string) (map[string
 		WithHint("match an option by its label or value and rerun — this run was abandoned without submitting")
 }
 
-func lookupField(fields map[string]string, title string) (string, bool) {
-	if v, ok := fields[title]; ok {
-		return v, true
+func hasField(fields map[string]string, title string) bool {
+	if _, ok := fields[title]; ok {
+		return true
 	}
-	for k, v := range fields {
+	for k := range fields {
 		if strings.EqualFold(k, title) {
-			return v, true
+			return true
 		}
 	}
-	return "", false
+	return false
 }
