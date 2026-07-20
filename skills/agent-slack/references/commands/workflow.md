@@ -16,3 +16,21 @@ listed trigger in one batched call, so stale bookmarks (deleted workflows →
 rather than only failing when you `preview` them — trust a row without `stale`.
 The whole annotated list is cached per channel, and validating it also warms
 each live trigger's preview cache.
+
+## Form field values
+
+`--field "Title=value"` values map to the form's input types automatically:
+
+| Form input | Value format |
+|---|---|
+| Short answer / paragraph / rich text / number | verbatim string |
+| Drop-down / multiple choice | one option, matched by label (case-insensitive) or value |
+| Tick boxes | comma-separated options (labels with commas: match by value) |
+| Date | `YYYY-MM-DD` |
+| File upload | unsupported — errors; use a Slack client |
+
+Slack reports form validation failures inside an `ok:true` response
+(`response_action: "errors"`); the CLI surfaces those as real errors, so
+`submitted: true` means the form actually cleared. If a run errors after
+tripping (bad option, unsupported field), the CLI closes the opened form,
+cancelling that run — fix the value and rerun.

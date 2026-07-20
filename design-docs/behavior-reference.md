@@ -223,4 +223,33 @@ scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
 ## Workflow and update behavior
 
 - Workflow form-field submission is supported.
+- Form submission follows the real client's sequence (verified against a
+  captured browser session): `workflows.triggers.trip` → wait for the
+  `view_opened`/`view_push` RTM event → `views.get` for the authoritative
+  view (the push payload can be a stub when several clients share the
+  session; the fetch is best-effort with the event view as fallback) →
+  `views.submit`. There is **no** finalization call after `views.submit` —
+  its response is the final word.
+- `views.submit` success returns `{"ok":true,"view":null,"response_action":
+  "clear"}`. Validation failures are **also** `ok:true`, with
+  `response_action: "errors"` plus a block_id-keyed `errors` map (the Block
+  Kit modal contract). The CLI maps those to real errors; bare `ok` is never
+  treated as success. Block ids are mapped back to field titles best-effort.
+- Form state entries must mirror each rendered element's type: the builder's
+  "Rich text composer" (and long/paragraph fields) render as
+  `rich_text_input` and expect a `rich_text_value` document, not a
+  `plain_text_input` value; selects/radio/checkboxes expect the element's
+  option object(s) copied verbatim (`selected_option(s)`, full `text` object
+  included); datepicker expects `selected_date` (`YYYY-MM-DD`). Mismatched
+  shapes are rejected only via `response_action: "errors"`.
+- Workflow form views set `notify_on_close: true`, so `views.close` cancels
+  the tripped run. The CLI uses this deliberately: when submission is
+  abandoned after tripping (unsupported field type, unmatched option,
+  Slack-side rejection), it closes the view rather than leaving a dangling
+  modal on the user's other clients.
+- The real client mints a fresh `web-<millis>` `client_token` per call (trip
+  and submit tokens differ within one submission) — tokens do not correlate
+  the flow, so the CLI's per-call `cli-<millis>` tokens are equivalent.
+- `--debug` logs every received RTM frame (token-redacted, truncated), which
+  is the only visibility into the push events driving this flow.
 - There is no self-update command.

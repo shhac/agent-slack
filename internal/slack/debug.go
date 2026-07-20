@@ -60,15 +60,32 @@ func (c *Client) debugResponse(method string, data map[string]any) {
 	if c.debug == nil {
 		return
 	}
+	if s, ok := redactedJSON(data); ok {
+		c.debugf("POST %s response %s", method, s)
+	}
+}
+
+// debugFrame logs one received RTM WebSocket frame — the only visibility into
+// the push events that drive the workflow form flow.
+func (c *Client) debugFrame(frame map[string]any) {
+	if c.debug == nil {
+		return
+	}
+	if s, ok := redactedJSON(frame); ok {
+		c.debugf("RTM frame %s", s)
+	}
+}
+
+func redactedJSON(data map[string]any) (string, bool) {
 	b, err := json.Marshal(data)
 	if err != nil {
-		return
+		return "", false
 	}
 	s := tokenRe.ReplaceAllString(string(b), "[redacted]")
 	if len(s) > debugBodyLimit {
 		s = s[:debugBodyLimit] + "…(truncated)"
 	}
-	c.debugf("POST %s response %s", method, s)
+	return s, true
 }
 
 // softFailureKeys are ok:true response fields that nonetheless signal the

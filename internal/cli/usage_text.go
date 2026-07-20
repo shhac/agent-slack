@@ -319,7 +319,13 @@ RUN      workflow run <Ft…> --channel <…>
          Without --field: trips the trigger. With --field "Title=value"
          (repeatable, case-insensitive titles): submits the workflow's form —
          requires browser auth (xoxc/xoxd) since it drives Slack's client
-         APIs over a short-lived WebSocket.`,
+         APIs over a short-lived WebSocket.
+         Values map to the form's input types: text/rich text/number take the
+         value verbatim; drop-down and multiple choice match an option by
+         label or value; tick boxes take comma-separated options; dates are
+         YYYY-MM-DD. File uploads are unsupported (clear error). Slack-side
+         validation failures surface as errors — submitted:true means the
+         form actually cleared (response_action "clear").`,
 
 	"later": `agent-slack later — saved-for-later (browser auth).
 
