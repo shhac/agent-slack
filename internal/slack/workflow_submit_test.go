@@ -212,6 +212,22 @@ func TestSubmitWorkflowFormRejected(t *testing.T) {
 	}
 }
 
+func TestFetchOpenedViewFallsBackOnBlocklessView(t *testing.T) {
+	server := mockslack.New()
+	// The stub-view scenario fetchOpenedView exists for: views.get succeeds
+	// but returns a view with no blocks.
+	server.HandleBody("views.get", map[string]any{"ok": true, "view": map[string]any{"id": "V123", "blocks": []any{}}})
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+
+	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-1", XOXD: "xoxd", WorkspaceURL: ts.URL})
+	eventView := stubEventView()
+	got := fetchOpenedView(context.Background(), c, "V123", eventView)
+	if len(getArr(got, "blocks")) != 1 {
+		t.Errorf("blockless fetched view must fall back to the event view, got %v", got)
+	}
+}
+
 func TestSubmitWorkflowFormBadFieldValueAbandonsView(t *testing.T) {
 	server := newSubmitServer(t)
 	server.HandleBody("views.get", map[string]any{"ok": true, "view": map[string]any{
@@ -295,7 +311,7 @@ func TestBuildFormState(t *testing.T) {
 			map[string]any{"element": map[string]any{"action_id": "field-uuid-1"}}, // no block_id
 		},
 	}
-	state, err := buildFormState(view, testSchema(), map[string]string{"summary": "deploy failed"})
+	state, titles, err := buildFormState(view, testSchema(), map[string]string{"summary": "deploy failed"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,11 +322,15 @@ func TestBuildFormState(t *testing.T) {
 	if entry["value"] != "deploy failed" || entry["type"] != "plain_text_input" {
 		t.Errorf("entry = %v", entry)
 	}
+	// The title mapping covers every schema-resolved block, filled or not.
+	if titles["blk1"] != "Summary" || titles["blk2"] != "Priority" {
+		t.Errorf("titles = %v", titles)
+	}
 }
 
 func TestBuildFormStateUnmatchedField(t *testing.T) {
 	view := map[string]any{"blocks": []any{}} // stub view: no blocks at all
-	_, err := buildFormState(view, testSchema(), map[string]string{"summary": "x"})
+	_, _, err := buildFormState(view, testSchema(), map[string]string{"summary": "x"})
 	if err == nil || !strings.Contains(err.Error(), "not present in the opened form") {
 		t.Fatalf("a supplied field with no matching block must error, got %v", err)
 	}
@@ -414,6 +434,16 @@ func TestFormStateEntryTypes(t *testing.T) {
 		}
 	})
 
+	t.Run("timepicker validates the format", func(t *testing.T) {
+		entry, err := formStateEntry(map[string]any{"type": "timepicker"}, "At", "09:30")
+		if err != nil || entry["selected_time"] != "09:30" {
+			t.Fatalf("entry = %v err = %v", entry, err)
+		}
+		if _, err := formStateEntry(map[string]any{"type": "timepicker"}, "At", "9.30pm"); err == nil {
+			t.Fatal("non-HH:MM time must error")
+		}
+	})
+
 	t.Run("unsupported element types error instead of guessing a shape", func(t *testing.T) {
 		_, err := formStateEntry(map[string]any{"type": "file_input"}, "Attachment", "x")
 		if err == nil || !strings.Contains(err.Error(), "file_input") {
@@ -423,15 +453,15 @@ func TestFormStateEntryTypes(t *testing.T) {
 }
 
 func TestSubmitRejection(t *testing.T) {
-	view := stubEventView()
-	if err := submitRejection(map[string]any{"ok": true, "response_action": "clear"}, view, testSchema()); err != nil {
+	titles := map[string]string{"blk1": "Summary"}
+	if err := submitRejection(map[string]any{"ok": true, "response_action": "clear"}, titles); err != nil {
 		t.Fatalf("clear is success, got %v", err)
 	}
 	err := submitRejection(map[string]any{
 		"ok":              true,
 		"response_action": "errors",
 		"errors":          map[string]any{"blk1": "too long", "blk-unknown": "missing"},
-	}, view, testSchema())
+	}, titles)
 	if err == nil {
 		t.Fatal("expected rejection error")
 	}

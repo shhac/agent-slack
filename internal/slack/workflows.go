@@ -265,6 +265,13 @@ type WorkflowRunResult struct {
 	IsSlowWorkflow      bool   `json:"is_slow_workflow,omitempty"`
 }
 
+// clientToken mints the client-token format both workflows.triggers.trip and
+// views.submit send. The real client mints a fresh token per call too — the
+// values do not correlate the flow.
+func clientToken() string {
+	return fmt.Sprintf("cli-%d", time.Now().UnixMilli())
+}
+
 func RunWorkflowTrigger(ctx context.Context, c *Client, shortcutURL, channelID, bookmarkID string) (WorkflowRunResult, error) {
 	contextJSON, _ := json.Marshal(map[string]string{
 		"location":    "bookmark",
@@ -273,7 +280,7 @@ func RunWorkflowTrigger(ctx context.Context, c *Client, shortcutURL, channelID, 
 	})
 	resp, err := c.API(ctx, "workflows.triggers.trip", map[string]any{
 		"url":          shortcutURL,
-		"client_token": fmt.Sprintf("cli-%d", time.Now().UnixMilli()),
+		"client_token": clientToken(),
 		"context":      string(contextJSON),
 		"run_precheck": true,
 	})

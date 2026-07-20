@@ -41,22 +41,52 @@ func ValidateWorkflowFields(fields map[string]string, schema WorkflowSchema) []s
 		}
 	}
 	for _, f := range schema.Fields {
-		if f.Required && lookupField(fields, f.Title) == nil {
+		if _, ok := lookupField(fields, f.Title); f.Required && !ok {
 			errs = append(errs, fmt.Sprintf("required field %q is missing", f.Title))
 		}
 	}
 	return errs
 }
 
-// buildFormState maps the opened view's block element action_ids (field
-// UUIDs) back to schema fields, then to the user-supplied values — the shape
-// views.submit expects, mirroring each element's own input type. A supplied
-// field that maps to no block errors rather than silently shrinking the
-// submission (a stub view would otherwise submit an empty form). Pure, so
-// form-layout learnings are table-testable on recorded view payloads.
-func buildFormState(view map[string]any, schema WorkflowSchema, fields map[string]string) (map[string]any, error) {
+// buildFormState maps the user-supplied values onto the opened view's blocks
+// — the shape views.submit expects, mirroring each element's own input type.
+// A supplied field that maps to no block errors rather than silently
+// shrinking the submission (a stub view would otherwise submit an empty
+// form). Also returns the blockID→field-title mapping used to label
+// rejection errors, so the view is walked exactly once. Pure, so form-layout
+// learnings are table-testable on recorded view payloads.
+func buildFormState(view map[string]any, schema WorkflowSchema, fields map[string]string) (map[string]any, map[string]string, error) {
+	byAction, titlesByBlock := indexFormBlocks(view, schema)
 	stateValues := map[string]any{}
-	matched := map[string]bool{}
+	for title, value := range fields {
+		field := schemaFieldByTitle(schema, title)
+		if field == nil {
+			return nil, nil, missingFormFieldError(title)
+		}
+		block, ok := byAction[field.Name]
+		if !ok {
+			return nil, nil, missingFormFieldError(title)
+		}
+		entry, err := formStateEntry(block.element, field.Title, value)
+		if err != nil {
+			return nil, nil, err
+		}
+		stateValues[block.blockID] = map[string]any{field.Name: entry}
+	}
+	return stateValues, titlesByBlock, nil
+}
+
+type formBlock struct {
+	blockID string
+	element map[string]any
+}
+
+// indexFormBlocks walks the view's blocks once: each input element's
+// action_id keys its block, and blocks that resolve to a schema field record
+// the blockID→title mapping.
+func indexFormBlocks(view map[string]any, schema WorkflowSchema) (map[string]formBlock, map[string]string) {
+	byAction := map[string]formBlock{}
+	titlesByBlock := map[string]string{}
 	for _, block := range recItems(getArr(view, "blocks")) {
 		blockID := getStr(block, "block_id")
 		element := getRec(block, "element")
@@ -64,34 +94,32 @@ func buildFormState(view map[string]any, schema WorkflowSchema, fields map[strin
 		if blockID == "" || actionID == "" {
 			continue
 		}
-		schemaField := findSchemaField(schema, actionID)
-		if schemaField == nil {
-			continue
-		}
-		value := lookupField(fields, schemaField.Title)
-		if value == nil {
-			continue
-		}
-		entry, err := formStateEntry(element, schemaField.Title, *value)
-		if err != nil {
-			return nil, err
-		}
-		matched[strings.ToLower(schemaField.Title)] = true
-		stateValues[blockID] = map[string]any{actionID: entry}
-	}
-	for title := range fields {
-		if !matched[strings.ToLower(title)] {
-			return nil, agenterrors.Newf(agenterrors.FixableByRetry,
-				"field %q is not present in the opened form — the view may not have loaded fully", title).
-				WithHint("retry the run; 'workflow get' re-checks the field titles")
+		byAction[actionID] = formBlock{blockID: blockID, element: element}
+		if field := findSchemaField(schema, actionID); field != nil {
+			titlesByBlock[blockID] = field.Title
 		}
 	}
-	return stateValues, nil
+	return byAction, titlesByBlock
+}
+
+func missingFormFieldError(title string) error {
+	return agenterrors.Newf(agenterrors.FixableByRetry,
+		"field %q is not present in the opened form — the view may not have loaded fully", title).
+		WithHint("retry the run; 'workflow get' re-checks the field titles")
 }
 
 func findSchemaField(schema WorkflowSchema, actionID string) *FormField {
 	for i := range schema.Fields {
 		if schema.Fields[i].Name == actionID {
+			return &schema.Fields[i]
+		}
+	}
+	return nil
+}
+
+func schemaFieldByTitle(schema WorkflowSchema, title string) *FormField {
+	for i := range schema.Fields {
+		if strings.EqualFold(schema.Fields[i].Title, title) {
 			return &schema.Fields[i]
 		}
 	}
@@ -132,6 +160,11 @@ func formStateEntry(element map[string]any, title, value string) (map[string]any
 		}
 		return map[string]any{"type": elemType, "selected_date": value}, nil
 	case "timepicker":
+		if _, err := time.Parse("15:04", value); err != nil {
+			return nil, agenterrors.Newf(agenterrors.FixableByAgent,
+				"field %q expects a time, got %q", title, value).
+				WithHint("use HH:MM (24h) and rerun — this run was abandoned without submitting")
+		}
 		return map[string]any{"type": elemType, "selected_time": value}, nil
 	default:
 		return nil, agenterrors.Newf(agenterrors.FixableByHuman,
@@ -174,17 +207,16 @@ func matchElementOption(element map[string]any, title, value string) (map[string
 		WithHint("match an option by its label or value and rerun — this run was abandoned without submitting")
 }
 
-func lookupField(fields map[string]string, title string) *string {
+func lookupField(fields map[string]string, title string) (string, bool) {
 	if v, ok := fields[title]; ok {
-		return &v
+		return v, true
 	}
-	lower := strings.ToLower(title)
 	for k, v := range fields {
-		if strings.ToLower(k) == lower {
-			return &v
+		if strings.EqualFold(k, title) {
+			return v, true
 		}
 	}
-	return nil
+	return "", false
 }
 
 // dialRTM is a seam so tests can fake the WebSocket.
@@ -284,7 +316,7 @@ func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission
 	}()
 	view = fetchOpenedView(ctx, c, viewID, view)
 
-	state, err := buildFormState(view, input.Schema, input.Fields)
+	state, titlesByBlock, err := buildFormState(view, input.Schema, input.Fields)
 	if err != nil {
 		return WorkflowSubmitResult{}, err
 	}
@@ -292,13 +324,13 @@ func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission
 	stateJSON, _ := json.Marshal(map[string]any{"values": state})
 	resp, err := c.API(ctx, "views.submit", map[string]any{
 		"view_id":      viewID,
-		"client_token": fmt.Sprintf("cli-%d", time.Now().UnixMilli()),
+		"client_token": clientToken(),
 		"state":        string(stateJSON),
 	})
 	if err != nil {
 		return WorkflowSubmitResult{}, err
 	}
-	if rejectErr := submitRejection(resp, view, input.Schema); rejectErr != nil {
+	if rejectErr := submitRejection(resp, titlesByBlock); rejectErr != nil {
 		return WorkflowSubmitResult{}, rejectErr
 	}
 
@@ -331,40 +363,22 @@ func fetchOpenedView(ctx context.Context, c *Client, viewID string, eventView ma
 // submitRejection interprets an ok:true views.submit body. Block Kit reports
 // modal validation failures as response_action "errors" plus a block_id-keyed
 // errors map, not ok:false — treating bare ok as success silently drops the
-// run. Block ids map back to field titles best-effort, falling back to the
-// raw id.
-func submitRejection(resp, view map[string]any, schema WorkflowSchema) error {
+// run. Block ids resolve to field titles via the mapping buildFormState
+// produced, falling back to the raw id.
+func submitRejection(resp map[string]any, titlesByBlock map[string]string) error {
 	errsByBlock := getRec(resp, "errors")
 	if getStr(resp, "response_action") != "errors" && len(errsByBlock) == 0 {
 		return nil
 	}
 	parts := make([]string, 0, len(errsByBlock))
 	for _, blockID := range slices.Sorted(maps.Keys(errsByBlock)) {
-		label := blockID
-		if title := blockFieldTitle(view, schema, blockID); title != "" {
-			label = title
-		}
+		label := FirstNonEmpty(titlesByBlock[blockID], blockID)
 		parts = append(parts, fmt.Sprintf("%s: %v", label, errsByBlock[blockID]))
 	}
-	detail := "no field errors were reported"
-	if len(parts) > 0 {
-		detail = strings.Join(parts, "; ")
-	}
+	detail := FirstNonEmpty(strings.Join(parts, "; "), "no field errors were reported")
 	return agenterrors.Newf(agenterrors.FixableByAgent,
 		"the workflow form rejected the submission: %s", detail).
 		WithHint("fix the field values and rerun — this run did not complete")
-}
-
-func blockFieldTitle(view map[string]any, schema WorkflowSchema, blockID string) string {
-	for _, block := range recItems(getArr(view, "blocks")) {
-		if getStr(block, "block_id") != blockID {
-			continue
-		}
-		if f := findSchemaField(schema, getStr(getRec(block, "element"), "action_id")); f != nil {
-			return f.Title
-		}
-	}
-	return ""
 }
 
 // abandonView best-effort closes a form view whose submission is being given
@@ -396,7 +410,7 @@ func awaitOpenedView(ctx context.Context, c *Client, conn rtmConn, trip func() e
 			if msg == nil {
 				continue
 			}
-			c.debugFrame(msg)
+			c.debugJSON("RTM frame", msg)
 			if t := getStr(msg, "type"); t == "view_opened" || t == "view_push" {
 				viewCh <- msg
 				return

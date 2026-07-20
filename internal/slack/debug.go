@@ -55,37 +55,26 @@ func (c *Client) debugParams(method string, fields map[string]string) {
 	c.debugf("POST %s params {%s}", method, strings.Join(parts, " "))
 }
 
-// debugResponse logs the parsed response body, token-redacted and truncated.
-func (c *Client) debugResponse(method string, data map[string]any) {
+// debugJSON logs one labeled JSON payload, token-redacted and truncated —
+// the single path for any body that lands in the debug trace.
+func (c *Client) debugJSON(label string, data map[string]any) {
 	if c.debug == nil {
 		return
 	}
-	if s, ok := redactedJSON(data); ok {
-		c.debugf("POST %s response %s", method, s)
-	}
-}
-
-// debugFrame logs one received RTM WebSocket frame — the only visibility into
-// the push events that drive the workflow form flow.
-func (c *Client) debugFrame(frame map[string]any) {
-	if c.debug == nil {
-		return
-	}
-	if s, ok := redactedJSON(frame); ok {
-		c.debugf("RTM frame %s", s)
-	}
-}
-
-func redactedJSON(data map[string]any) (string, bool) {
 	b, err := json.Marshal(data)
 	if err != nil {
-		return "", false
+		return
 	}
 	s := tokenRe.ReplaceAllString(string(b), "[redacted]")
 	if len(s) > debugBodyLimit {
 		s = s[:debugBodyLimit] + "…(truncated)"
 	}
-	return s, true
+	c.debugf("%s %s", label, s)
+}
+
+// debugResponse logs a parsed API response body.
+func (c *Client) debugResponse(method string, data map[string]any) {
+	c.debugJSON("POST "+method+" response", data)
 }
 
 // softFailureKeys are ok:true response fields that nonetheless signal the

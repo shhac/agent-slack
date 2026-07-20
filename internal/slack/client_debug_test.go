@@ -76,6 +76,26 @@ func TestDebugResponseRedactsEmbeddedTokens(t *testing.T) {
 	}
 }
 
+func TestDebugJSONFrameRedactsEmbeddedTokens(t *testing.T) {
+	c, buf := debugClient()
+	// RTM frames carry arbitrary workspace push payloads — same redaction
+	// contract as API responses.
+	c.debugJSON("RTM frame", map[string]any{
+		"type": "message",
+		"text": "someone pasted xoxc-frame-secret-42 here",
+		"view": map[string]any{"private_metadata": "xoxd-frame-deep-77"},
+	})
+	out := buf.String()
+	for _, family := range []string{"xoxc-frame-secret", "xoxd-frame-deep"} {
+		if strings.Contains(out, family) {
+			t.Errorf("debug frame leaked %q:\n%s", family, out)
+		}
+	}
+	if !strings.Contains(out, "RTM frame") || !strings.Contains(out, "[redacted]") {
+		t.Errorf("expected labeled, redacted frame line:\n%s", out)
+	}
+}
+
 func TestDebugResponseTruncatesLongBodies(t *testing.T) {
 	c, buf := debugClient()
 	c.debugResponse("conversations.history", map[string]any{"blob": strings.Repeat("x", 3*debugBodyLimit)})
@@ -116,5 +136,6 @@ func TestDebugSilentWhenDisabled(t *testing.T) {
 	// Must be no-ops, not panics.
 	c.debugParams("m", map[string]string{"k": "v"})
 	c.debugResponse("m", map[string]any{"ok": true})
+	c.debugJSON("RTM frame", map[string]any{"ok": true})
 	c.debugf("hello")
 }
