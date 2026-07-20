@@ -81,6 +81,7 @@ type Client struct {
 
 	doer        Doer
 	sleep       func(ctx context.Context, d time.Duration) error
+	dialRTM     rtmDialer
 	baseURL     string
 	userAgent   string
 	debug       io.Writer
@@ -113,6 +114,7 @@ func New(auth Auth, opts ...Option) *Client {
 	c := &Client{
 		auth:      auth,
 		doer:      &http.Client{Timeout: defaultTimeout},
+		dialRTM:   websocketDialRTM,
 		baseURL:   defaultBaseURL,
 		userAgent: "agent-slack",
 		sleep: func(ctx context.Context, d time.Duration) error {
