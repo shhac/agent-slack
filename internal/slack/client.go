@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -287,7 +286,7 @@ func (c *Client) buildRequest(ctx context.Context, method string, params map[str
 	req.Header.Set("User-Agent", c.userAgent)
 	switch auth.Type {
 	case AuthBrowser:
-		req.Header.Set("Cookie", "d="+url.QueryEscape(auth.XOXD))
+		req.Header.Set("Cookie", xoxdCookie(auth.XOXD))
 		req.Header.Set("Origin", "https://app.slack.com")
 	default:
 		req.Header.Set("Authorization", "Bearer "+auth.Token)

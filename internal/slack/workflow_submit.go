@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -36,31 +35,22 @@ type WorkflowSubmission struct {
 // values. Requires browser auth: views.submit and rtm.connect are client
 // APIs.
 func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission) (WorkflowSubmitResult, error) {
-	auth := c.currentAuth()
-	if auth.Type != AuthBrowser {
+	if c.currentAuth().Type != AuthBrowser {
 		return WorkflowSubmitResult{}, agenterrors.New(
 			"form submission requires browser auth (xoxc/xoxd); standard bot tokens cannot submit workflow forms",
 			agenterrors.FixableByHuman).WithHint("import browser credentials with 'agent-slack auth import-desktop'")
 	}
 
-	rtmResp, err := c.API(ctx, "rtm.connect", nil)
+	conn, err := c.connectRTM(ctx)
 	if err != nil {
 		return WorkflowSubmitResult{}, err
-	}
-	wsURL := getStr(rtmResp, "url")
-	if wsURL == "" {
-		return WorkflowSubmitResult{}, agenterrors.New("rtm.connect did not return a WebSocket URL", agenterrors.FixableByRetry)
-	}
-
-	conn, err := c.dialRTM(ctx, wsURL, "d="+url.QueryEscape(auth.XOXD))
-	if err != nil {
-		return WorkflowSubmitResult{}, agenterrors.Wrap(err, agenterrors.FixableByRetry).
-			WithHint("could not open the RTM WebSocket — retry")
 	}
 	defer conn.Close()
 
 	var tripResult WorkflowRunResult
-	viewMsg, err := awaitOpenedView(ctx, c, conn, func() error {
+	viewMsg, err := awaitOpenedView(ctx, conn, func(frame map[string]any) {
+		c.debugJSON("RTM frame", frame)
+	}, func() error {
 		var terr error
 		tripResult, terr = RunWorkflowTrigger(ctx, c, input.ShortcutURL, input.ChannelID, input.BookmarkID)
 		return terr
@@ -164,7 +154,7 @@ func abandonView(ctx context.Context, c *Client, viewID string) {
 // the trigger, because the event can arrive before the trip call returns; the
 // wait is bounded by a 15s timeout. trip is the trigger-tripping side effect
 // (kept as a callback so the listen-before-trip ordering lives in one place).
-func awaitOpenedView(ctx context.Context, c *Client, conn rtmConn, trip func() error) (map[string]any, error) {
+func awaitOpenedView(ctx context.Context, conn rtmConn, debugFrame func(map[string]any), trip func() error) (map[string]any, error) {
 	viewCh := make(chan map[string]any, 1)
 	listenCtx, cancelListen := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelListen()
@@ -175,10 +165,7 @@ func awaitOpenedView(ctx context.Context, c *Client, conn rtmConn, trip func() e
 				close(viewCh)
 				return
 			}
-			if msg == nil {
-				continue
-			}
-			c.debugJSON("RTM frame", msg)
+			debugFrame(msg)
 			if t := getStr(msg, "type"); t == "view_opened" || t == "view_push" {
 				viewCh <- msg
 				return

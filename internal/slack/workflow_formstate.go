@@ -15,21 +15,25 @@ import (
 
 // ValidateWorkflowFields checks user-supplied Title=value pairs against the
 // schema (case-insensitive on titles) and returns the problems found.
+// schemaFieldByTitle is the one title-matching rule, so validation and
+// submission cannot disagree about which titles match.
 func ValidateWorkflowFields(fields map[string]string, schema WorkflowSchema) []string {
 	var errs []string
 	titles := make([]string, 0, len(schema.Fields))
-	known := map[string]bool{}
 	for _, f := range schema.Fields {
 		titles = append(titles, f.Title)
-		known[strings.ToLower(f.Title)] = true
 	}
+	supplied := map[string]bool{}
 	for title := range fields {
-		if !known[strings.ToLower(title)] {
+		field := schemaFieldByTitle(schema, title)
+		if field == nil {
 			errs = append(errs, fmt.Sprintf("unknown field %q. Available: %s", title, strings.Join(titles, ", ")))
+			continue
 		}
+		supplied[field.Name] = true
 	}
 	for _, f := range schema.Fields {
-		if f.Required && !hasField(fields, f.Title) {
+		if f.Required && !supplied[f.Name] {
 			errs = append(errs, fmt.Sprintf("required field %q is missing", f.Title))
 		}
 	}
@@ -49,7 +53,11 @@ func buildFormState(view map[string]any, schema WorkflowSchema, fields map[strin
 	for title, value := range fields {
 		field := schemaFieldByTitle(schema, title)
 		if field == nil {
-			return nil, nil, missingFormFieldError(title)
+			// Not a loading problem — retrying re-trips the workflow and can
+			// never succeed, so this routes to the agent, not to retry.
+			return nil, nil, agenterrors.Newf(agenterrors.FixableByAgent,
+				"field %q is not in the workflow's schema", title).
+				WithHint("'workflow get' lists the field titles; " + abandonedRunHint)
 		}
 		block, ok := byAction[field.Name]
 		if !ok {
@@ -89,6 +97,11 @@ func indexFormBlocks(view map[string]any, schema WorkflowSchema) (map[string]for
 	}
 	return byAction, titlesByBlock
 }
+
+// abandonedRunHint states the contract owned by SubmitWorkflowForm's
+// success-gated abandonView defer: any error after the trigger trips closes
+// the opened form, cancelling that run.
+const abandonedRunHint = "this run was abandoned without submitting"
 
 func missingFormFieldError(title string) error {
 	return agenterrors.Newf(agenterrors.FixableByRetry,
@@ -144,20 +157,20 @@ func formStateEntry(element map[string]any, title, value string) (map[string]any
 		if _, err := time.Parse("2006-01-02", value); err != nil {
 			return nil, agenterrors.Newf(agenterrors.FixableByAgent,
 				"field %q expects a date, got %q", title, value).
-				WithHint("use YYYY-MM-DD and rerun — this run was abandoned without submitting")
+				WithHint("use YYYY-MM-DD and rerun — " + abandonedRunHint)
 		}
 		return map[string]any{"type": elemType, "selected_date": value}, nil
 	case "timepicker":
 		if _, err := time.Parse("15:04", value); err != nil {
 			return nil, agenterrors.Newf(agenterrors.FixableByAgent,
 				"field %q expects a time, got %q", title, value).
-				WithHint("use HH:MM (24h) and rerun — this run was abandoned without submitting")
+				WithHint("use HH:MM (24h) and rerun — " + abandonedRunHint)
 		}
 		return map[string]any{"type": elemType, "selected_time": value}, nil
 	default:
 		return nil, agenterrors.Newf(agenterrors.FixableByHuman,
 			"field %q is a %s input, which agent-slack cannot submit", title, elemType).
-			WithHint("this run was abandoned without submitting; use a Slack client for this workflow's form")
+			WithHint(abandonedRunHint + "; use a Slack client for this workflow's form")
 	}
 }
 
@@ -167,7 +180,7 @@ func richTextValue(value string) map[string]any {
 	return map[string]any{
 		"type": "rich_text",
 		"elements": []any{map[string]any{
-			"type": "rich_text_section",
+			"type":     "rich_text_section",
 			"elements": []any{map[string]any{"type": "text", "text": value}},
 		}},
 	}
@@ -192,17 +205,5 @@ func matchElementOption(element map[string]any, title, value string) (map[string
 	}
 	return nil, agenterrors.Newf(agenterrors.FixableByAgent,
 		"field %q has no option matching %q. Available: %s", title, value, strings.Join(labels, ", ")).
-		WithHint("match an option by its label or value and rerun — this run was abandoned without submitting")
-}
-
-func hasField(fields map[string]string, title string) bool {
-	if _, ok := fields[title]; ok {
-		return true
-	}
-	for k := range fields {
-		if strings.EqualFold(k, title) {
-			return true
-		}
-	}
-	return false
+		WithHint("match an option by its label or value and rerun — " + abandonedRunHint)
 }

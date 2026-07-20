@@ -268,9 +268,8 @@ func (errRTM) ReadJSON(ctx context.Context) (map[string]any, error) {
 func (errRTM) Close() {}
 
 func TestAwaitOpenedViewReadError(t *testing.T) {
-	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-1", XOXD: "xoxd"})
 	tripped := false
-	_, err := awaitOpenedView(context.Background(), c, errRTM{}, func() error {
+	_, err := awaitOpenedView(context.Background(), errRTM{}, func(map[string]any) {}, func() error {
 		tripped = true
 		return nil
 	})
