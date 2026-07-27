@@ -480,38 +480,40 @@ func TestMessageSendUpgradesExternalURLToLinkChip(t *testing.T) {
 	}
 }
 
-// A nested list must reach the wire with indent (sub-list depth) and offset
-// (resumed numbering) set. Slack has no nested-list container, so without these
-// two fields the sub-bullets land flush left and every bullet run restarts the
-// numbering of the ordered list it interrupts.
-func TestMessageSendNestedListCarriesIndentAndOffset(t *testing.T) {
+// wireListRun is one rich_text_list block as it appears in the posted payload.
+type wireListRun struct {
+	Style  string `json:"style"`
+	Indent int    `json:"indent"`
+	Offset int    `json:"offset"`
+}
+
+// nestedListSource exercises every field the nesting fix added: a sub-list of a
+// different style (indent) interrupting a numbered list (offset), twice.
+const nestedListSource = "1. One\n    - a\n    - b\n2. Two\n    - c\n3. Three\n4. Four"
+
+// assertNestedListOnWire sends src and checks the rich_text_list blocks the
+// server actually received. Slack has no nested-list container, so without
+// indent and offset the sub-bullets land flush left and every bullet run
+// restarts the numbering of the ordered list it interrupts.
+func assertNestedListOnWire(t *testing.T, args ...string) {
+	t.Helper()
 	f := newCLIFixture(t)
 	f.resolvableChannel("C123")
 	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.000001", "channel": "C123"})
 
-	src := "1. One\n    - a\n    - b\n2. Two\n    - c\n3. Three\n4. Four"
-	if _, _, err := f.run(t, "message", "send", "#general", src); err != nil {
+	if _, _, err := f.run(t, append([]string{"message", "send", "#general", nestedListSource}, args...)...); err != nil {
 		t.Fatal(err)
 	}
 
 	var blocks []struct {
-		Elements []struct {
-			Type   string `json:"type"`
-			Style  string `json:"style"`
-			Indent int    `json:"indent"`
-			Offset int    `json:"offset"`
-		} `json:"elements"`
+		Elements []wireListRun `json:"elements"`
 	}
 	raw := f.server.CallsFor("chat.postMessage")[0].Params.Get("blocks")
 	if err := json.Unmarshal([]byte(raw), &blocks); err != nil {
 		t.Fatalf("unmarshal blocks %q: %v", raw, err)
 	}
 
-	want := []struct {
-		style  string
-		indent int
-		offset int
-	}{
+	want := []wireListRun{
 		{"ordered", 0, 0},
 		{"bullet", 1, 0},
 		{"ordered", 0, 1},
@@ -523,9 +525,18 @@ func TestMessageSendNestedListCarriesIndentAndOffset(t *testing.T) {
 		t.Fatalf("got %d list runs, want %d: %s", len(got), len(want), raw)
 	}
 	for i, w := range want {
-		if got[i].Style != w.style || got[i].Indent != w.indent || got[i].Offset != w.offset {
-			t.Errorf("run %d = {%s indent:%d offset:%d}, want {%s indent:%d offset:%d}",
-				i, got[i].Style, got[i].Indent, got[i].Offset, w.style, w.indent, w.offset)
+		if got[i] != w {
+			t.Errorf("run %d = %+v, want %+v", i, got[i], w)
 		}
 	}
+}
+
+func TestMessageSendNestedListCarriesIndentAndOffset(t *testing.T) {
+	assertNestedListOnWire(t)
+}
+
+// List structure is dialect-independent: --slack-markdown changes how inline
+// emphasis is read, not how lists nest.
+func TestMessageSendNestedListSlackMarkdown(t *testing.T) {
+	assertNestedListOnWire(t, "--slack-markdown")
 }

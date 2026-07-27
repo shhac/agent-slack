@@ -255,10 +255,14 @@ opts into Slack mrkdwn, independently per direction.**
   `offset`, so a sub-list doesn't restart the numbering above it; returning to a
   shallower depth discards the deeper counts, so the next sub-list starts at 1.
   A blank line between items is a loose-list separator, not a list terminator —
-  only a non-list, non-blank line ends the list and resets numbering. The
-  inbound renderer honours `indent`/`offset` symmetrically, and consecutive list
-  blocks join with a single newline (a blank line would split one logical list
-  back into several), so send → read-back reproduces the source text.
+  only a non-list, non-blank line ends the list and resets numbering. Depth is
+  capped (`maxListIndent`) when resolved rather than when emitted, so anything
+  past the cap collapses into one run; capping at emit time instead would leave
+  sibling runs sharing an indent, which reads as un-nested. The inbound renderer
+  honours `indent`/`offset` symmetrically, keeps empty items in place (dropping
+  one silently renumbers everything below it), and joins consecutive list blocks
+  with a single newline (a blank line would split one logical list back into
+  several), so send → read-back reproduces the source text.
 - **`--slack-markdown`** is a per-command flag (each invocation is one direction,
   so per-command flags give independent in/out control). Outbound: interpret text
   as Slack mrkdwn (current single-delimiter scanner). Inbound: return the native

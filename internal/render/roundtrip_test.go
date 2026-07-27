@@ -149,3 +149,37 @@ func TestBlocksToMrkdwnHonoursIndentAndOffset(t *testing.T) {
 		t.Errorf("blocks → mrkdwn = %q, want %q", got, want)
 	}
 }
+
+// An empty list item keeps its position on read. Dropping it used to shift
+// every ordered item below it up by one — a silent renumbering, visible only
+// after the message had already been sent.
+func TestRoundTripEmptyOrderedItemKeepsNumbering(t *testing.T) {
+	blocks := TextToRichTextBlocks("1. One\n2. \n3. Three", RichTextOptions{})
+	got := MrkdwnToMarkdown(richTextBlockToMrkdwn(blocksAsJSON(t, blocks)), false)
+
+	if want := "1. One\n2.\n3. Three"; got != want {
+		t.Errorf("empty item renumbered the list:\n got %q\nwant %q", got, want)
+	}
+}
+
+// Nesting past the indent cap must not come back as flat siblings.
+func TestRoundTripBeyondIndentCapStaysNested(t *testing.T) {
+	var src strings.Builder
+	for depth := range maxListIndent + 2 {
+		src.WriteString(strings.Repeat("  ", depth) + "- item\n")
+	}
+	blocks := TextToRichTextBlocks(src.String(), RichTextOptions{})
+	got := MrkdwnToMarkdown(richTextBlockToMrkdwn(blocksAsJSON(t, blocks)), false)
+
+	lines := strings.Split(got, "\n")
+	if len(lines) != maxListIndent+2 {
+		t.Fatalf("got %d lines, want %d", len(lines), maxListIndent+2)
+	}
+	// Every level up to the cap keeps a distinct indent; the rest share the deepest.
+	for i, line := range lines {
+		want := strings.Repeat(listIndentUnit, min(i, maxListIndent)) + "- item"
+		if line != want {
+			t.Errorf("line %d = %q, want %q", i, line, want)
+		}
+	}
+}

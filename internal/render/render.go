@@ -56,9 +56,9 @@ func str(v any) string {
 	return s
 }
 
-// intOf reads a decoded-JSON number as an int. Go-built fixtures use int
+// asInt reads a decoded-JSON number as an int. Go-built fixtures use int
 // directly, so both spellings are accepted.
-func intOf(v any) int {
+func asInt(v any) int {
 	switch x := v.(type) {
 	case float64:
 		return int(x)

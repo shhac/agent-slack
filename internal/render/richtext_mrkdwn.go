@@ -99,20 +99,19 @@ func richTextElementToMrkdwn(elAny any) string {
 		style := str(el["style"])
 		// indent is the sub-list depth and offset the number the run resumes
 		// from; dropping either flattens a nested list and restarts numbering.
-		prefix := strings.Repeat(listIndentUnit, intOf(el["indent"]))
-		num := intOf(el["offset"])
+		prefix := strings.Repeat(listIndentUnit, asInt(el["indent"]))
+		num := asInt(el["offset"])
 		var items []string
 		for _, item := range asSlice(el["elements"]) {
-			txt := strings.TrimSpace(richTextElementToMrkdwn(item))
-			if txt == "" {
-				continue
-			}
 			num++
 			marker := "- "
 			if style == "ordered" {
 				marker = strconv.Itoa(num) + ". "
 			}
-			items = append(items, prefix+marker+txt)
+			// An empty item still occupies its slot. Skipping it would renumber
+			// every ordered item below it — silently, and only on read.
+			line := prefix + marker + strings.TrimSpace(richTextElementToMrkdwn(item))
+			items = append(items, strings.TrimRight(line, " "))
 		}
 		return strings.Join(items, "\n")
 
