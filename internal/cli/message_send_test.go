@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -476,5 +477,55 @@ func TestMessageSendUpgradesExternalURLToLinkChip(t *testing.T) {
 	blocks := f.server.CallsFor("chat.postMessage")[0].Params.Get("blocks")
 	if !strings.Contains(blocks, `"truncated":true`) || !strings.Contains(blocks, `"text":"example.com/repo"`) {
 		t.Fatalf("an unlabeled web URL should send a link chip; blocks=%s", blocks)
+	}
+}
+
+// A nested list must reach the wire with indent (sub-list depth) and offset
+// (resumed numbering) set. Slack has no nested-list container, so without these
+// two fields the sub-bullets land flush left and every bullet run restarts the
+// numbering of the ordered list it interrupts.
+func TestMessageSendNestedListCarriesIndentAndOffset(t *testing.T) {
+	f := newCLIFixture(t)
+	f.resolvableChannel("C123")
+	f.server.HandleBody("chat.postMessage", map[string]any{"ok": true, "ts": "1.000001", "channel": "C123"})
+
+	src := "1. One\n    - a\n    - b\n2. Two\n    - c\n3. Three\n4. Four"
+	if _, _, err := f.run(t, "message", "send", "#general", src); err != nil {
+		t.Fatal(err)
+	}
+
+	var blocks []struct {
+		Elements []struct {
+			Type   string `json:"type"`
+			Style  string `json:"style"`
+			Indent int    `json:"indent"`
+			Offset int    `json:"offset"`
+		} `json:"elements"`
+	}
+	raw := f.server.CallsFor("chat.postMessage")[0].Params.Get("blocks")
+	if err := json.Unmarshal([]byte(raw), &blocks); err != nil {
+		t.Fatalf("unmarshal blocks %q: %v", raw, err)
+	}
+
+	want := []struct {
+		style  string
+		indent int
+		offset int
+	}{
+		{"ordered", 0, 0},
+		{"bullet", 1, 0},
+		{"ordered", 0, 1},
+		{"bullet", 1, 0},
+		{"ordered", 0, 2},
+	}
+	got := blocks[0].Elements
+	if len(got) != len(want) {
+		t.Fatalf("got %d list runs, want %d: %s", len(got), len(want), raw)
+	}
+	for i, w := range want {
+		if got[i].Style != w.style || got[i].Indent != w.indent || got[i].Offset != w.offset {
+			t.Errorf("run %d = {%s indent:%d offset:%d}, want {%s indent:%d offset:%d}",
+				i, got[i].Style, got[i].Indent, got[i].Offset, w.style, w.indent, w.offset)
+		}
 	}
 }

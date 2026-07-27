@@ -164,6 +164,8 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        that thread). Text is standard Markdown: **bold**, *italic*/_italic_,
        ~~strike~~, __underline__ (extension), inline + fenced code, [label](url),
        - bullets, 1. numbers, > quotes; backslash escapes a literal marker.
+       Indent a list item to nest it (any depth; a sub-list does not restart
+       the numbering of the ordered list it interrupts).
        For links use [label](https://…) when it has a natural name; an unlabeled
        link ([url](url) or <url>) renders as Slack's inline link chip (the
        scheme-stripped pill the composer makes from a pasted URL). A same-workspace

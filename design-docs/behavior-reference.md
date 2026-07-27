@@ -53,6 +53,12 @@ ever sends both.
 
 - Escape `& < >`; promote `@U123` → `<@U123>` mentions.
 - Detect bullet (`• - *`) and numbered (`1.`) lists → `rich_text_list` blocks.
+  Slack has **no nested-list container**: a sub-list is a sibling block carrying
+  `indent` (depth), and `offset` restarts an ordered block's count at `offset+1`.
+  So a numbered list interrupted by a sub-list is three sibling blocks, and only
+  `offset` keeps 1/2/3 from becoming 1/1/1. Both fields are stored verbatim
+  (verified against live Slack), so the conversion is the only thing that has to
+  track depth and carry the running count across blocks.
 - Plain markdown → `rich_text` structure (preserve mentions, emoji, channel
   refs, inline bold/italic/strike/code).
 - Upgrade unlabeled links to the chips Slack's composer makes: a same-workspace

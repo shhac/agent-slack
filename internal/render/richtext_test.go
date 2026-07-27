@@ -402,3 +402,89 @@ func TestEmphasisStylesTokensInBothDialects(t *testing.T) {
 		})
 	}
 }
+
+// listShape is one expected rich_text_list run.
+type listShape struct {
+	style  string
+	indent int
+	offset int
+	items  int
+}
+
+func assertListShapes(t *testing.T, src string, want []listShape) {
+	t.Helper()
+	lists := listElements(t, TextToRichTextBlocks(src, RichTextOptions{}))
+	if len(lists) != len(want) {
+		t.Fatalf("got %d list runs, want %d", len(lists), len(want))
+	}
+	for i, w := range want {
+		got := lists[i]
+		if got.Style != w.style || got.Indent != w.indent || got.Offset != w.offset || len(got.Elements) != w.items {
+			t.Errorf("run %d = {style:%s indent:%d offset:%d items:%d}, want {style:%s indent:%d offset:%d items:%d}",
+				i, got.Style, got.Indent, got.Offset, len(got.Elements), w.style, w.indent, w.offset, w.items)
+		}
+	}
+}
+
+// A sub-list of a DIFFERENT style must still nest, and must not restart the
+// numbering of the ordered list it interrupts. Slack has no nested-list
+// container, so this is entirely carried by indent + offset.
+func TestTextToRichTextBlocksNestedMixedStyles(t *testing.T) {
+	assertListShapes(t, "1. One\n    - a\n    - b\n2. Two\n    - c\n3. Three\n4. Four", []listShape{
+		{"ordered", 0, 0, 1},
+		{"bullet", 1, 0, 2},
+		{"ordered", 0, 1, 1},
+		{"bullet", 1, 0, 1},
+		{"ordered", 0, 2, 2},
+	})
+}
+
+func TestTextToRichTextBlocksNestsBeyondOneLevel(t *testing.T) {
+	assertListShapes(t, "- a\n  - b\n    - c\n      - d", []listShape{
+		{"bullet", 0, 0, 1},
+		{"bullet", 1, 0, 1},
+		{"bullet", 2, 0, 1},
+		{"bullet", 3, 0, 1},
+	})
+}
+
+// Tab-indented sources nest like space-indented ones.
+func TestTextToRichTextBlocksTabIndent(t *testing.T) {
+	assertListShapes(t, "1. One\n\t- a\n2. Two", []listShape{
+		{"ordered", 0, 0, 1},
+		{"bullet", 1, 0, 1},
+		{"ordered", 0, 1, 1},
+	})
+}
+
+// A second sub-list under a later parent restarts at 1 rather than resuming the
+// first sub-list's count — coming back up closes the deeper level.
+func TestTextToRichTextBlocksNestedOrderedRestartsPerParent(t *testing.T) {
+	assertListShapes(t, "1. One\n    1. a\n    2. b\n2. Two\n    1. c", []listShape{
+		{"ordered", 0, 0, 1},
+		{"ordered", 1, 0, 2},
+		{"ordered", 0, 1, 1},
+		{"ordered", 1, 0, 1},
+	})
+}
+
+// A blank line between items makes one loose list, not two lists that each
+// restart at 1.
+func TestTextToRichTextBlocksLooseListKeepsNumbering(t *testing.T) {
+	assertListShapes(t, "1. One\n\n2. Two\n\n3. Three", []listShape{{"ordered", 0, 0, 3}})
+}
+
+// A non-list line does end the list, so the next list starts fresh.
+func TestTextToRichTextBlocksParagraphResetsNumbering(t *testing.T) {
+	assertListShapes(t, "1. One\n2. Two\n\nAside\n\n1. Fresh", []listShape{
+		{"ordered", 0, 0, 2},
+		{"ordered", 0, 0, 1},
+	})
+}
+
+// CommonMark honours the first number as the list's start; later numbers are
+// positional. "5." therefore means offset 4, and lazy "1. 1. 1." still counts up.
+func TestTextToRichTextBlocksHonoursFirstNumber(t *testing.T) {
+	assertListShapes(t, "5. Five\n6. Six", []listShape{{"ordered", 0, 4, 2}})
+	assertListShapes(t, "1. One\n1. Two\n1. Three", []listShape{{"ordered", 0, 0, 3}})
+}

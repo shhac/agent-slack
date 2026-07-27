@@ -4,15 +4,25 @@ package render
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
 var (
 	bulletLineRe  = regexp.MustCompile(`^(\s*)[•◦▪▫▸‣●○◆◇\-*]\s+(.*)$`)
-	orderedLineRe = regexp.MustCompile(`^(\s*)\d+[.)]\s+(.*)$`)
+	orderedLineRe = regexp.MustCompile(`^(\s*)(\d+)[.)]\s+(.*)$`)
 	codeFenceRe   = regexp.MustCompile("^```")
 	blockquoteRe  = regexp.MustCompile(`^> (.*)$`)
 )
+
+// tabStop is the column width a tab advances to when measuring list indent, so
+// tab- and space-indented sources nest identically.
+const tabStop = 4
+
+// maxListIndent bounds the emitted indent level. Slack documents no ceiling and
+// stores what it is given, but real messages never nest this far; the cap keeps
+// pathological input from putting an unbounded integer on the wire.
+const maxListIndent = 8
 
 // RichTextOptions controls TextToRichTextBlocks.
 type RichTextOptions struct {
@@ -92,12 +102,9 @@ func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
 		case blockquoteRe.MatchString(line):
 			idx = collectBlockquote(lines, idx, inline, &elements)
 			hasFormatting = true
-		case bulletLineRe.MatchString(line):
+		case isListLine(line):
 			hasLists = true
-			idx = collectList(lines, idx, "bullet", bulletLineRe, inline, &elements)
-		case orderedLineRe.MatchString(line):
-			hasLists = true
-			idx = collectList(lines, idx, "ordered", orderedLineRe, inline, &elements)
+			idx = collectList(lines, idx, inline, &elements)
 		default:
 			var formatted bool
 			idx, formatted = collectPlainText(lines, idx, inline, &elements)
@@ -185,8 +192,7 @@ func collectPlainText(lines []string, startIdx int, inline func(string) []Inline
 	var textLines []string
 	for idx < len(lines) {
 		l := lines[idx]
-		if bulletLineRe.MatchString(l) || orderedLineRe.MatchString(l) ||
-			codeFenceRe.MatchString(l) || blockquoteRe.MatchString(l) {
+		if isListLine(l) || codeFenceRe.MatchString(l) || blockquoteRe.MatchString(l) {
 			break
 		}
 		textLines = append(textLines, l)
@@ -207,51 +213,151 @@ func collectPlainText(lines []string, startIdx int, inline func(string) []Inline
 	return idx, hasRichInlineFormatting(parsed)
 }
 
-func collectList(lines []string, startIdx int, style string, pattern *regexp.Regexp, inline func(string) []InlineElement, elements *[]RichTextElement) int {
-	idx := startIdx
+// listLine is one parsed source list item.
+type listLine struct {
+	width int    // leading indent in columns, tabs expanded
+	style string // "bullet" | "ordered"
+	start int    // the literal number written on an ordered line
+	text  string
+}
 
-	// Base indent comes from the first item; anything ≥ 2 spaces deeper is a
-	// sub-item (Slack rich_text_list supports one indent level per list run).
-	firstMatch := pattern.FindStringSubmatch(lines[startIdx])
-	baseIndent := len(firstMatch[1])
+// parseListLine classifies a line as a list item. Bullets are tried first so a
+// "- " marker wins over any digits that follow it.
+func parseListLine(line string) (listLine, bool) {
+	if m := bulletLineRe.FindStringSubmatch(line); m != nil {
+		return listLine{width: indentWidth(m[1]), style: "bullet", start: 1, text: m[2]}, true
+	}
+	if m := orderedLineRe.FindStringSubmatch(line); m != nil {
+		start, err := strconv.Atoi(m[2])
+		if err != nil {
+			start = 1 // a number too long for an int; treat it as an ordinary list
+		}
+		return listLine{width: indentWidth(m[1]), style: "ordered", start: start, text: m[3]}, true
+	}
+	return listLine{}, false
+}
 
-	currentIndent := -1
-	var currentItems []any
+func isListLine(line string) bool {
+	_, ok := parseListLine(line)
+	return ok
+}
 
-	flushItems := func() {
-		if len(currentItems) == 0 {
+// indentWidth measures leading whitespace in columns.
+func indentWidth(s string) int {
+	width := 0
+	for _, r := range s {
+		if r == '\t' {
+			width += tabStop - width%tabStop
+			continue
+		}
+		width++
+	}
+	return width
+}
+
+// resumesList reports whether a list continues after the blank lines at idx. A
+// blank line between items makes one loose list, not two lists, so numbering
+// has to survive it.
+func resumesList(lines []string, idx int) bool {
+	for idx < len(lines) && strings.TrimSpace(lines[idx]) == "" {
+		idx++
+	}
+	return idx < len(lines) && isListLine(lines[idx])
+}
+
+// listRun is a maximal stretch of items sharing one depth and style — the unit
+// that becomes a single rich_text_list element.
+type listRun struct {
+	depth int
+	style string
+	start int // first item's literal number, seeding a fresh ordered list
+	items []any
+}
+
+// depthLadder maps indent widths to nesting depths. Widths are only ever
+// compared to the ones already opened, so 2-space, 4-space and tab conventions
+// all nest, and an outdent to a width nobody opened lands on the nearest
+// enclosing level rather than inventing one.
+type depthLadder []int
+
+func (l *depthLadder) depthFor(width int) int {
+	w := *l
+	if len(w) == 0 || width > w[len(w)-1] {
+		*l = append(w, width)
+		return len(w)
+	}
+	for len(w) > 1 && width < w[len(w)-1] {
+		w = w[:len(w)-1]
+	}
+	*l = w
+	return len(w) - 1
+}
+
+// collectList consumes a run of consecutive list lines — bullets and numbers
+// mixed, at any nesting depth — and appends one rich_text_list element per
+// (depth, style) run. Slack has no nested-list container: depth rides on
+// `indent`, and a numbered run interrupted by a sub-list resumes via `offset`.
+// Both therefore have to be tracked ACROSS run boundaries, which is why one
+// call handles both styles instead of one call per contiguous same-style run.
+func collectList(lines []string, startIdx int, inline func(string) []InlineElement, elements *[]RichTextElement) int {
+	var ladder depthLadder
+	nextNumber := map[int]int{} // depth → offset the next ordered run resumes at
+	var run *listRun
+
+	flush := func() {
+		if run == nil {
 			return
 		}
-		el := RichTextElement{Type: "rich_text_list", Style: style, Elements: currentItems}
-		if currentIndent > 0 {
-			el.Indent = currentIndent
+		el := RichTextElement{
+			Type:     "rich_text_list",
+			Style:    run.style,
+			Indent:   min(run.depth, maxListIndent),
+			Elements: run.items,
+		}
+		if run.style == "ordered" {
+			offset, resumed := nextNumber[run.depth]
+			if !resumed {
+				offset = run.start - 1
+			}
+			el.Offset = offset
+			nextNumber[run.depth] = offset + len(run.items)
 		}
 		*elements = append(*elements, el)
-		currentItems = nil
+		run = nil
 	}
 
+	idx := startIdx
 	for idx < len(lines) {
-		m := pattern.FindStringSubmatch(lines[idx])
-		if m == nil {
+		item, ok := parseListLine(lines[idx])
+		if !ok {
+			if strings.TrimSpace(lines[idx]) == "" && resumesList(lines, idx+1) {
+				idx++
+				continue
+			}
 			break
 		}
 
-		indent := 0
-		if len(m[1]) >= baseIndent+2 {
-			indent = 1
+		depth := ladder.depthFor(item.width)
+		if run != nil && (run.depth != depth || run.style != item.style) {
+			flush()
 		}
-
-		if currentIndent != -1 && indent != currentIndent {
-			flushItems()
+		// Returning to a shallower depth closes every list below it, so the next
+		// sub-list starts at 1 again instead of resuming its predecessor.
+		for d := range nextNumber {
+			if d > depth {
+				delete(nextNumber, d)
+			}
 		}
-		currentIndent = indent
-		currentItems = append(currentItems, RichTextElement{
+		if run == nil {
+			run = &listRun{depth: depth, style: item.style, start: item.start}
+		}
+		run.items = append(run.items, RichTextElement{
 			Type:     "rich_text_section",
-			Elements: inlineToAny(inline(m[2])),
+			Elements: inlineToAny(inline(item.text)),
 		})
 		idx++
 	}
 
-	flushItems()
+	flush()
 	return idx
 }

@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// listIndentUnit is one nesting level when serializing a list back to Markdown.
+// Four columns clears the widest ordered marker we emit, so a sub-list stays
+// attached to its parent item instead of closing the list.
+const listIndentUnit = "    "
+
 // richTextBlockToMrkdwn flattens a rich_text block (decoded JSON) to mrkdwn.
 // The output still contains Slack tokens (<url|label>, <@U…>, :emoji:) — the
 // caller converts the combined message to Markdown in one final pass.
@@ -13,13 +18,29 @@ func richTextBlockToMrkdwn(block any) string {
 	if !ok {
 		return ""
 	}
-	var out []string
+	var out strings.Builder
+	prevList := false
 	for _, el := range asSlice(b["elements"]) {
-		if txt := richTextElementToMrkdwn(el); strings.TrimSpace(txt) != "" {
-			out = append(out, txt)
+		txt := richTextElementToMrkdwn(el)
+		if strings.TrimSpace(txt) == "" {
+			continue
 		}
+		m, _ := asRecord(el)
+		isList := str(m["type"]) == "rich_text_list"
+		if out.Len() > 0 {
+			// Adjacent list runs are one logical list — a sub-list or a resumed
+			// numbering — so they stay on consecutive lines. A blank line
+			// between them would split them back into separate lists.
+			separator := "\n\n"
+			if prevList && isList {
+				separator = "\n"
+			}
+			out.WriteString(separator)
+		}
+		out.WriteString(txt)
+		prevList = isList
 	}
-	return strings.Join(out, "\n\n")
+	return out.String()
 }
 
 // styledTokenElements maps a single-token inline element type to the field
@@ -76,19 +97,22 @@ func richTextElementToMrkdwn(elAny any) string {
 
 	case "rich_text_list":
 		style := str(el["style"])
+		// indent is the sub-list depth and offset the number the run resumes
+		// from; dropping either flattens a nested list and restarts numbering.
+		prefix := strings.Repeat(listIndentUnit, intOf(el["indent"]))
+		num := intOf(el["offset"])
 		var items []string
-		num := 0
 		for _, item := range asSlice(el["elements"]) {
 			txt := strings.TrimSpace(richTextElementToMrkdwn(item))
 			if txt == "" {
 				continue
 			}
 			num++
+			marker := "- "
 			if style == "ordered" {
-				items = append(items, strconv.Itoa(num)+". "+txt)
-			} else {
-				items = append(items, "- "+txt)
+				marker = strconv.Itoa(num) + ". "
 			}
+			items = append(items, prefix+marker+txt)
 		}
 		return strings.Join(items, "\n")
 

@@ -56,6 +56,18 @@ func str(v any) string {
 	return s
 }
 
+// intOf reads a decoded-JSON number as an int. Go-built fixtures use int
+// directly, so both spellings are accepted.
+func intOf(v any) int {
+	switch x := v.(type) {
+	case float64:
+		return int(x)
+	case int:
+		return x
+	}
+	return 0
+}
+
 // truthy mirrors JavaScript truthiness for decoded JSON values, because the
 // TS source gated forwarded-message handling on `Boolean(a.is_share)` and
 // Slack sometimes sends these flags as 0/1 instead of booleans.

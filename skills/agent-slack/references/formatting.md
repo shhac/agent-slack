@@ -17,12 +17,33 @@ so outbound and inbound are independent).
 | Inline code   | `` `code` ``            | contents are literal                    |
 | Code block    | ```` ```\ncode\n``` ````| language hint after ``` is dropped      |
 | Link          | `[label](https://x)`    | unlabeled `[url](url)` → inline link chip; bare URLs don't auto-link |
-| Bulleted list | `- item` / `* item`     | indent two spaces for one sub-level     |
-| Numbered list | `1. item` / `1) item`   |                                         |
+| Bulleted list | `- item` / `* item`     | indent to nest; any depth, spaces or tabs |
+| Numbered list | `1. item` / `1) item`   | first number sets the start; nesting doesn't restart it |
 | Blockquote    | `> quoted`              |                                         |
 | Escape        | `\*literal\*`           | backslash before `* _ ~ \` [ ] ( ) @ :` |
 
 Nesting works: `**bold with _italic_ and `code`**` styles each span correctly.
+
+### Lists
+
+Indent a list item to nest it, to any depth, mixing bullets and numbers freely:
+
+```
+1. First
+    - a sub-bullet
+    - another
+2. Second
+3. Third
+```
+
+That renders as `1, 2, 3` at the top level with the bullets indented beneath
+item 1. Slack has no nested-list container — depth travels on each list block's
+`indent`, and a numbered run interrupted by a sub-list resumes with `offset`, so
+a sub-list never restarts the numbering above it.
+
+Two- and four-space indents and tabs all work; what matters is that a nested
+item is indented further than its parent. The first number sets where an
+ordered list starts (`5.` begins at five), so lazy `1. 1. 1.` still counts up.
 
 ### Links
 

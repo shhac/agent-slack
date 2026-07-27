@@ -1,6 +1,7 @@
 package render
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -74,5 +75,77 @@ func TestRoundTripBlocksMrkdwnBlocks(t *testing.T) {
 func TestMrkdwnToMarkdownStyledLink(t *testing.T) {
 	if got, want := MrkdwnToMarkdown("_<https://e.com|x>_", false), "_[x](https://e.com)_"; got != want {
 		t.Errorf("MrkdwnToMarkdown = %q, want %q", got, want)
+	}
+}
+
+// blocksAsJSON marshals emitted blocks and decodes them the way an inbound
+// Slack payload arrives, so the inbound renderer is exercised across the real
+// JSON boundary (and the struct tags are pinned along with it).
+func blocksAsJSON(t *testing.T, blocks []RichTextBlock) any {
+	t.Helper()
+	raw, err := json.Marshal(blocks[0])
+	if err != nil {
+		t.Fatalf("marshal blocks: %v", err)
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal blocks: %v", err)
+	}
+	return decoded
+}
+
+// A nested list survives Markdown → rich_text → Markdown unchanged. This is the
+// loop that was broken in both directions: sending flattened the nesting and
+// restarted numbering, and reading back dropped indent/offset so even a
+// correctly nested message (hand-built via `api call`) came back flat.
+func TestRoundTripNestedListMarkdown(t *testing.T) {
+	src := "1. One\n    - a\n    - b\n2. Two\n    - c\n3. Three\n4. Four"
+
+	blocks := TextToRichTextBlocks(src, RichTextOptions{})
+	got := MrkdwnToMarkdown(richTextBlockToMrkdwn(blocksAsJSON(t, blocks)), false)
+
+	if got != src {
+		t.Errorf("round-trip changed the list:\n got %q\nwant %q", got, src)
+	}
+}
+
+// Deeper nesting and nested ordered lists round-trip too.
+func TestRoundTripDeepNestedListMarkdown(t *testing.T) {
+	src := "- top\n    - mid\n        - deep\n- back"
+
+	blocks := TextToRichTextBlocks(src, RichTextOptions{})
+	got := MrkdwnToMarkdown(richTextBlockToMrkdwn(blocksAsJSON(t, blocks)), false)
+
+	if got != src {
+		t.Errorf("round-trip changed the list:\n got %q\nwant %q", got, src)
+	}
+}
+
+// Reading a message somebody else authored with indent/offset must honour both
+// rather than flattening it — the gap that made `message list` show a correctly
+// nested message identically to a flattened one.
+func TestBlocksToMrkdwnHonoursIndentAndOffset(t *testing.T) {
+	list := func(style string, indent, offset int, texts ...string) map[string]any {
+		items := make([]any, len(texts))
+		for i, txt := range texts {
+			items[i] = map[string]any{"type": "rich_text_section", "elements": []any{
+				map[string]any{"type": "text", "text": txt},
+			}}
+		}
+		el := map[string]any{"type": "rich_text_list", "style": style, "indent": indent, "elements": items}
+		if offset != 0 {
+			el["offset"] = offset
+		}
+		return el
+	}
+	block := map[string]any{"type": "rich_text", "elements": []any{
+		list("ordered", 0, 0, "One"),
+		list("bullet", 1, 0, "a"),
+		list("ordered", 0, 1, "Two"),
+	}}
+
+	want := "1. One\n    - a\n2. Two"
+	if got := richTextBlockToMrkdwn(block); got != want {
+		t.Errorf("blocks → mrkdwn = %q, want %q", got, want)
 	}
 }

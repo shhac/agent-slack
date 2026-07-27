@@ -64,10 +64,13 @@ func linkChipEl(url, label string) InlineElement {
 // InlineElement values for sections/preformatted/quotes, and nested
 // RichTextElement sections for lists.
 type RichTextElement struct {
-	Type     string `json:"type"`
-	Style    string `json:"style,omitempty"` // rich_text_list: "bullet" | "ordered"
-	Indent   int    `json:"indent,omitempty"`
-	Elements []any  `json:"elements"`
+	Type   string `json:"type"`
+	Style  string `json:"style,omitempty"` // rich_text_list: "bullet" | "ordered"
+	Indent int    `json:"indent,omitempty"`
+	// Offset starts an ordered list at Offset+1 instead of 1, which is how a
+	// numbered list resumes after a nested sub-list interrupts it.
+	Offset   int   `json:"offset,omitempty"`
+	Elements []any `json:"elements"`
 }
 
 // RichTextBlock is a top-level rich_text block for chat.postMessage.

@@ -246,6 +246,19 @@ opts into Slack mrkdwn, independently per direction.**
   (`MrkdwnToMarkdown`): emphasis `*x*`→`**x**`, `~x~`→`~~x~~`, links/mentions/emoji
   already normalized; code/fence/angle spans are masked so their delimiters are
   preserved.
+- **Nested lists (decision): depth and numbering round-trip in both directions.**
+  A list is emitted as one `rich_text_list` block per (depth, style) run, so one
+  source list becomes several sibling blocks. Depth is resolved with a ladder of
+  the indent widths already opened — 2-space, 4-space and tab sources all nest,
+  and an outdent to a width nobody opened lands on the nearest enclosing level
+  rather than inventing one. Ordered runs carry a per-depth running count as
+  `offset`, so a sub-list doesn't restart the numbering above it; returning to a
+  shallower depth discards the deeper counts, so the next sub-list starts at 1.
+  A blank line between items is a loose-list separator, not a list terminator —
+  only a non-list, non-blank line ends the list and resets numbering. The
+  inbound renderer honours `indent`/`offset` symmetrically, and consecutive list
+  blocks join with a single newline (a blank line would split one logical list
+  back into several), so send → read-back reproduces the source text.
 - **`--slack-markdown`** is a per-command flag (each invocation is one direction,
   so per-command flags give independent in/out control). Outbound: interpret text
   as Slack mrkdwn (current single-delimiter scanner). Inbound: return the native
