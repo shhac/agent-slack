@@ -9,7 +9,7 @@ require (
 	github.com/shhac/lib-agent-browsercookies v0.2.0
 	github.com/shhac/lib-agent-cli v0.20.0
 	github.com/shhac/lib-agent-mcp v0.21.1
-	github.com/shhac/lib-agent-output v0.10.0
+	github.com/shhac/lib-agent-output v0.12.0
 	github.com/spf13/cobra v1.10.2
 	github.com/syndtr/goleveldb v1.0.0
 	golang.org/x/sys v0.46.0
