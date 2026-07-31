@@ -18,7 +18,7 @@ func (f emojiDoerFunc) Do(r *http.Request) (*http.Response, error) { return f(r)
 func TestResolveCustomEmojiURL(t *testing.T) {
 	byName := map[string]CustomEmoji{
 		"parrot":      {Name: "parrot", URL: "https://cdn/parrot.gif"},
-		"party":       {Name: "party", AliasFor: "parrot"},     // alias onto a custom image
+		"party":       {Name: "party", AliasFor: "parrot"},      // alias onto a custom image
 		"to_standard": {Name: "to_standard", AliasFor: "smile"}, // alias onto a non-custom name
 		"dangling":    {Name: "dangling", AliasFor: "ghost"},    // alias onto a missing name
 	}

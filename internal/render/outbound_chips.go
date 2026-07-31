@@ -16,7 +16,7 @@ var slackMessageURLRe = regexp.MustCompile(`https?://[A-Za-z0-9.-]+\.slack\.com/
 // a human's:
 //
 //   - a same-workspace message permalink becomes a message_mention chip (channel
-//     + ts), rather than a plain link plus a clunky below-card unfurl;
+//   - ts), rather than a plain link plus a clunky below-card unfurl;
 //   - any other unlabeled web URL ([url](url) or <url>) becomes a link chip — a
 //     link whose label is the scheme-stripped URL, the form pasting a bare URL
 //     into Slack yields.

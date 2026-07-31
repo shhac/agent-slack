@@ -80,11 +80,11 @@ func ReadCompletions(cacheDir, key, toComplete string, limit int, sources Comple
 // deduping by value and prefix-filtering against the typed input. It replaces a
 // trio of captured closures so each source is an independently testable method.
 type completionCollector struct {
-	cacheDir     string
-	key string
-	needle       string
-	seen         map[string]bool
-	all          []ranked
+	cacheDir string
+	key      string
+	needle   string
+	seen     map[string]bool
+	all      []ranked
 }
 
 type ranked struct {
@@ -94,10 +94,10 @@ type ranked struct {
 
 func newCompletionCollector(cacheDir, key, toComplete string) *completionCollector {
 	return &completionCollector{
-		cacheDir:     cacheDir,
-		key: key,
-		needle:       strings.ToLower(toComplete),
-		seen:         map[string]bool{},
+		cacheDir: cacheDir,
+		key:      key,
+		needle:   strings.ToLower(toComplete),
+		seen:     map[string]bool{},
 	}
 }
 

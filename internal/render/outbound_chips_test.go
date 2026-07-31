@@ -124,7 +124,7 @@ func TestMessageMentionCrossWorkspaceSkipped(t *testing.T) {
 func TestMessageMentionNonMessageURLSkipped(t *testing.T) {
 	for _, u := range []string{
 		"https://acme.slack.com/archives/C0EXAMPLE1", // channel, no message
-		"https://example.com/foo",                            // not Slack
+		"https://example.com/foo",                    // not Slack
 	} {
 		if len(mentions(upgrade(u, false, tWS))) != 0 {
 			t.Errorf("%q must not become a chip", u)
