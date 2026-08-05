@@ -378,3 +378,54 @@ func TestWatchPollBaselineStartsAtTheConversationTip(t *testing.T) {
 		t.Fatalf("poll should start at the tip, not replay history: %+v", got)
 	}
 }
+
+// A dead socket is not a cancellation. An agent that cannot tell the two apart
+// treats a lost stream as a deliberate stop and never resumes.
+func TestWatchReportsReconnectFailureDistinctlyFromCancellation(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	// The socket hangs up after hello, and the whole server goes away, so every
+	// redial fails — the reconnect-exhausted path.
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	server.HandleBody("conversations.history", mockslack.History())
+	c := browserClientFor(ts.URL)
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:          EventFilter{Channels: []string{mockslack.WSChannelID}},
+		BackfillChannel: mockslack.WSChannelID,
+		Duration:        3 * time.Second,
+		OnReconnect:     func(int) { ts.Close() }, // the gateway goes away mid-run
+	})
+	if result.StoppedBy != WatchStoppedReconnectFailed {
+		t.Errorf("stopped_by = %q, want %q — a lost socket must not read as a cancellation",
+			result.StoppedBy, WatchStoppedReconnectFailed)
+	}
+}
+
+// The deadline cases still report themselves correctly.
+func TestWatchReportsDurationAndCancellation(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History())
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:   EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Duration: 150 * time.Millisecond,
+	})
+	if result.StoppedBy != StoppedByDuration {
+		t.Errorf("stopped_by = %q, want %q", result.StoppedBy, StoppedByDuration)
+	}
+
+	// The caller giving up mid-run is a cancellation, not a duration expiry:
+	// the run has no duration of its own to expire.
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	cancelled, err := Watch(ctx, c, WatchOptions{Filter: EventFilter{Channels: []string{mockslack.WSChannelID}}},
+		func(Event) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancelled.StoppedBy != StoppedByCancel {
+		t.Errorf("stopped_by = %q, want %q", cancelled.StoppedBy, StoppedByCancel)
+	}
+}

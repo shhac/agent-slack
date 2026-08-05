@@ -17,13 +17,16 @@ import (
 	"github.com/shhac/agent-slack/internal/render"
 )
 
-// Watch stop reasons.
+// Watch stop reasons. StoppedByDuration/StoppedByCancel/StoppedByClosed are
+// shared with the capture loop (events.go) so one vocabulary describes every
+// way a socket run can end.
 const (
-	WatchStoppedDuration  = "duration"
 	WatchStoppedMaxEvents = "max-events"
 	WatchStoppedIdle      = "idle-timeout"
-	WatchStoppedCancel    = "cancelled"
-	WatchStoppedMatched   = "matched"
+	// WatchStoppedReconnectFailed means the socket dropped and could not be
+	// re-established. It is distinct from a cancellation: the caller did not
+	// stop the run, and events may have been missed.
+	WatchStoppedReconnectFailed = "reconnect-failed"
 )
 
 // WatchOptions configures one watch run.
@@ -108,26 +111,36 @@ type watchSession struct {
 	seen   map[string]bool
 	result WatchResult
 
-	stopped string
+	// framesSinceReconnect counts what the current socket has delivered, so a
+	// reconnect that immediately drops again is not mistaken for a healthy one.
+	framesSinceReconnect int
 	// reconnectURL is the pre-authorized URL Slack pushes; preferred over a
 	// fresh client.getWebSocketURL on reconnect.
 	reconnectURL string
 }
 
-// finish resolves the stop reason from whichever bound tripped.
+// finish fills in the stop reason for the deadline cases, which are the only
+// ones the run cannot name itself. Everything else records its reason where it
+// happens, so a reported reason is true by construction rather than inferred
+// after the fact — which is how a dead socket used to be reported as a
+// cancellation.
 func (s *watchSession) finish(outer, run context.Context) WatchResult {
-	switch {
-	case s.stopped != "":
-		s.result.StoppedBy = s.stopped
-	case outer.Err() != nil:
-		s.result.StoppedBy = WatchStoppedCancel
-	case run.Err() != nil && s.opts.Duration > 0:
-		s.result.StoppedBy = WatchStoppedDuration
-	default:
-		s.result.StoppedBy = WatchStoppedCancel
+	if s.result.StoppedBy == "" {
+		s.result.StoppedBy = deadlineStopReason(outer, run, s.opts.Duration > 0)
 	}
 	return s.result
 }
+
+// stop records why the run ended, keeping the first reason: the cause is the
+// bound that tripped, not whatever unwound afterwards.
+func (s *watchSession) stop(reason string) {
+	if s.result.StoppedBy == "" {
+		s.result.StoppedBy = reason
+	}
+}
+
+// stopped reports whether a bound has already ended the run.
+func (s *watchSession) stopped() bool { return s.result.StoppedBy != "" }
 
 // runSocket is the live path: attach, backfill, then read until a bound trips,
 // reconnecting transparently in between.
@@ -144,7 +157,7 @@ func (s *watchSession) runSocket(ctx context.Context) error {
 	}
 	// The answer may already have been in the backfill. Without this an await
 	// whose event cap is already met still sits out its whole timeout.
-	if s.stopped != "" {
+	if s.stopped() {
 		return nil
 	}
 
@@ -153,9 +166,13 @@ func (s *watchSession) runSocket(ctx context.Context) error {
 		if err != nil || done {
 			return err
 		}
-		// The frame channel closed: the socket dropped. Reconnect unless a
-		// bound already tripped or the caller gave up on us.
-		if ctx.Err() != nil || attempt >= maxReconnectAttempts {
+		// The frame channel closed: the socket dropped. Reconnect unless the
+		// caller gave up on us or we have run out of attempts.
+		if ctx.Err() != nil {
+			return nil
+		}
+		if attempt >= maxReconnectAttempts {
+			s.stop(WatchStoppedReconnectFailed)
 			return nil
 		}
 		attempt++
@@ -164,11 +181,23 @@ func (s *watchSession) runSocket(ctx context.Context) error {
 		}
 		next, gapErr := s.reconnect(ctx, attempt)
 		if gapErr != nil {
-			return nil // a failed reconnect ends the run cleanly; the cursor is still valid
+			// The cursor is still valid, so this is a clean stop — but it is a
+			// lost socket, not a cancellation, and the caller must be able to
+			// tell those apart to decide whether to resume.
+			s.stop(WatchStoppedReconnectFailed)
+			return nil
 		}
 		conn.Close()
 		conn = next
 		frames = s.readFrames(ctx, conn)
+		// A socket that recovered and delivered earns a fresh budget: the cap
+		// exists to stop a flapping connection, not to retire a long-lived
+		// stream that has dropped and recovered cleanly N times across its
+		// duration. A reconnect that goes straight back down does not reset.
+		if s.framesSinceReconnect > 0 {
+			attempt = 0
+		}
+		s.framesSinceReconnect = 0
 	}
 }
 
@@ -256,14 +285,19 @@ func (s *watchSession) consume(ctx context.Context, frames <-chan map[string]any
 		case <-ctx.Done():
 			return true, nil
 		case <-idle.C:
-			s.stopped = WatchStoppedIdle
+			s.stop(WatchStoppedIdle)
 			return true, nil
 		case frame, ok := <-frames:
 			if !ok {
 				return false, nil
 			}
-			if url := getStr(frame, "url"); getStr(frame, "type") == "reconnect_url" && url != "" {
-				s.reconnectURL = url
+			s.framesSinceReconnect++
+			if getStr(frame, "type") == "reconnect_url" {
+				// A pre-authorized URL to reconnect with, so a dropped socket
+				// costs no client.getWebSocketURL round trip.
+				if url := getStr(frame, "url"); url != "" {
+					s.reconnectURL = url
+				}
 				continue
 			}
 			event, isEvent := ClassifyFrame(frame)
@@ -321,7 +355,7 @@ func (s *watchSession) offer(event Event) (bool, error) {
 		return true, err
 	}
 	if s.opts.MaxEvents > 0 && s.result.Events >= s.opts.MaxEvents {
-		s.stopped = WatchStoppedMaxEvents
+		s.stop(WatchStoppedMaxEvents)
 		return true, nil
 	}
 	return false, nil
@@ -449,7 +483,7 @@ func (s *watchSession) runPoll(ctx context.Context) error {
 		if err := s.backfillChannel(ctx, s.opts.BackfillChannel, s.opts.BackfillThreadTS, cursor); err != nil {
 			return err
 		}
-		if s.stopped != "" {
+		if s.stopped() {
 			return nil
 		}
 		cursor = maxTS(cursor, s.result.Cursors[s.opts.BackfillChannel])

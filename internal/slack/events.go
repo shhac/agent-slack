@@ -216,19 +216,23 @@ func CaptureEvents(ctx context.Context, c *Client, opts CaptureOptions, emit fun
 	return summary, nil
 }
 
-// stopReason distinguishes the ways a read loop ends. A read error with both
-// contexts still live means the server hung up.
-func stopReason(outer, run context.Context, opts CaptureOptions) string {
-	switch {
-	case outer.Err() != nil:
-		return StoppedByCancel
-	case run.Err() != nil && opts.Duration > 0:
+// deadlineStopReason names the ways a bounded run ends when nothing else
+// recorded a reason: the caller cancelled, or the run's own duration expired.
+// Shared by the capture and watch loops so one vocabulary describes both.
+func deadlineStopReason(outer, run context.Context, hasDuration bool) string {
+	if outer.Err() == nil && run.Err() != nil && hasDuration {
 		return StoppedByDuration
-	case run.Err() != nil:
-		return StoppedByCancel
-	default:
+	}
+	return StoppedByCancel
+}
+
+// stopReason distinguishes the ways a capture read loop ends. A read error
+// with both contexts still live means the server hung up.
+func stopReason(outer, run context.Context, opts CaptureOptions) string {
+	if outer.Err() == nil && run.Err() == nil {
 		return StoppedByClosed
 	}
+	return deadlineStopReason(outer, run, opts.Duration > 0)
 }
 
 // tallyKey groups the summary by type, splitting message subtypes out —
