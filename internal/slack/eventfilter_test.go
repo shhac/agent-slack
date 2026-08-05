@@ -238,11 +238,22 @@ func TestMatchesImpliesInScope(t *testing.T) {
 		{Kind: EventMessage, ChannelID: "C1", TS: "1700000060.000600", Author: render.AuthorRef("", "B1")},
 		{Kind: EventMessageDeleted, ChannelID: "C1", TS: "1700000070.000700"},
 	}
+	matched := 0
 	for fi, f := range filters {
 		for ei, e := range events {
-			if f.Matches(e) && !f.InScope(e) {
+			if !f.Matches(e) {
+				continue
+			}
+			matched++
+			if !f.InScope(e) {
 				t.Errorf("filter %d matched event %d without it being in scope: %+v", fi, ei, e)
 			}
 		}
+	}
+	// Without a positive floor the matrix could go empty — every pair failing
+	// to match — and the invariant would still "hold".
+	if matched < len(filters) {
+		t.Fatalf("only %d of %d×%d pairs matched; the matrix is not exercising the filters",
+			matched, len(filters), len(events))
 	}
 }

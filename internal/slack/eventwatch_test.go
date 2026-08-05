@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -598,5 +599,201 @@ func TestWatchReconnectNoticeReportsWhetherItCaughtUp(t *testing.T) {
 		if ok {
 			t.Error("a workspace-wide reconnect cannot catch up, and must not claim it did")
 		}
+	}
+}
+
+// A socket that connects and immediately dies is flapping, and the budget must
+// retire the run. Every socket is greeted with a hello the instant it opens,
+// so counting delivered frames can never tell a flap from a healthy drop.
+func TestWatchGivesUpOnAFlappingSocket(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	// Never keeps a connection: every dial greets and hangs up.
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	server.HandleBody("conversations.history", mockslack.History())
+	c := browserClientFor(ts.URL)
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration: 5 * time.Second,
+	})
+	if result.StoppedBy != WatchStoppedReconnectFailed {
+		t.Errorf("stopped_by = %q, want %q — a flapping socket must not retry forever",
+			result.StoppedBy, WatchStoppedReconnectFailed)
+	}
+	if result.Reconnects > maxReconnectAttempts+1 {
+		t.Errorf("reconnects = %d, want the budget to cap it near %d", result.Reconnects, maxReconnectAttempts)
+	}
+}
+
+// A refused redial is usually transient. Ending the run on the first one made
+// the retry budget unreachable.
+func TestWatchRetriesARefusedRedial(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	server.EnableWebSocket(mockslack.WSScript{
+		Frames:            []map[string]any{mockslack.Hello()},
+		HangUpAfterScript: 1,
+	})
+	// The first redial is sent to a host that refuses; the next one succeeds.
+	server.Handle("client.getWebSocketURL",
+		mockslack.Response{Body: mockslack.GetWebSocketURL(ts.URL)},
+		mockslack.Response{Body: map[string]any{"ok": true, "primary_websocket_url": "ws://127.0.0.1:1/websocket"}},
+		mockslack.Response{Body: mockslack.GetWebSocketURL(ts.URL)},
+	)
+	server.HandleBody("conversations.history", mockslack.History())
+	c := browserClientFor(ts.URL)
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration: 800 * time.Millisecond,
+	})
+	if result.StoppedBy == WatchStoppedReconnectFailed {
+		t.Error("one refused redial must not end the run while attempts remain")
+	}
+}
+
+// A paged catch-up is consumed in slice order, so it has to be in wire order:
+// an await capped at one event must answer with the EARLIEST reply after the
+// cursor, not whichever page happened to be fetched first.
+func TestWatchBackfillEmitsPagesInChronologicalOrder(t *testing.T) {
+	newest := make([]map[string]any, 0, backfillPageLimit)
+	for i := range backfillPageLimit {
+		newest = append(newest, mockslack.Message(
+			fmt.Sprintf("17000005%02d.000100", i), mockslack.WSOtherUser, "newer page"))
+	}
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History(newest...)},
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000020.000100", mockslack.WSOtherUser, "the earliest answer"),
+		)},
+	)
+
+	got, _ := collectWatch(t, c, WatchOptions{
+		Filter:    EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		MaxEvents: 1,
+		Duration:  3 * time.Second,
+	})
+	if len(got) != 1 {
+		t.Fatalf("got %d events", len(got))
+	}
+	if got[0].Content() != "the earliest answer" {
+		t.Errorf("first event = %q, want the earliest post-cursor message", got[0].Content())
+	}
+}
+
+// Polling is the entire delivery mechanism on a standard token, and its
+// defining behaviour is repetition. Every earlier poll test was satisfied on
+// the first pass, so a runPoll that returned instead of looping passed them all.
+func TestWatchPollLoopsUntilTheMessageArrives(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History( // the tip read
+			mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "already there"),
+		)},
+		mockslack.Response{Body: mockslack.History()}, // poll 1: nothing yet
+		mockslack.Response{Body: mockslack.History()}, // poll 2: still nothing
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000020.000200", mockslack.WSOtherUser, "arrived on the third poll"),
+		)},
+	)
+
+	got, result := collectWatch(t, c, WatchOptions{
+		Filter:    EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Poll:      true,
+		PollEvery: 5 * time.Millisecond,
+		MaxEvents: 1,
+		Duration:  3 * time.Second,
+	})
+	if len(got) != 1 || got[0].Content() != "arrived on the third poll" {
+		t.Fatalf("poll must keep reading until something arrives: %+v", got)
+	}
+	if result.Cursors[mockslack.WSChannelID] != "1700000020.000200" {
+		t.Errorf("cursor = %q, want the delivered message's ts", result.Cursors[mockslack.WSChannelID])
+	}
+}
+
+// The other half of --idle-timeout: a matching event must restart the
+// countdown. With resetIdle a no-op, a busy stream would still be cut off at
+// the first interval.
+func TestWatchIdleTimeoutIsResetByMatchingEvents(t *testing.T) {
+	frames := []map[string]any{mockslack.Hello()}
+	for i := range 8 {
+		frames = append(frames, mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser,
+			"steady traffic", fmt.Sprintf("17000000%02d.000100", 20+i)))
+	}
+	c, server := watchFixture(t, mockslack.WSScript{Frames: frames, Interval: 20 * time.Millisecond})
+	server.HandleBody("conversations.history", mockslack.History())
+
+	got, result := collectWatch(t, c, WatchOptions{
+		Filter:      EventFilter{Channels: []string{mockslack.WSChannelID}},
+		IdleTimeout: 100 * time.Millisecond,
+		MaxEvents:   8,
+		Duration:    3 * time.Second,
+	})
+	if result.StoppedBy == WatchStoppedIdle {
+		t.Fatalf("idle tripped after %d events despite steady matching traffic", len(got))
+	}
+	if len(got) != 8 {
+		t.Errorf("delivered %d events, want all 8", len(got))
+	}
+}
+
+// A permalink target sets ThreadTS, so `message await <permalink> --since` runs
+// the thread branch of the backfill — a documented primary path that no test
+// had executed.
+func TestWatchBackfillReadsAWatchedThread(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.replies", mockslack.History(
+		mockslack.ThreadReply("1700000010.000100", mockslack.WSUserID, "the question", "1700000010.000100"),
+		mockslack.ThreadReply("1700000020.000200", mockslack.WSOtherUser, "the threaded answer", "1700000010.000100"),
+	))
+
+	got, _ := collectWatch(t, c, WatchOptions{
+		Filter: EventFilter{
+			Since:    "1700000010.000100",
+			Channels: []string{mockslack.WSChannelID},
+			ThreadTS: "1700000010.000100",
+		},
+		MaxEvents: 1,
+		Duration:  3 * time.Second,
+	})
+	if len(got) != 1 || got[0].Content() != "the threaded answer" {
+		t.Fatalf("thread backfill delivered %+v", got)
+	}
+	// A thread-scoped run must not fall back to channel history: replies are
+	// not in it unless broadcast.
+	if len(server.CallsFor("conversations.history")) != 0 {
+		t.Error("a thread-scoped backfill should read conversations.replies only")
+	}
+}
+
+// A broken stdout pipe surfaces here. The event that failed to emit must not
+// be counted as delivered.
+func TestWatchStopsAndReportsAnEmitFailure(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: mockslack.DefaultEventScript()})
+	server.HandleBody("conversations.history", mockslack.History())
+
+	wantErr := errors.New("stdout closed")
+	seen := 0
+	result, err := Watch(context.Background(), c, WatchOptions{
+		Filter:   EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Duration: 3 * time.Second,
+	}, func(Event) error {
+		seen++
+		if seen == 2 {
+			return wantErr
+		}
+		return nil
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want the emit error propagated", err)
+	}
+	if result.Events != 1 {
+		t.Errorf("events = %d, want 1 — the failed emit was never delivered", result.Events)
 	}
 }

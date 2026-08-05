@@ -116,10 +116,13 @@ func TestAwaitCursorStopsAtTheSkippedReportBound(t *testing.T) {
 	if len(result.Skipped) != 2 || !result.SkippedTruncated {
 		t.Fatalf("skipped=%d truncated=%v, want 2 and a truncation flag", len(result.Skipped), result.SkippedTruncated)
 	}
+	// Equality pins both halves at once: the cursor must advance OVER reported
+	// rejections (an upper-bound-only assertion passes when it never advances
+	// at all, falling back to --since) and must FREEZE at the last reported
+	// one (resuming past an unreported rejection loses it for good).
 	lastReported := result.Skipped[len(result.Skipped)-1].Cursor()
-	if tsAfter(result.Cursor, lastReported) {
-		t.Errorf("cursor %q advanced past the last reported rejection %q; resuming there loses the ones never shown",
-			result.Cursor, lastReported)
+	if result.Cursor != lastReported {
+		t.Errorf("cursor = %q, want exactly the last reported rejection %q", result.Cursor, lastReported)
 	}
 }
 

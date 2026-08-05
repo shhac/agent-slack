@@ -73,6 +73,9 @@ type WatchResult struct {
 const (
 	maxReconnectAttempts = 20
 	reconnectBackoff     = 2 * time.Second
+	// healthyConnection is how long a socket must survive before a drop is
+	// treated as an ordinary interruption rather than a flap.
+	healthyConnection = 30 * time.Second
 )
 
 // targetChannel is the single conversation a run is scoped to, or "" when it
@@ -122,9 +125,11 @@ type watchSession struct {
 	result WatchResult
 
 	skippedCount int
-	// framesSinceReconnect counts what the current socket has delivered, so a
-	// reconnect that immediately drops again is not mistaken for a healthy one.
-	framesSinceReconnect int
+	// connectedAt marks when the current socket came up. A socket that lived a
+	// meaningful while and then dropped is healthy; one that dies immediately
+	// is flapping. Counting frames cannot tell them apart — every socket is
+	// greeted with a hello the moment it opens.
+	connectedAt time.Time
 	// reconnectURL is the pre-authorized URL Slack pushes; preferred over a
 	// fresh client.getWebSocketURL on reconnect.
 	reconnectURL string
@@ -172,44 +177,50 @@ func (s *watchSession) runSocket(ctx context.Context) error {
 		return nil
 	}
 
-	for attempt := 0; ; {
+	attempt := 0
+	for {
 		done, err := s.consume(ctx, frames)
 		if err != nil || done {
 			return err
 		}
-		// The frame channel closed: the socket dropped. Reconnect unless the
-		// caller gave up on us or we have run out of attempts.
+		// The frame channel closed: the socket dropped.
 		if ctx.Err() != nil {
 			return nil
 		}
-		if attempt >= maxReconnectAttempts {
+		conn.Close()
+
+		// A socket that stayed up a while and then dropped is not flapping, so
+		// it earns a fresh budget — the cap exists to retire a connection that
+		// keeps dying, not a long-lived stream that recovers cleanly across
+		// its duration.
+		if s.socketWasHealthy() {
+			attempt = 0
+		}
+		attempt++
+		if attempt > maxReconnectAttempts {
 			s.stop(WatchStoppedReconnectFailed)
 			return nil
 		}
-		attempt++
 		if err := s.client.sleep(ctx, reconnectBackoff); err != nil {
 			return nil
 		}
-		next, gapErr := s.reconnect(ctx, attempt)
-		if gapErr != nil {
-			// The cursor is still valid, so this is a clean stop — but it is a
-			// lost socket, not a cancellation, and the caller must be able to
-			// tell those apart to decide whether to resume.
-			s.stop(WatchStoppedReconnectFailed)
-			return nil
+		next, dialErr := s.reconnect(ctx, attempt)
+		if dialErr != nil {
+			// A refused redial is usually transient. Spending an attempt and
+			// trying again is what the budget is for; ending the run on the
+			// first failure made the budget unreachable.
+			s.client.debugf("reconnect attempt %d failed: %v", attempt, dialErr)
+			continue
 		}
-		conn.Close()
 		conn = next
 		frames = s.readFrames(ctx, conn)
-		// A socket that recovered and delivered earns a fresh budget: the cap
-		// exists to stop a flapping connection, not to retire a long-lived
-		// stream that has dropped and recovered cleanly N times across its
-		// duration. A reconnect that goes straight back down does not reset.
-		if s.framesSinceReconnect > 0 {
-			attempt = 0
-		}
-		s.framesSinceReconnect = 0
 	}
+}
+
+// socketWasHealthy reports whether the connection that just dropped had been
+// up long enough to count as working rather than flapping.
+func (s *watchSession) socketWasHealthy() bool {
+	return !s.connectedAt.IsZero() && time.Since(s.connectedAt) >= healthyConnection
 }
 
 // reconnect re-establishes the socket and gap-fills the conversations we know
@@ -273,6 +284,7 @@ func (s *watchSession) gapFillChannels() []string { return s.opts.Filter.Channel
 // socket is already listening. The channel closes on any read error, which the
 // consumer reads as "the socket dropped".
 func (s *watchSession) readFrames(ctx context.Context, conn rtmConn) <-chan map[string]any {
+	s.connectedAt = time.Now()
 	out := make(chan map[string]any, 64)
 	if s.opts.PingEvery > 0 {
 		go pingLoop(ctx, conn, s.opts.PingEvery)
@@ -313,7 +325,6 @@ func (s *watchSession) consume(ctx context.Context, frames <-chan map[string]any
 			if !ok {
 				return false, nil
 			}
-			s.framesSinceReconnect++
 			if getStr(frame, "type") == "reconnect_url" {
 				// A pre-authorized URL to reconnect with, so a dropped socket
 				// costs no client.getWebSocketURL round trip.

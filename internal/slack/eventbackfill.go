@@ -61,7 +61,7 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 		if err != nil {
 			return nil, err
 		}
-		return afterCursor(replies, since), nil
+		return orderedBackfill(afterCursor(replies, since)), nil
 	}
 	messages, err := s.historySince(ctx, channelID, since)
 	if err != nil {
@@ -74,7 +74,7 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 	// misses the very answer RepliesTo exists to catch.
 	repliesTo := s.opts.Filter.RepliesTo
 	if repliesTo == "" {
-		return out, nil
+		return orderedBackfill(out), nil
 	}
 	// Best-effort, unlike the channel read: --since may be a cursor from an
 	// earlier run rather than a message the caller posted, in which case there
@@ -84,9 +84,9 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 	replies, err := FetchThread(ctx, s.client, channelID, repliesTo, false)
 	if err != nil {
 		s.client.debugf("replies backfill for %s skipped: %v", repliesTo, err)
-		return out, nil
+		return orderedBackfill(out), nil
 	}
-	return append(out, afterCursor(replies, since)...), nil
+	return orderedBackfill(append(out, afterCursor(replies, since)...)), nil
 }
 
 // historySince reads every message after a cursor, following pages rather than
@@ -121,6 +121,16 @@ func (s *watchSession) historySince(ctx context.Context, channelID, since string
 	// exactly what Gaps reports: events may be missing.
 	s.result.Gaps++
 	return all, nil
+}
+
+// orderedBackfill puts a multi-source catch-up into wire order. Pages are
+// fetched newest-window-first and the thread read is appended after the
+// channel read, so the raw slice is only chronological *within* each block —
+// and an await capped at one event would answer with whichever block came
+// first rather than the earliest reply.
+func orderedBackfill(messages []render.MessageSummary) []render.MessageSummary {
+	sortChronological(messages)
+	return messages
 }
 
 // afterCursor enforces the exclusive semantics of --since: Slack's `oldest` is

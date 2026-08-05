@@ -16,13 +16,11 @@ import (
 // there is invisible in a CLI process that exits immediately, and fatal in the
 // MCP server, which is long-lived.
 func TestWatchLeavesNoGoroutinesBehind(t *testing.T) {
-	defer goleak.VerifyNone(t,
-		// httptest's own accept loop and the HTTP transport's idle conns are
-		// the harness, not the engine under test.
-		goleak.IgnoreTopFunction("net/http.(*persistConn).readLoop"),
-		goleak.IgnoreTopFunction("net/http.(*persistConn).writeLoop"),
-		goleak.IgnoreTopFunction("internal/poll.runtime_pollWait"),
-	)
+	// Exclude the harness by IDENTITY, not by function name. A leaked frame
+	// reader parks in conn.ReadJSON, whose top frame is
+	// internal/poll.runtime_pollWait — ignoring that by name filters out the
+	// one goroutine class this test exists to catch.
+	defer goleak.VerifyNone(t, goleak.IgnoreCurrent())
 
 	exits := map[string]WatchOptions{
 		"max-events": {
@@ -42,13 +40,26 @@ func TestWatchLeavesNoGoroutinesBehind(t *testing.T) {
 			Duration:    3 * time.Second,
 			PingEvery:   10 * time.Millisecond,
 		},
+		// Reconnect is the only path that swaps connections, spawning a fresh
+		// reader and keepalive per attempt and relying on Close to unwind the
+		// previous pair — the likeliest place to leak one.
+		"reconnect-failed": {
+			Filter:    EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+			Duration:  5 * time.Second,
+			PingEvery: 10 * time.Millisecond,
+		},
 	}
 	for name, opts := range exits {
 		t.Run(name, func(t *testing.T) {
 			server := mockslack.New()
 			ts := httptest.NewServer(server)
 			defer ts.Close()
-			server.EnableWebSocket(mockslack.WSScript{Frames: mockslack.DefaultEventScript(), KeepOpen: true})
+			script := mockslack.WSScript{Frames: mockslack.DefaultEventScript(), KeepOpen: true}
+			if name == "reconnect-failed" {
+				// Flap until the budget retires the run.
+				script = mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}}
+			}
+			server.EnableWebSocket(script)
 			server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
 			server.HandleBody("conversations.history", mockslack.History())
 			c := browserClientFor(ts.URL)

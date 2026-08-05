@@ -9,6 +9,14 @@ func Message(ts, user, text string) map[string]any {
 	return map[string]any{"type": "message", "ts": ts, "user": user, "text": text}
 }
 
+// ThreadReply is one conversations.replies message. Replies carry thread_ts —
+// without it a thread-scoped consumer cannot tell a reply from a root message.
+func ThreadReply(ts, user, text, threadTS string) map[string]any {
+	msg := Message(ts, user, text)
+	msg["thread_ts"] = threadTS
+	return msg
+}
+
 // History is a conversations.history (or conversations.replies) body.
 func History(messages ...map[string]any) map[string]any {
 	items := make([]any, len(messages))
