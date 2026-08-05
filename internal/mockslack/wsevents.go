@@ -213,6 +213,16 @@ func WSReactionAdded(channel, user, reaction, itemTS, eventTS string) map[string
 	}
 }
 
+// WSReactionRemoved retracts a reaction. Same shape as the add, different
+// type — a consumer tracking reaction state that ignores it drifts, and a
+// "wait for approval" that ignores it can act on a withdrawn 👍. Documented
+// only: no capture has observed one yet.
+func WSReactionRemoved(channel, user, reaction, itemTS, eventTS string) map[string]any {
+	frame := WSReactionAdded(channel, user, reaction, itemTS, eventTS)
+	frame["type"] = "reaction_removed"
+	return frame
+}
+
 // IMMarked is read-state sync: another of the user's clients marked a DM read.
 // A consumer that treats every frame as new activity would report these as
 // events the user needs to see.
@@ -357,6 +367,10 @@ func DefaultEventScript() []map[string]any {
 		WSBotMessage(WSChannelID, "Fabricated App", "fabricated app notification", "1700000025.000100"),
 		WSMessageChanged(WSChannelID, WSOtherUser, "fabricated text after the edit", "1700000010.000100", "1700000030.000300"),
 		WSReactionAdded(WSChannelID, WSOtherUser, "eyes", "1700000010.000100", "1700000040.000400"),
+		// A skin-toned reaction: the modifier is part of the name on the wire,
+		// so an exact-string match against "+1" misses it.
+		WSReactionAdded(WSChannelID, WSOtherUser, "+1::skin-tone-3", "1700000010.000100", "1700000040.000500"),
+		WSReactionRemoved(WSChannelID, WSOtherUser, "eyes", "1700000010.000100", "1700000040.000600"),
 		WSMessageDeleted(WSChannelID, "1700000020.000200", "1700000050.000500"),
 		WSMessage(WSDMID, WSOtherUser, "fabricated direct message", "1700000060.000600"),
 		DesktopNotification(WSDMID, WSOtherUser, "Fake Sam", "fabricated direct message", "1700000060.000600", "1700000060.000650"),
