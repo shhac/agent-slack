@@ -155,3 +155,19 @@ func TestTSAfterOrdersTimestamps(t *testing.T) {
 		t.Error("a longer integer part is later")
 	}
 }
+
+// Kind is a primary selector: asking for reactions means messages were never
+// candidates, so reporting them as "skipped" would bury the real answer.
+func TestInScopeIgnoresKindsTheCallerDidNotAskFor(t *testing.T) {
+	f := EventFilter{
+		Kinds:     []EventKind{EventReactionAdded},
+		Channels:  []string{"C1"},
+		Reactions: []string{"white_check_mark"},
+	}
+	if f.InScope(messageEvent("C1", "U2", "1700000010.000100", "")) {
+		t.Error("a message is not a skipped reaction")
+	}
+	if !f.InScope(reactionEvent("C1", "U2", "x", "1700000010.000100", "1700000020.000100")) {
+		t.Error("a non-matching reaction is exactly what skipped is for")
+	}
+}

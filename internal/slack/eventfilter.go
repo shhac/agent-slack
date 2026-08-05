@@ -110,12 +110,19 @@ func (f EventFilter) matchesReaction(e Event) bool {
 	return false
 }
 
-// InScope reports whether an event concerns the conversation (and thread) the
-// caller is watching, regardless of the narrowing filters. It is what
-// separates "excluded, worth reporting" from "someone else's Slack": a
-// rejection in the watched thread is worth surfacing, an unrelated channel's
-// traffic is not.
+// InScope reports whether an event was a candidate answer that the narrowing
+// filters excluded — the difference between "worth reporting as skipped" and
+// "not what you asked about at all". A rejection in the watched thread is
+// worth surfacing; an unrelated channel's traffic, or an event of a kind the
+// caller never asked for, is not.
+//
+// Kind is checked here because it is a primary selector, not a narrowing
+// filter: asking for reactions means messages were never candidates, and
+// reporting them would bury the one event that matters.
 func (f EventFilter) InScope(e Event) bool {
+	if !slices.Contains(f.kinds(), e.Kind) {
+		return false
+	}
 	if len(f.Channels) > 0 && !slices.Contains(f.Channels, e.ChannelID) {
 		return false
 	}
