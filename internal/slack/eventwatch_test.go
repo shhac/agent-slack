@@ -100,13 +100,20 @@ func TestWatchBackfillsFromCursor(t *testing.T) {
 		mockslack.Message("1700000015.000100", mockslack.WSOtherUser, "missed while we were away"),
 	))
 
-	got, _ := collectWatch(t, c, WatchOptions{
+	got, result := collectWatch(t, c, WatchOptions{
 		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
 		BackfillChannel: mockslack.WSChannelID,
+		Duration:        30 * time.Second,
 		MaxEvents:       1,
 	})
 	if len(got) != 1 {
 		t.Fatalf("want the backfilled message, got %+v", got)
+	}
+	// The answer was already in the backfill: the run must end there, not sit
+	// out the remaining timeout.
+	if result.StoppedBy != WatchStoppedMaxEvents {
+		t.Errorf("stopped_by = %q, want %q — a satisfied backfill must return at once",
+			result.StoppedBy, WatchStoppedMaxEvents)
 	}
 	if got[0].Content != "missed while we were away" {
 		t.Errorf("event = %+v; --since is exclusive, so the earlier message must not match", got[0])

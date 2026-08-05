@@ -142,6 +142,11 @@ func (s *watchSession) runSocket(ctx context.Context) error {
 	if err := s.backfill(ctx); err != nil {
 		return err
 	}
+	// The answer may already have been in the backfill. Without this an await
+	// whose event cap is already met still sits out its whole timeout.
+	if s.stopped != "" {
+		return nil
+	}
 
 	for attempt := 0; ; {
 		done, err := s.consume(ctx, frames)
