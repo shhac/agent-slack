@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,6 +63,10 @@ func TestWatchThreadRepliesExcludedByDefault(t *testing.T) {
 	c, _ := watchFixture(t, mockslack.WSScript{Frames: mockslack.DefaultEventScript()})
 
 	got, _ := collectWatch(t, c, WatchOptions{Filter: EventFilter{Channels: []string{mockslack.WSChannelID}}})
+	// Without a positive count this passes when delivery is broken entirely.
+	if len(got) == 0 {
+		t.Fatal("the script's channel messages should have been delivered")
+	}
 	for _, event := range got {
 		if event.ThreadTS != "" && event.ThreadTS != event.TS {
 			t.Errorf("a channel watch should not emit thread replies: %+v", event)
@@ -497,5 +502,71 @@ func TestWatchTargetComesFromTheFilter(t *testing.T) {
 	}
 	if got := (WatchOptions{}).targetChannel(); got != "" {
 		t.Errorf("a workspace-wide run has no target, got %q", got)
+	}
+}
+
+// Slack pushes a pre-authorized reconnect URL routinely, and reconnecting
+// through it is the production path — the fallback to client.getWebSocketURL
+// is the exception. Neither was exercised.
+func TestWatchReconnectsThroughThePushedURL(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	pushed := mockslack.WebSocketURLFor(ts.URL) + "?frt=fake-reconnect-token"
+	server.EnableWebSocket(mockslack.WSScript{
+		Frames: []map[string]any{
+			mockslack.Hello(),
+			{"type": "reconnect_url", "url": pushed},
+			mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "before the drop", "1700000015.000100"),
+		},
+		HangUpAfterScript: 1,
+	})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	server.HandleBody("conversations.history", mockslack.History())
+	c := browserClientFor(ts.URL)
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration: 600 * time.Millisecond,
+	})
+	if result.Reconnects != 1 {
+		t.Fatalf("reconnects = %d, want 1", result.Reconnects)
+	}
+	// The redial must have used the pushed URL, which carries its own token.
+	conns := server.WSConnections()
+	if len(conns) < 2 {
+		t.Fatalf("connections = %d, want a reconnect", len(conns))
+	}
+	if !strings.Contains(conns[1].Query, "frt=fake-reconnect-token") {
+		t.Errorf("reconnect query = %q, want the pushed URL's token", conns[1].Query)
+	}
+}
+
+// A stale pushed URL is normal — they expire. Falling back to a fresh
+// client.getWebSocketURL is what keeps a long run alive.
+func TestWatchFallsBackWhenThePushedURLIsStale(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	server.EnableWebSocket(mockslack.WSScript{
+		Frames: []map[string]any{
+			mockslack.Hello(),
+			{"type": "reconnect_url", "url": "ws://127.0.0.1:1/websocket"}, // refuses
+		},
+		HangUpAfterScript: 1,
+	})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	server.HandleBody("conversations.history", mockslack.History())
+	c := browserClientFor(ts.URL)
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration: 600 * time.Millisecond,
+	})
+	if result.Reconnects != 1 {
+		t.Errorf("reconnects = %d, want the stale URL to fall back rather than end the run", result.Reconnects)
+	}
+	if result.StoppedBy == WatchStoppedReconnectFailed {
+		t.Error("a stale pushed URL must not fail the run when a refetch works")
 	}
 }

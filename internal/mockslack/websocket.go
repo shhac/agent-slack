@@ -133,7 +133,14 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	writer := &wsWriter{conn: conn}
 	// Client writes are drained concurrently: the script pushes on its own
 	// schedule, and a client that pings mid-script must still be answered.
-	go s.drainWebSocket(ctx, conn, writer, record)
+	// The drainer also tells us when the client went away, which is the only
+	// prompt signal for an upgraded connection — the request context is not
+	// cancelled when the peer closes, so a handler parked on it alone leaks.
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		s.drainWebSocket(ctx, conn, writer, record)
+	}()
 
 	for _, frame := range script.Frames {
 		if script.Interval > 0 {
@@ -152,7 +159,10 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 		return
 	}
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case <-drained:
+	}
 }
 
 // drainWebSocket records what the client sends and answers pings, so a capture

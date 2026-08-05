@@ -25,6 +25,9 @@ jobs:
       - name: Test
         run: go test ./... -count=1
 
+      - name: Test (race)
+        run: go test ./internal/slack/... ./internal/cli/... ./internal/mockslack/... -count=1 -race
+
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:

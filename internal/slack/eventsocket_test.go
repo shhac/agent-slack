@@ -121,3 +121,64 @@ func TestConnectEventsReportsBothGatewaysDown(t *testing.T) {
 		t.Fatal("want an error when no gateway answers")
 	}
 }
+
+// The keepalive is what holds a multi-minute await open — Slack closes idle
+// sockets — and it had no coverage at all.
+func TestPingLoopKeepsTheSocketAlive(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}, KeepOpen: true})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	c := browserClientFor(ts.URL)
+
+	summary, err := CaptureEvents(context.Background(), c, CaptureOptions{
+		Duration:  2 * time.Second,
+		MaxFrames: 3, // hello + two pongs
+		PingEvery: 10 * time.Millisecond,
+	}, func(CaptureFrame) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.ByType["pong"] < 2 {
+		t.Fatalf("by_type = %v, want the server answering our pings", summary.ByType)
+	}
+	conns := server.WSConnections()
+	if len(conns) != 1 || len(conns[0].Sent) < 2 {
+		t.Fatalf("recorded writes = %+v, want repeated pings", conns)
+	}
+	for _, sent := range conns[0].Sent {
+		if sent["type"] != "ping" {
+			t.Errorf("unexpected client write: %v", sent)
+		}
+	}
+}
+
+// The ping goroutine must not outlive its run.
+func TestPingLoopStopsWithTheContext(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}, KeepOpen: true})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	c := browserClientFor(ts.URL)
+
+	conn, _, err := ConnectEvents(context.Background(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		pingLoop(ctx, conn, 10*time.Millisecond)
+		close(done)
+	}()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("pingLoop outlived its context")
+	}
+}

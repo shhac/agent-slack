@@ -12,6 +12,7 @@ require (
 	github.com/shhac/lib-agent-output v0.12.0
 	github.com/spf13/cobra v1.10.2
 	github.com/syndtr/goleveldb v1.0.0
+	go.uber.org/goleak v1.3.0
 	golang.org/x/sys v0.46.0
 	modernc.org/sqlite v1.53.0
 )
@@ -27,6 +28,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josephspurrier/goversioninfo v1.4.1 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/ncruces/zenity v0.10.14 // indirect

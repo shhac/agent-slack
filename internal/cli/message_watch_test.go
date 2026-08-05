@@ -160,13 +160,20 @@ func TestMessageStreamDropsBookkeepingFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := parseNDJSON(t, stdout)
+	events := 0
 	for _, line := range lines {
 		if line["@summary"] != nil {
 			continue
 		}
+		events++
 		if line["event"] != "message" {
 			t.Errorf("default stream should carry messages only, got %v", line)
 		}
+	}
+	// The summary line always exists, so without this the test passes when no
+	// event was delivered at all.
+	if events == 0 {
+		t.Fatal("the script's messages should have reached the stream")
 	}
 }
 

@@ -9,6 +9,12 @@ build:
 test:
 	GOCACHE=$(GOCACHE) go test ./... -count=1
 
+# The event socket is the repo's only real concurrency — a reader and a
+# keepalive per connection, swapped under the consumer on reconnect — so the
+# race detector earns its runtime here.
+test-race:
+	GOCACHE=$(GOCACHE) go test ./... -count=1 -race
+
 test-short:
 	GOCACHE=$(GOCACHE) go test ./... -count=1 -short
 
