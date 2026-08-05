@@ -216,3 +216,33 @@ func TestFilterAdmitsRepliesToTheAwaitedMessage(t *testing.T) {
 		t.Error("an unrelated thread's reply is not an answer to this message")
 	}
 }
+
+// The invariant the split exists to guarantee: anything that matches was in
+// scope. Two hand-maintained lists of checks would drift; this cannot.
+func TestMatchesImpliesInScope(t *testing.T) {
+	filters := []EventFilter{
+		{},
+		{Kinds: []EventKind{EventReactionAdded}, Reactions: []string{"eyes"}},
+		{Channels: []string{"C1"}, RepliesTo: "1700000010.000100"},
+		{ThreadTS: "1700000010.000100"},
+		{SelfUserID: "U_ME"},
+		{ExcludeBots: true, Since: "1700000005.000100"},
+		{From: []string{"U2"}, IncludeThreadReplies: true},
+	}
+	events := []Event{
+		messageEvent("C1", "U2", "1700000010.000100", ""),
+		messageEvent("C1", "U_ME", "1700000020.000200", "1700000010.000100"),
+		messageEvent("C9", "U2", "1700000030.000300", ""),
+		reactionEvent("C1", "U2", "eyes", "1700000010.000100", "1700000040.000400"),
+		reactionEvent("C1", "U2", "x", "1700000010.000100", "1700000050.000500"),
+		{Kind: EventMessage, ChannelID: "C1", TS: "1700000060.000600", Author: render.AuthorRef("", "B1")},
+		{Kind: EventMessageDeleted, ChannelID: "C1", TS: "1700000070.000700"},
+	}
+	for fi, f := range filters {
+		for ei, e := range events {
+			if f.Matches(e) && !f.InScope(e) {
+				t.Errorf("filter %d matched event %d without it being in scope: %+v", fi, ei, e)
+			}
+		}
+	}
+}

@@ -61,7 +61,20 @@ func (f EventFilter) kinds() []EventKind {
 }
 
 // Matches reports whether an event satisfies the filter.
-func (f EventFilter) Matches(e Event) bool {
+//
+// A filter has two halves. The PRIMARY SELECTORS — kind, conversation, thread,
+// cursor — say what the caller is watching at all. The NARROWING FILTERS —
+// author, bots, reaction name — say which of those count as an answer. Only
+// the second kind produces a "skipped" report, because only there can an
+// excluded event still be news (a rejection). Splitting them this way makes
+// Matches imply InScope by construction rather than by two lists kept in sync.
+func (f EventFilter) Matches(e Event) bool { return f.InScope(e) && f.narrows(e) }
+
+// InScope reports whether an event was a candidate at all — the difference
+// between "excluded, worth reporting as skipped" and "not what you asked
+// about". A rejection on the watched message is worth surfacing; another
+// channel's traffic, or a kind the caller never asked for, is not.
+func (f EventFilter) InScope(e Event) bool {
 	if !slices.Contains(f.kinds(), e.Kind) {
 		return false
 	}
@@ -71,29 +84,44 @@ func (f EventFilter) Matches(e Event) bool {
 	if f.Since != "" && !tsAfter(e.Cursor(), f.Since) {
 		return false
 	}
-	if !f.matchesThread(e) {
-		return false
-	}
-	if !f.matchesAuthor(e) {
-		return false
-	}
-	return f.matchesReaction(e)
+	return f.matchesThread(e)
 }
 
-// matchesThread applies the thread scoping. Message events carry their own
-// thread_ts; reactions do not, so a reaction is scoped by the message it
-// targets — including the thread root, whose approval is the common case.
+// narrows applies the filters that decide which in-scope events are answers.
+func (f EventFilter) narrows(e Event) bool {
+	return f.matchesAuthor(e) && f.matchesReaction(e)
+}
+
+// matchesThread dispatches between the two thread-scoping policies, which have
+// nothing in common beyond the field that selects them.
 func (f EventFilter) matchesThread(e Event) bool {
 	if f.ThreadTS != "" {
-		if isReactionKind(e.Kind) {
-			return e.TS == f.ThreadTS || e.ThreadTS == f.ThreadTS
-		}
-		return e.ThreadTS == f.ThreadTS && e.TS != f.ThreadTS
+		return f.inWatchedThread(e)
 	}
-	if e.Kind != EventMessage || e.ThreadTS == "" || e.ThreadTS == e.TS {
+	return f.inChannelScope(e)
+}
+
+// inWatchedThread scopes a run pinned to one thread. A reaction carries no
+// thread_ts, so it is scoped by the message it targets — including the thread
+// root, since approving the message that started the thread is the common case.
+// The root message itself never matches: awaiting in a thread means replies.
+func (f EventFilter) inWatchedThread(e Event) bool {
+	if isReactionKind(e.Kind) {
+		return e.TS == f.ThreadTS
+	}
+	return e.ThreadTS == f.ThreadTS && e.TS != f.ThreadTS
+}
+
+// inChannelScope scopes a run watching a conversation. Replies inside other
+// threads are excluded, matching what `message list <channel>` shows — except
+// replies to the message the caller is awaiting answers to, which are exactly
+// what they asked for.
+func (f EventFilter) inChannelScope(e Event) bool {
+	isThreadReply := e.Kind == EventMessage && e.ThreadTS != "" && e.ThreadTS != e.TS
+	if !isThreadReply {
 		return true
 	}
-	return f.IncludeThreadReplies || (f.RepliesTo != "" && e.ThreadTS == f.RepliesTo)
+	return f.IncludeThreadReplies || e.ThreadTS == f.RepliesTo
 }
 
 func (f EventFilter) matchesAuthor(e Event) bool {
@@ -122,28 +150,6 @@ func (f EventFilter) matchesReaction(e Event) bool {
 		}
 	}
 	return false
-}
-
-// InScope reports whether an event was a candidate answer that the narrowing
-// filters excluded — the difference between "worth reporting as skipped" and
-// "not what you asked about at all". A rejection in the watched thread is
-// worth surfacing; an unrelated channel's traffic, or an event of a kind the
-// caller never asked for, is not.
-//
-// Kind is checked here because it is a primary selector, not a narrowing
-// filter: asking for reactions means messages were never candidates, and
-// reporting them would bury the one event that matters.
-func (f EventFilter) InScope(e Event) bool {
-	if !slices.Contains(f.kinds(), e.Kind) {
-		return false
-	}
-	if len(f.Channels) > 0 && !slices.Contains(f.Channels, e.ChannelID) {
-		return false
-	}
-	if f.ThreadTS == "" {
-		return true
-	}
-	return e.TS == f.ThreadTS || e.ThreadTS == f.ThreadTS
 }
 
 func isReactionKind(kind EventKind) bool {

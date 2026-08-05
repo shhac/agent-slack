@@ -371,7 +371,7 @@ func (s *watchSession) offer(event Event) (matched, done bool, err error) {
 	s.seen[eventKey(event)] = true
 
 	if !s.opts.Filter.Matches(event) {
-		if s.opts.Filter.InScope(event) && s.notBefore(event) {
+		if s.opts.Filter.InScope(event) {
 			s.reportSkipped(event)
 		}
 		return false, false, nil
@@ -405,12 +405,6 @@ func (s *watchSession) reportSkipped(event Event) {
 	if s.opts.OnSkipped != nil {
 		s.opts.OnSkipped(event)
 	}
-}
-
-// notBefore keeps stale traffic out of the skipped report: an event from before
-// the cursor was never a candidate answer.
-func (s *watchSession) notBefore(event Event) bool {
-	return s.opts.Filter.Since == "" || tsAfter(event.Cursor(), s.opts.Filter.Since)
 }
 
 // advanceCursor moves the channel's high-water mark, never backwards — a
