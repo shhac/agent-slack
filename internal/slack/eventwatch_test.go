@@ -216,7 +216,7 @@ func TestWatchReconnectsWithoutDuplicatingEvents(t *testing.T) {
 		// and correctly records a gap, which would make this test race.
 		Filter:      EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
 		Duration:    400 * time.Millisecond,
-		OnReconnect: func(int) { reconnects++ },
+		OnReconnect: func(int, bool) { reconnects++ },
 	})
 	if len(got) != 1 {
 		t.Fatalf("emitted %d events across reconnects, want 1: %+v", len(got), got)
@@ -320,7 +320,7 @@ func TestWatchReportsReconnectFailureDistinctlyFromCancellation(t *testing.T) {
 	_, result := collectWatch(t, c, WatchOptions{
 		Filter:      EventFilter{Channels: []string{mockslack.WSChannelID}},
 		Duration:    3 * time.Second,
-		OnReconnect: func(int) { ts.Close() }, // the gateway goes away mid-run
+		OnReconnect: func(int, bool) { ts.Close() }, // the gateway goes away mid-run
 	})
 	if result.StoppedBy != WatchStoppedReconnectFailed {
 		t.Errorf("stopped_by = %q, want %q — a lost socket must not read as a cancellation",
@@ -568,5 +568,35 @@ func TestWatchFallsBackWhenThePushedURLIsStale(t *testing.T) {
 	}
 	if result.StoppedBy == WatchStoppedReconnectFailed {
 		t.Error("a stale pushed URL must not fail the run when a refetch works")
+	}
+}
+
+// A reconnect notice that claims a catch-up which did not happen tells the
+// caller their stream is intact when events are missing.
+func TestWatchReconnectNoticeReportsWhetherItCaughtUp(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	server.EnableWebSocket(mockslack.WSScript{
+		Frames:            []map[string]any{mockslack.Hello()},
+		HangUpAfterScript: 1,
+	})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	c := browserClientFor(ts.URL)
+
+	var filled []bool
+	// No channels: a workspace-wide stream has nothing to re-read.
+	_, _ = collectWatch(t, c, WatchOptions{
+		Filter:      EventFilter{},
+		Duration:    600 * time.Millisecond,
+		OnReconnect: func(_ int, ok bool) { filled = append(filled, ok) },
+	})
+	if len(filled) == 0 {
+		t.Fatal("expected a reconnect")
+	}
+	for _, ok := range filled {
+		if ok {
+			t.Error("a workspace-wide reconnect cannot catch up, and must not claim it did")
+		}
 	}
 }

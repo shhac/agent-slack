@@ -48,8 +48,10 @@ type WatchOptions struct {
 	// cursor that skipped past unreported rejections would lose them for good,
 	// which is the failure the skipped report exists to prevent.
 	MaxSkipped int
-	// OnReconnect reports a dropped socket that was re-established.
-	OnReconnect func(attempt int)
+	// OnReconnect reports a dropped socket that was re-established, after the
+	// catch-up has run. filled is false when the gap could not be re-read, so
+	// the caller is not told events were recovered when they were not.
+	OnReconnect func(attempt int, filled bool)
 }
 
 // WatchResult summarizes a finished run.
@@ -219,12 +221,16 @@ func (s *watchSession) reconnect(ctx context.Context, attempt int) (rtmConn, err
 		return nil, err
 	}
 	s.result.Reconnects++
-	if s.opts.OnReconnect != nil {
-		s.opts.OnReconnect(attempt)
-	}
+	filled := true
+	defer func() {
+		if s.opts.OnReconnect != nil {
+			s.opts.OnReconnect(attempt, filled)
+		}
+	}()
 	channels := s.gapFillChannels()
 	if len(channels) == 0 {
 		s.result.Gaps++
+		filled = false
 		return conn, nil
 	}
 	for _, channelID := range channels {
@@ -234,10 +240,12 @@ func (s *watchSession) reconnect(ctx context.Context, attempt int) (rtmConn, err
 		cursor := maxTS(s.result.Cursors[channelID], s.opts.Filter.Since)
 		if cursor == "" {
 			s.result.Gaps++
+			filled = false
 			continue
 		}
 		if err := s.backfillChannel(ctx, channelID, s.opts.Filter.ThreadTS, cursor); err != nil {
 			s.result.Gaps++
+			filled = false
 		}
 	}
 	return conn, nil

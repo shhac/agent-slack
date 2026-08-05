@@ -46,6 +46,13 @@ polling every conversation in a workspace is not viable.`,
 					agenterrors.FixableByHuman).
 					WithHint("import browser credentials with 'agent-slack auth import-desktop', or use 'message await' which can poll")
 			}
+			if duration <= 0 && maxEvents <= 0 && idleTimeout <= 0 {
+				// The help says a run is always bounded, and it must be: an
+				// unbounded stream never returns to the agent that spawned it,
+				// and its dedup set grows without limit.
+				return agenterrors.New("message stream needs a bound", agenterrors.FixableByAgent).
+					WithHint("set --duration, --max-events, or --idle-timeout (--duration defaults to 10m)")
+			}
 			filter, err := flags.buildFilter(ctx, cc, "")
 			if err != nil {
 				return err

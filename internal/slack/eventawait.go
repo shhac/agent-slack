@@ -22,7 +22,7 @@ type AwaitOptions struct {
 	PingEvery time.Duration
 	// MaxSkipped bounds the excluded-event report. Zero uses the default.
 	MaxSkipped  int
-	OnReconnect func(attempt int)
+	OnReconnect func(attempt int, filled bool)
 }
 
 // AwaitResult is what one await produced. Received is false on a clean

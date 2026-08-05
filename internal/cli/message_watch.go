@@ -252,9 +252,18 @@ func watchAuthMode(globals *GlobalFlags, cc *clientContext, command string) bool
 	return true
 }
 
-func reconnectNotice(globals *GlobalFlags) func(int) {
-	return func(attempt int) {
-		emitNotice(globals, "event socket dropped; reconnected and gap-filled (attempt "+strconv.Itoa(attempt)+")", "")
+// reconnectNotice reports a recovered socket, and says plainly when the gap
+// could not be re-read — claiming a gap-fill that did not happen tells the
+// caller their stream is intact when events are missing.
+func reconnectNotice(globals *GlobalFlags) func(int, bool) {
+	return func(attempt int, filled bool) {
+		if filled {
+			emitNotice(globals, "event socket dropped; reconnected and caught up (attempt "+strconv.Itoa(attempt)+")", "")
+			return
+		}
+		emitNotice(globals,
+			"event socket dropped; reconnected but could not catch up (attempt "+strconv.Itoa(attempt)+") — events may be missing",
+			"pass --channel to make a stream re-readable after a drop")
 	}
 }
 

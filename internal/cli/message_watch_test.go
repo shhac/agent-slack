@@ -498,3 +498,19 @@ func TestStreamChannelsResolveAPermalinkWithoutALookup(t *testing.T) {
 		t.Errorf("channel = %q, want the permalink's conversation", got)
 	}
 }
+
+// The help says a stream run is always bounded. Turning every bound off would
+// otherwise produce a process that never returns to the agent that spawned it.
+func TestMessageStreamRequiresABound(t *testing.T) {
+	f := watchCLIFixture(t, mockslack.DefaultEventScript())
+
+	_, stderr, err := f.run(t, "message", "stream",
+		"--duration", "0", "--max-events", "0", "--idle-timeout", "0")
+	if err == nil {
+		t.Fatal("an unbounded stream must be refused")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" {
+		t.Errorf("fixable_by = %v", payload["fixable_by"])
+	}
+}
