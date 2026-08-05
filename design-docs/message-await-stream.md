@@ -109,6 +109,10 @@ in `skipped` (bounded at 20 entries):
 This applies to every filter, not just `--reaction`: `--from` has the same
 failure mode when someone else answers.
 
+`--events` is **not** one of those filters. Kind is a primary selector, not a
+narrowing filter: a caller awaiting a reaction was never a candidate for the
+channel's messages, and reporting them would bury the one event that matters.
+
 For the same reason the **default is to match any reaction** and report its
 name. Approval is expressed as ✅ ✔️ ☑️ 👍 🎉 or a reply; no fixed list is
 right, and judging intent is the calling model's job, not a string comparison.
