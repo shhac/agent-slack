@@ -166,3 +166,40 @@ func TestWatchKeepsReadingPastATruncatedSkippedReport(t *testing.T) {
 		t.Fatal("polling must keep advancing past a truncated report and find the answer")
 	}
 }
+
+// Polling reads conversation history, which contains messages. A caller who
+// asked for reactions on a bot token would otherwise wait out the whole
+// timeout for something that could never arrive.
+func TestAwaitRefusesUnpollableKinds(t *testing.T) {
+	c, _ := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+
+	_, err := Await(context.Background(), c, AwaitOptions{
+		Filter:  EventFilter{Kinds: []EventKind{EventReactionAdded}, Channels: []string{mockslack.WSChannelID}},
+		Poll:    true,
+		Timeout: time.Second,
+	})
+	if err == nil {
+		t.Fatal("polling cannot deliver reactions and must say so")
+	}
+}
+
+// A lost socket must not read as a clean timeout — the caller decides whether
+// to resume from that distinction.
+func TestAwaitReportsWhyItStopped(t *testing.T) {
+	c, server := socketFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History())
+
+	result, err := Await(context.Background(), c, AwaitOptions{
+		Filter:  EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Timeout: 3 * time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Received {
+		t.Fatal("nothing was sent")
+	}
+	if result.StoppedBy != WatchStoppedReconnectFailed {
+		t.Errorf("stopped_by = %q, want the lost socket reported rather than a bare timeout", result.StoppedBy)
+	}
+}

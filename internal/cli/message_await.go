@@ -89,6 +89,10 @@ type awaitOutput struct {
 	Skipped          []compactEvent `json:"skipped,omitempty"`
 	SkippedTruncated bool           `json:"skipped_truncated,omitempty"`
 	Reconnects       int            `json:"reconnects,omitempty"`
+	// StoppedBy distinguishes a clean timeout from a lost socket; gaps warns
+	// that the answer may have arrived while the connection was down.
+	StoppedBy string `json:"stopped_by,omitempty"`
+	Gaps      int    `json:"gaps,omitempty"`
 }
 
 func awaitPayload(ctx context.Context, renderer *eventRenderer, result slack.AwaitResult) awaitOutput {
@@ -98,6 +102,8 @@ func awaitPayload(ctx context.Context, renderer *eventRenderer, result slack.Awa
 		WaitedMS:         result.WaitedMS,
 		SkippedTruncated: result.SkippedTruncated,
 		Reconnects:       result.Reconnects,
+		StoppedBy:        result.StoppedBy,
+		Gaps:             result.Gaps,
 	}
 	if result.Event != nil {
 		event := renderer.render(ctx, *result.Event)

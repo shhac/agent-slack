@@ -45,7 +45,7 @@ func (w *watchFlags) bind(cmd *cobra.Command, defaultEvents string) {
 	cmd.Flags().BoolVar(&w.includeThreadReplies, "include-thread-replies", false,
 		"For a channel target, also match replies inside existing threads")
 	registerMaxBodyChars(cmd, &w.maxBodyChars, render.DefaultMaxBodyChars, "message")
-	cmd.Flags().BoolVar(&w.slackMarkdown, "slack-markdown", false, "Render bodies as Slack mrkdwn instead of standard Markdown")
+	registerSlackMarkdown(cmd, &w.slackMarkdown, true)
 	// cached by default: a live stream must not spend an API call per event to
 	// expand mentions, so misses stay bare unless the caller opts into fetching.
 	registerResolveFlag(cmd, &w.resolve, resolveCached)

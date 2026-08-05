@@ -19,6 +19,11 @@ const defaultPollEvery = 15 * time.Second
 // runPoll is the standard-token fallback: no socket, just history reads after
 // the cursor. Only usable with a single named conversation.
 func (s *watchSession) runPoll(ctx context.Context) error {
+	if kind, ok := s.unpollableKind(); ok {
+		return agenterrors.Newf(agenterrors.FixableByHuman,
+			"%s events are only delivered over the event socket, which needs browser auth", kind).
+			WithHint("import browser credentials with 'agent-slack auth import-desktop', or await messages only")
+	}
 	channel := s.opts.targetChannel()
 	if channel == "" {
 		return agenterrors.New(
@@ -46,6 +51,19 @@ func (s *watchSession) runPoll(ctx context.Context) error {
 			return nil
 		}
 	}
+}
+
+// unpollableKind reports an event kind the poll fallback cannot produce.
+// Polling reads conversation history, which contains messages — a caller
+// awaiting a reaction would otherwise wait out the whole timeout for something
+// that could never arrive.
+func (s *watchSession) unpollableKind() (EventKind, bool) {
+	for _, kind := range s.opts.Filter.kinds() {
+		if kind != EventMessage {
+			return kind, true
+		}
+	}
+	return "", false
 }
 
 // pollBaseline is where a poll run starts reading from. With no --since there

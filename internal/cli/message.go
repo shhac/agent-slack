@@ -108,6 +108,17 @@ func registerMaxBodyChars(cmd *cobra.Command, target *int, def int, noun string)
 	cmd.Flags().IntVar(target, "max-body-chars", def, "Max content chars per "+noun+" (-1 = unlimited)")
 }
 
+// registerSlackMarkdown adds the shared dialect flag. Read commands render
+// bodies in it; write commands interpret input as it — two verbs, one flag
+// name, and previously ten hand-written help strings that had begun to drift.
+func registerSlackMarkdown(cmd *cobra.Command, target *bool, reading bool) {
+	help := "Send text as Slack mrkdwn instead of standard Markdown"
+	if reading {
+		help = "Render content as Slack mrkdwn instead of standard Markdown"
+	}
+	cmd.Flags().BoolVar(target, "slack-markdown", false, help)
+}
+
 // resolveTargetClient maps a parsed CLI <target> to a connected client and a
 // channel ID — the kernel every target-taking command shares. Permalinks pin
 // their workspace (overriding --workspace); channels resolve names to IDs.

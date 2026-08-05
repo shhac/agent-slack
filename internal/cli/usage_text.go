@@ -239,7 +239,11 @@ AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
        judging intent is the caller's job); --reaction narrows, ignoring skin
        tones. --from <@handle|U…|B…>, --include-self, --exclude-bots.
        Browser auth streams live; a bot/user token falls back to polling
-       conversations.history (slower, rate-limited) with a stderr notice.
+       conversations.history (slower, rate-limited) with a stderr notice —
+       messages only, since history carries no reactions/edits/deletes, so
+       those kinds are refused on a bot token rather than waited on forever.
+       The result carries stopped_by (and gaps) so a lost socket is
+       distinguishable from nobody answering.
 STREAM message stream [--channel <…>] [--duration 10m] [--max-events N]
        [--idle-timeout <dur>]
        WATCH-A-CHANNEL (the main use): tail an alert/deploy channel live.

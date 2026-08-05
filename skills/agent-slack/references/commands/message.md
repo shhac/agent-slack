@@ -47,7 +47,11 @@ what tells the command which message threaded replies would be answering.
 
 **A timeout is not an error.** Exit 0, `{"received": false}`, and a `cursor` to
 pass as the next `--since`. The cursor is the last ts examined, never "now", so
-resuming loses nothing.
+resuming loses nothing. Check `stopped_by`: `duration` means nobody answered,
+while `reconnect-failed` means the connection died and the answer may have
+arrived unseen (`gaps` says the same). On a bot token only `message` events can
+be polled — reaction/edit/delete awaits need browser auth and are refused
+rather than waited on.
 
 **Human-in-the-loop approval.** `reaction_added` arrives on the same socket:
 

@@ -40,6 +40,13 @@ type AwaitResult struct {
 	// The cursor stops before them, so resuming re-offers them.
 	SkippedTruncated bool
 	Reconnects       int
+	// StoppedBy is why the wait ended. Without it a lost socket is
+	// indistinguishable from a clean timeout, and the caller cannot tell
+	// "nobody answered" from "I stopped listening".
+	StoppedBy string
+	// Gaps counts catch-ups that could not be completed; non-zero means the
+	// answer may have arrived unseen.
+	Gaps int
 }
 
 const defaultMaxSkipped = 20
@@ -87,5 +94,7 @@ func Await(ctx context.Context, c *Client, opts AwaitOptions) (AwaitResult, erro
 		Skipped:          skipped,
 		SkippedTruncated: result.SkippedTruncated,
 		Reconnects:       result.Reconnects,
+		StoppedBy:        result.StoppedBy,
+		Gaps:             result.Gaps,
 	}, nil
 }

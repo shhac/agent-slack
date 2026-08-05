@@ -176,6 +176,14 @@ func (s *watchSession) runSocket(ctx context.Context) error {
 	defer func() { conn.Close() }()
 
 	frames := s.readFrames(ctx, conn)
+	// The idle countdown measures the run, not one connection: creating it per
+	// socket lets a stream that reconnects more often than --idle-timeout
+	// never trip it, even with no matching event at all.
+	idle, idleC := s.newIdleTimer()
+	if idle != nil {
+		defer idle.Stop()
+	}
+
 	if err := s.backfill(ctx); err != nil {
 		return err
 	}
@@ -187,7 +195,7 @@ func (s *watchSession) runSocket(ctx context.Context) error {
 
 	attempt := 0
 	for {
-		done, err := s.consume(ctx, frames)
+		done, err := s.consume(ctx, frames, idle, idleC)
 		if err != nil || done {
 			return err
 		}
@@ -314,12 +322,7 @@ func (s *watchSession) readFrames(ctx context.Context, conn rtmConn) <-chan map[
 
 // consume drains frames until a bound trips (done=true) or the socket drops
 // (done=false, so the caller reconnects).
-func (s *watchSession) consume(ctx context.Context, frames <-chan map[string]any) (bool, error) {
-	idle, idleC := s.newIdleTimer()
-	if idle != nil {
-		defer idle.Stop()
-	}
-
+func (s *watchSession) consume(ctx context.Context, frames <-chan map[string]any, idle *time.Timer, idleC <-chan time.Time) (bool, error) {
 	for {
 		select {
 		case <-ctx.Done():
