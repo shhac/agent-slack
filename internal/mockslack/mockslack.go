@@ -45,6 +45,11 @@ type Server struct {
 	conditionals map[string][]*conditional
 	calls        []Call
 
+	// wsScript, when set by EnableWebSocket, serves the fake event socket on
+	// WebSocketPath; wsConns records the connections it accepted.
+	wsScript *WSScript
+	wsConns  []*WSConnection
+
 	// ExpectToken, when set, rejects calls whose Bearer or form token differs
 	// with Slack's invalid_auth error — exercises auth and refresh paths.
 	ExpectToken string
@@ -96,16 +101,27 @@ func (s *Server) CallsFor(method string) []Call {
 	return out
 }
 
-// Reset clears queues, conditional handlers, and recorded calls.
+// Reset clears queues, conditional handlers, recorded calls, and any
+// WebSocket script.
 func (s *Server) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.queues = map[string][]Response{}
 	s.conditionals = map[string][]*conditional{}
 	s.calls = nil
+	s.wsScript = nil
+	s.wsConns = nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	wsEnabled := s.wsScript != nil
+	s.mu.Unlock()
+	if wsEnabled && r.URL.Path == WebSocketPath {
+		s.serveWebSocket(w, r)
+		return
+	}
+
 	method := strings.TrimPrefix(r.URL.Path, "/api/")
 	if r.Method != http.MethodPost || method == "" || method == r.URL.Path {
 		writeJSON(w, http.StatusNotFound, map[string]any{"ok": false, "error": "unknown_method"})
