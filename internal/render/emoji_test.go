@@ -58,3 +58,34 @@ func TestNormalizeReactionNameErrors(t *testing.T) {
 		}
 	}
 }
+
+// The wire form Slack sends when a reactor has a skin tone set. One normalizer
+// serves both `message react` input and `message await --reaction`, so a
+// skin-toned reaction must reduce to the same name as a plain one.
+func TestNormalizeReactionNameStripsSkinTone(t *testing.T) {
+	cases := map[string]string{
+		"+1::skin-tone-3":    "+1",
+		"+1":                 "+1",
+		":white_check_mark:": "white_check_mark",
+		"🚀":                  "rocket",
+	}
+	for input, want := range cases {
+		got, err := NormalizeReactionName(input)
+		if err != nil {
+			t.Errorf("NormalizeReactionName(%q) errored: %v", input, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("NormalizeReactionName(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestStripSkinToneIsTotal(t *testing.T) {
+	if got := StripSkinTone("eyes"); got != "eyes" {
+		t.Errorf("StripSkinTone(eyes) = %q", got)
+	}
+	if got := StripSkinTone(" +1::skin-tone-5 "); got != "+1" {
+		t.Errorf("StripSkinTone = %q", got)
+	}
+}

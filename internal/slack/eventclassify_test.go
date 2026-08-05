@@ -112,17 +112,3 @@ func TestClassifyReactionTargetsTheMessage(t *testing.T) {
 		t.Errorf("cursor should be when the reaction happened, got %q", event.Cursor())
 	}
 }
-
-func TestNormalizeReactionName(t *testing.T) {
-	cases := map[string]string{
-		"+1::skin-tone-3":    "+1",
-		"+1":                 "+1",
-		":white_check_mark:": "white_check_mark",
-		" eyes ":             "eyes",
-	}
-	for input, want := range cases {
-		if got := NormalizeReactionName(input); got != want {
-			t.Errorf("NormalizeReactionName(%q) = %q, want %q", input, got, want)
-		}
-	}
-}

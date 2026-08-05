@@ -9,8 +9,6 @@ package slack
 // design-docs/behavior-reference.md and modelled by mockslack's fixture.
 
 import (
-	"strings"
-
 	"github.com/shhac/agent-slack/internal/render"
 )
 
@@ -156,15 +154,4 @@ func EventFromMessage(channelID string, msg render.MessageSummary) Event {
 		Content:   msg.Text,
 		Message:   &msg,
 	}
-}
-
-// NormalizeReactionName strips the skin-tone modifier Slack appends on the
-// wire ("+1::skin-tone-3"), so a caller matching "+1" is not defeated by a
-// reactor's skin tone setting.
-func NormalizeReactionName(name string) string {
-	trimmed := strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(name), ":"), ":")
-	if idx := strings.Index(trimmed, "::"); idx >= 0 {
-		trimmed = trimmed[:idx]
-	}
-	return trimmed
 }

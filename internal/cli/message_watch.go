@@ -78,6 +78,22 @@ func parseEventKinds(values []string) ([]slack.EventKind, error) {
 	return kinds, nil
 }
 
+// withReactionKinds makes --reaction mean what it says. Naming a reaction
+// while the kind set is messages-only would otherwise filter nothing and match
+// the next message instead — the command silently doing something other than
+// what was asked.
+func withReactionKinds(kinds []slack.EventKind, reactions []string) []slack.EventKind {
+	if len(reactions) == 0 {
+		return kinds
+	}
+	for _, kind := range kinds {
+		if kind == slack.EventReactionAdded || kind == slack.EventReactionRemoved {
+			return kinds
+		}
+	}
+	return append(kinds, slack.EventReactionAdded, slack.EventReactionRemoved)
+}
+
 // buildFilter turns the shared flags into the engine's filter. Author handles
 // resolve to ids here so the engine stays free of lookups.
 func (w *watchFlags) buildFilter(ctx context.Context, cc *clientContext, since string) (slack.EventFilter, error) {
@@ -89,10 +105,14 @@ func (w *watchFlags) buildFilter(ctx context.Context, cc *clientContext, since s
 	if err != nil {
 		return slack.EventFilter{}, err
 	}
+	reactions, err := normalizeReactionNames(w.reactions)
+	if err != nil {
+		return slack.EventFilter{}, err
+	}
 	return slack.EventFilter{
-		Kinds:                kinds,
+		Kinds:                withReactionKinds(kinds, reactions),
 		From:                 from,
-		Reactions:            w.reactions,
+		Reactions:            reactions,
 		SelfUserID:           selfUserID(cc),
 		IncludeSelf:          w.includeSelf,
 		ExcludeBots:          w.excludeBots,

@@ -35,10 +35,23 @@ func EmojiUnicode(name string) (string, bool) {
 	return e, ok
 }
 
-// NormalizeReactionName converts ":rocket:", "rocket", or "🚀" to the bare
-// name Slack's reactions API expects ("rocket").
+// StripSkinTone removes the "::skin-tone-N" suffix Slack appends to a reaction
+// name on the wire ("+1::skin-tone-3" -> "+1"). Total and lossless for names
+// that carry no modifier, so it is safe to apply to any reaction name.
+func StripSkinTone(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if idx := strings.Index(trimmed, "::"); idx >= 0 {
+		return trimmed[:idx]
+	}
+	return trimmed
+}
+
+// NormalizeReactionName converts ":rocket:", "rocket", "🚀", or the wire form
+// "+1::skin-tone-3" to the bare name Slack's reactions API expects ("rocket",
+// "+1"). One normalizer serves every command that takes an emoji, so
+// `message react` and `message await --reaction` accept the same inputs.
 func NormalizeReactionName(input string) (string, error) {
-	trimmed := strings.TrimSpace(input)
+	trimmed := StripSkinTone(input)
 	if trimmed == "" {
 		return "", agenterrors.New("emoji is empty", agenterrors.FixableByAgent)
 	}

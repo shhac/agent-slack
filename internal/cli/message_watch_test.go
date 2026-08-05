@@ -325,3 +325,54 @@ func TestParseEventKindsExpandsAliases(t *testing.T) {
 		t.Error("an unknown kind must be rejected, not silently ignored")
 	}
 }
+
+// --reaction names what counts as an answer. Without implying the reaction
+// kinds it would filter nothing and return the next *message* instead — the
+// command silently doing something other than what was asked.
+func TestMessageAwaitReactionFlagImpliesReactionEvents(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{
+		mockslack.Hello(),
+		mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "a message, not the answer", "1700000015.000100"),
+		mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser, "eyes", "1700000010.000100", "1700000030.000100"),
+	})
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--reaction", "eyes", "--timeout", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, stdout)
+	event, _ := payload["event"].(map[string]any)
+	if event["event"] != "reaction_added" || event["reaction"] != "eyes" {
+		t.Fatalf("--reaction alone must wait for that reaction, got %v", payload)
+	}
+}
+
+// The same normalizer serves `message react` and `--reaction`, so a unicode
+// emoji matches the shortcode name Slack puts on the wire.
+func TestMessageAwaitReactionAcceptsUnicodeEmoji(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{
+		mockslack.Hello(),
+		mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser, "rocket", "1700000010.000100", "1700000030.000100"),
+	})
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--reaction", "🚀", "--timeout", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := parseJSON(t, stdout); payload["received"] != true {
+		t.Fatalf("--reaction 🚀 should match a :rocket: reaction, got %v", payload)
+	}
+}
+
+// A typo should be an immediate agent-fixable error, not a silent timeout.
+func TestMessageAwaitRejectsUnusableReactionName(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+
+	_, stderr, err := f.run(t, "message", "await", mockslack.WSChannelID, "--reaction", "not an emoji!", "--timeout", "1s")
+	if err == nil {
+		t.Fatal("an unusable emoji must error rather than wait")
+	}
+	if payload := errPayload(t, stderr); payload["fixable_by"] != "agent" {
+		t.Errorf("fixable_by = %v", payload["fixable_by"])
+	}
+}

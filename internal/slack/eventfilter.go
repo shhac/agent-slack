@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/shhac/agent-slack/internal/render"
 )
 
 // EventFilter narrows the classified event stream. A zero filter matches
@@ -111,9 +113,11 @@ func (f EventFilter) matchesReaction(e Event) bool {
 	if len(f.Reactions) == 0 || !isReactionKind(e.Kind) {
 		return true
 	}
-	got := NormalizeReactionName(e.Reaction)
+	// Both sides are stripped: the wire carries the reactor's skin tone, and a
+	// filter value may arrive un-normalized from an engine-level caller.
+	got := render.StripSkinTone(e.Reaction)
 	for _, want := range f.Reactions {
-		if NormalizeReactionName(want) == got {
+		if render.StripSkinTone(want) == got {
 			return true
 		}
 	}
