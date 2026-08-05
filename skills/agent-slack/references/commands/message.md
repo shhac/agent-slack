@@ -27,10 +27,16 @@ no rate-limit cost. They emit the **same event record**; `await` returns one
 wrapped in an envelope, `stream` emits many as NDJSON, so one parser serves both.
 
 ```bash
-# Post a question, then wait for the answer. --since is the ts the send
-# returned, and it is EXCLUSIVE — it closes the gap between sending and waiting.
-agent-slack message await "<permalink>" --since 1785459244.118200 --timeout 10m
+# Ask a human something and wait for any form of answer.
+ts=$(agent-slack message send "#team" "proceed or hold?" | jq -r .ts)
+agent-slack message await "#team" --since "$ts" --events message,reaction --timeout 30m
 ```
+
+A person answers in one of three ways and you cannot predict which: a message
+in the channel, a reply **threaded on your message**, or an emoji reaction on
+it. That one call catches all three. `--since` is the ts the send returned; it
+is EXCLUSIVE, it closes the gap between sending and waiting, and it is also
+what tells the command which message threaded replies would be answering.
 
 ```json
 { "received": true, "cursor": "1785459301.114329", "waited_ms": 47120,
@@ -69,12 +75,17 @@ target excludes replies in existing threads, matching what `message list
 `author.user_id` — do not key on `user_id` alone or you drop app output, which
 is most of what an agent waits on. `--exclude-bots` to drop them.
 
-Streaming is NDJSON plus an `@summary` meta line whose `cursors` are **per
-channel**:
+**Scope details.** A permalink or `--thread-ts` target awaits inside that
+thread. A channel target matches channel-level messages plus replies to the
+`--since` message; *other* threads stay out unless `--include-thread-replies`.
+
+Watching a channel — alerts, deploys, an incident room:
 
 ```bash
-agent-slack message stream --channel C0FAKE1 --channel C0FAKE3 --duration 15m
+agent-slack message stream --channel "#alerts" --duration 30m --idle-timeout 10m
 ```
+
+NDJSON plus an `@summary` meta line whose `cursors` are **per channel**.
 
 `stream` needs browser auth (the socket is a client API). `await` falls back to
 polling `conversations.history` on a bot/user token, with a stderr notice —

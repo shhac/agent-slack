@@ -128,6 +128,49 @@ what "a message in this channel" means is exactly the inconsistency that burns
 an agent. `--include-thread-replies` opts in. A permalink or `--thread-ts`
 target awaits *within* that thread, where replies are the whole point.
 
+**With one exception, found the hard way.** In a live test the human answered
+by threading on the message being awaited, and the channel-target default
+dropped it — the await would have reported silence with the answer sitting
+right there. Neither invocation covered the answer space: `await <channel>`
+missed the in-thread reply, `await <permalink>` would have missed her later
+channel-level one, and a human picks either unpredictably.
+
+So when a channel target is given with `--since <ts>`, replies threaded on
+*that* message match too (`EventFilter.RepliesTo`). Other threads stay
+excluded — this is not `--include-thread-replies`. The cost is that `--since`
+carries two meanings in this mode: the resume cursor, and the message being
+answered. They are the same value in the flow that matters, and an explicit
+`--replies-to` would make callers pass the same ts twice.
+
+Two consequences fall out:
+
+- Thread replies are absent from channel history unless broadcast, so the
+  backfill reads the thread separately or it misses answers that landed before
+  the await started.
+- That thread read is **best-effort**, unlike the channel read. `--since` may
+  be a cursor from an earlier run rather than a message that started a thread,
+  and failing the whole await over a speculative fetch would be worse than
+  losing pre-await in-thread replies — the socket still delivers them from
+  connect onwards.
+
+## The two shapes this is for
+
+**Ask a person something and wait for any form of answer.** A human replies in
+the channel, or threads on your message, or just reacts. All three are the
+answer, and one invocation now covers all three:
+
+```bash
+ts=$(agent-slack message send "#team" "deploy blocked — proceed?" | jq -r .ts)
+agent-slack message await "#team" --since "$ts" --events message,reaction --timeout 30m
+```
+
+**Watch an alert channel.** App output is the payload here, so bot posts count
+as messages by default and arrive with `author.bot_id`:
+
+```bash
+agent-slack message stream --channel "#alerts" --duration 30m --idle-timeout 10m
+```
+
 ## Reconnection
 
 Drops are expected on a 30-minute await. The engine reconnects transparently:

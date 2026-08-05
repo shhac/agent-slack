@@ -151,27 +151,46 @@ Scheduling, forwarding, and the draft hand-off flow: `agent-slack message usage`
 ## Waiting for a reply
 
 ```bash
-agent-slack message send "<permalink>" "proceed or hold?"          # returns a ts
-agent-slack message await "<permalink>" --since <that-ts> --timeout 10m
-agent-slack message await "<permalink>" --events reaction,message --timeout 30m
-agent-slack message stream --channel "#deploys" --duration 15m     # NDJSON
+ts=$(agent-slack message send "#team" "deploy blocked — proceed or hold?" | jq -r .ts)
+agent-slack message await "#team" --since "$ts" --events message,reaction --timeout 30m
 ```
 
-Live delivery over the socket the Slack client uses: no polling, no rate-limit
-cost. **Always pass `--since` with the ts your send returned** — it is exclusive
-and it is the only thing that stops a reply landing in the gap between sending
-and waiting from being missed. A timeout is **not an error**: exit 0,
-`{"received": false}`, and a `cursor` to pass as the next `--since`.
+**That is the pattern for asking a human something.** A person answers in one
+of three ways — a message in the channel, a reply threaded on your message, or
+just an emoji reaction on it — and you cannot predict which. The call above
+catches all three. Verified live: the human threaded her first answer and
+reacted with a custom `:letsdothis:` emoji.
 
-For approval, let reactions match by default and interpret the result yourself —
-✅ ✔️ ☑️ 👍 and a plain "yes" all mean approval, and `:white_check_mark:` is the
-*green* tick, not the grey one. If you do narrow with `--reaction`, always read
-`skipped`: it carries the ❌ that would otherwise look like silence, and
-"rejected" must not be read as "no answer yet".
+Two things make it correct rather than lucky:
 
-Bot posts count as messages and carry `author.bot_id` instead of
-`author.user_id`. Full flags, event kinds, and thread scoping:
-[references/commands/message.md](references/commands/message.md).
+- **`--since` is what stops you missing the answer.** Pass the `ts` your send
+  returned. It is exclusive, and it makes the command check what already
+  arrived before it started listening — otherwise a fast reply lands in the gap
+  between sending and waiting and is never seen. Replies threaded on that
+  message count too, not just channel-level ones.
+- **`--events message,reaction`** — reactions are opt-in. Leave the reaction
+  *name* unfiltered and judge it yourself: ✅ ✔️ ☑️ 👍 🎉, a workspace's custom
+  `:approved:`, or a plain "yes" all mean approval. If you do narrow with
+  `--reaction`, read `skipped` — it carries the ❌ that would otherwise look
+  like silence, and "rejected" must never be read as "no answer yet".
+
+A timeout is **not an error**: exit 0, `{"received": false}`, and a `cursor` to
+pass as the next `--since`, so looping loses nothing.
+
+```bash
+agent-slack message stream --channel "#alerts" --duration 30m --idle-timeout 10m
+```
+
+**That is the pattern for watching a channel** — deploys, alerts, an incident
+room. NDJSON, one event per line, `@summary` with per-channel cursors at the
+end. Always bounded, so it returns.
+
+App posts count as messages and carry `author.bot_id` with **no**
+`author.user_id` — most alert traffic is apps, so never key on `user_id` alone.
+Both commands drop the socket's bookkeeping noise (typing, read marks, badges)
+and never re-emit a thread's parent when a reply arrives. Neither polls or
+spends rate-limit budget. `stream` needs browser auth; `await` falls back to
+polling on a bot token. Full flags: [references/commands/message.md](references/commands/message.md).
 
 ## Finding people & channels
 

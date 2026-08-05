@@ -216,9 +216,17 @@ SCHED  message scheduled list [--channel …] [--cursor …]
        --channel). Bot/user tokens: --channel required to cancel.
 AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
        Blocks until the next matching event, then prints one JSON object:
-       {received, cursor, waited_ms, event, skipped?}. A permalink target
-       awaits inside that message's thread; a channel target excludes replies
-       in existing threads (--include-thread-replies opts in).
+       {received, cursor, waited_ms, event, skipped?}.
+       ASK-AND-WAIT (the main use): send, then await with --since <the ts the
+       send returned> and --events message,reaction. That one call catches all
+       three ways a human answers — a channel message, a reply threaded on
+       your message, or an emoji reaction on it:
+         ts=$(agent-slack message send "#team" "proceed?" | jq -r .ts)
+         agent-slack message await "#team" --since "$ts" \
+           --events message,reaction --timeout 30m
+       A permalink/--thread-ts target awaits inside that thread instead. A
+       channel target excludes OTHER threads' replies (--include-thread-replies
+       opts in); replies to the --since message always count.
        --since <ts> is EXCLUSIVE and closes the send→wait gap: pass the ts
        'message send' returned, or a previous call's cursor, and a reply that
        arrived before this command started is still found.
@@ -233,6 +241,10 @@ AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
        conversations.history (slower, rate-limited) with a stderr notice.
 STREAM message stream [--channel <…>] [--duration 10m] [--max-events N]
        [--idle-timeout <dur>]
+       WATCH-A-CHANNEL (the main use): tail an alert/deploy channel live.
+       App output counts as messages and arrives with author.bot_id:
+         agent-slack message stream --channel "#alerts" --duration 30m \
+           --idle-timeout 10m
        NDJSON of the same event records await returns, ending with an
        {"@summary":{cursors:{<channel>:<ts>},events,stopped_by,…}} meta line.
        Cursors are PER CHANNEL — gap-fill is per conversation. Without
