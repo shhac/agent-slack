@@ -89,7 +89,13 @@ NDJSON plus an `@summary` meta line whose `cursors` are **per channel**.
 
 `stream` needs browser auth (the socket is a client API). `await` falls back to
 polling `conversations.history` on a bot/user token, with a stderr notice —
-slower and rate-limited, but it works. Both runs are always bounded.
+slower and rate-limited, but it works.
+
+Both runs are always bounded — `stream` refuses if you turn `--duration`,
+`--max-events`, and `--idle-timeout` all off. When a stream reconnects, the
+stderr notice says whether it could catch up; `@summary.gaps > 0` means it
+could not, and events may be missing. Pass `--channel` to make a stream
+re-readable after a drop.
 
 `message list` accepts a `U…`/`@handle` target too: the DM auto-opens and its
 history (or a thread within it) lists like any channel.

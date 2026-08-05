@@ -212,7 +212,9 @@ the skipped report exists to prevent.
 ## Bounds
 
 Neither command may run unbounded — an agent shelling out needs a process that
-returns. `await` takes `--timeout` (default 5m). `stream` takes `--duration`
+returns, and an unbounded run's dedup set grows without limit. `stream` refuses
+outright when every bound is off, rather than treating "always bounded" as a
+convention the caller can opt out of. `await` takes `--timeout` (default 5m). `stream` takes `--duration`
 (default 10m), `--max-events`, and `--idle-timeout`. Every bound exits 0 with a
 cursor; only auth, target, and transport failures exit non-zero.
 
