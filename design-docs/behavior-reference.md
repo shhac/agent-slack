@@ -259,3 +259,74 @@ scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
 - `--debug` logs every received RTM frame (token-redacted, truncated), which
   is the only visibility into the push events driving this flow.
 - There is no self-update command.
+
+## The event socket (`client.getWebSocketURL`)
+
+The web client does not poll for new messages: it renders its message pane from
+a long-lived WebSocket, and after a `chat.postMessage` it makes no history call
+at all. This is the transport a `message await` / `message stream` would be
+built on. Verified against a captured browser session.
+
+- **Slack's push transports are unavailable to us.** The Events API needs a
+  publicly reachable request URL and an installed app; Socket Mode needs an
+  app-level `xapp-` token with `connections:write` plus a bot token. Both are
+  app artifacts that cannot be derived from a browser session, and both would
+  give bot visibility rather than the user's own view. The event socket is the
+  browser-auth equivalent.
+- **The modern client does not call `rtm.connect`.** It calls
+  `client.getWebSocketURL`, which returns `primary_websocket_url`,
+  `fallback_websocket_url`, `routing_context`, and `ttl_seconds: 604800` — a
+  week, so the endpoint is worth caching rather than re-fetching per connect.
+  (`rtm.connect` still works on `xoxc` and still backs the workflow form flow;
+  its URL is short-lived and single-use.)
+- The client assembles the connect URL itself, appending `token`,
+  `sync_desync=1`, `slack_client=desktop`, `start_args`, `flannel=3`,
+  `lazy_channels=1`, `no_query_on_subscribe=1`, `batch_presence_aware=1`, and
+  `gateway_server=<routing_context>`. `start_args` carries `connect_only=true`,
+  which suppresses the boot payload — events only.
+- **No subscription is required.** `lazy_channels` / `no_query_on_subscribe`
+  suggest the server expects the client to declare interest per conversation,
+  but a 15-minute capture that sent nothing except keepalive pings received
+  messages, edits, bot posts, reactions and typing across both channels and
+  DMs it had never named. A consumer can connect and listen.
+- The socket survives at least 15 minutes on a 30s client ping (each answered
+  with `pong`). `reconnect_url` is pushed periodically — a pre-authorized URL
+  to reconnect with, so a long-lived consumer need not re-fetch
+  `client.getWebSocketURL`.
+- Socket `message` frames carry `blocks` (rich_text) alongside `text`, and —
+  unlike the Events API's payloads — **no `channel_type`**. Conversation kind
+  has to come from the id prefix.
+
+Three shapes will silently corrupt a naive consumer, and
+`mockslack.DefaultEventScript` models each:
+
+- **A thread reply arrives as two frames.** The reply itself (`message` with
+  `thread_ts`), and then `message_replied` — the *parent* message re-sent with
+  updated `reply_count` / `latest_reply` / `reply_users`. Treating every
+  message-typed frame as new activity re-emits the parent as though it had
+  just been posted.
+- **A bot message has no `user` field.** `subtype: bot_message` carries
+  `bot_id` / `username` / `bot_profile` / `app_id` instead. Keying on `user`
+  drops app output entirely — which is most of what an agent waits on.
+- **Edits and deletes are message-typed with `hidden: true`** and no text of
+  their own (`message_changed` nests `message` + `previous_message`;
+  `message_deleted` carries only `deleted_ts`).
+
+The rest is bookkeeping from the user's other clients that looks like activity
+but carries none — `im_marked`, `badge_counts_updated`,
+`clear_mention_notification`, `update_global_thread_state`, `thread_subscribed`,
+`user_invalidated`, `dnd_invalidated`, `activity/activity_updated`,
+`activity/activity_deleted`, `file_view_ready` — plus `desktop_notification`,
+which duplicates content the message frame already delivered (and puts the
+message's ts in `msg`, not `ts`). Over 15 minutes these outnumbered actual
+messages roughly 15:1, so a stream must filter rather than forward.
+- The client's own incremental fetch is `conversations.history` with `oldest`,
+  `inclusive=true`, `ignore_replies=true` and an `_x_reason` of
+  `message-pane/requestHistory` — i.e. the cursor pattern a polling fallback
+  would use, on the workspace client endpoint, where the 1 req/min
+  non-Marketplace tier does not apply.
+- Two methods worth using for a stream that are not wrapped yet:
+  `client.counts` (per-conversation latest ts + unread state in one call — the
+  cheap way to find *which* conversation moved) and `messages.list`
+  (`message_ids: [{channel, timestamps[]}]` — batch fetch of specific messages
+  across channels, for reconnect gap-fill).

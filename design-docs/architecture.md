@@ -192,3 +192,18 @@ testing and CLI contract tests. Coverage combines: client unit tests
 (headers, 429 retry, error mapping, refresh), render unit tests (the bulk of
 behavior coverage), and CLI contract tests against
 `mockslack`.
+
+`EnableWebSocket` adds a fake event socket on `/websocket`: it upgrades the
+connection, pushes a scripted frame sequence, answers pings, and records what
+the client wrote. Queued HTTP responses cannot model a server that pushes on
+its own schedule, which is what anything built on the event socket needs. The
+default script (`DefaultEventScript`) covers the frame shapes a consumer must
+survive — plain message, thread reply, edit, delete, reaction, typing,
+presence, DM — with **fabricated** ids and text throughout. Captured workspace
+traffic must never be copied into the fixtures. `cmd/mockslack -websocket`
+serves the same script with spacing and a socket that stays open.
+
+`agent-slack debug ws-capture` is the development counterpart: it opens the
+real event socket with stored browser credentials and dumps every frame as
+NDJSON. It is hidden from help, the usage card, and the MCP surface — a
+learning tool, not part of the CLI contract.
