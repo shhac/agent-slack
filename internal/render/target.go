@@ -33,6 +33,7 @@ type Target struct {
 var (
 	channelIDRe   = regexp.MustCompile(`^[CDG][A-Z0-9]{8,}$`)
 	userIDRe      = regexp.MustCompile(`^U[A-Z0-9]{8,}$`)
+	botIDRe       = regexp.MustCompile(`^B[A-Z0-9]{8,}$`)
 	usergroupIDRe = regexp.MustCompile(`^S[A-Z0-9]{8,}$`)
 )
 
@@ -40,6 +41,14 @@ var (
 // group: C…/D…/G…).
 func IsChannelID(s string) bool {
 	return channelIDRe.MatchString(s)
+}
+
+// IsBotID reports whether s is a Slack bot ID. Apps have no user record, so a
+// bot id is passed through author filters rather than resolved — which makes
+// the shape test load-bearing: a prefix check alone would swallow any handle
+// beginning with B and turn it into a filter that never matches.
+func IsBotID(s string) bool {
+	return botIDRe.MatchString(s)
 }
 
 // IsUserID reports whether s is a Slack user ID.

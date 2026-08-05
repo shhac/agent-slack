@@ -121,8 +121,10 @@ func (w *watchFlags) buildFilter(ctx context.Context, cc *clientContext, since s
 	}, nil
 }
 
-// resolveAuthorIDs maps --from values to ids. A bot id (B…) passes through:
-// apps have no user record to look up.
+// resolveAuthorIDs maps --from values to ids. A bot id passes through — apps
+// have no user record — but only when it really is one: "Bella" is a handle,
+// not a bot, and treating it as one yields a filter that silently never
+// matches.
 func resolveAuthorIDs(ctx context.Context, cc *clientContext, values []string) ([]string, error) {
 	ids := make([]string, 0, len(values))
 	for _, value := range values {
@@ -130,7 +132,7 @@ func resolveAuthorIDs(ctx context.Context, cc *clientContext, values []string) (
 		if trimmed == "" {
 			continue
 		}
-		if strings.HasPrefix(trimmed, "B") {
+		if render.IsBotID(trimmed) {
 			ids = append(ids, trimmed)
 			continue
 		}

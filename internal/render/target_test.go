@@ -113,3 +113,16 @@ func TestIsChannelIDIsUserID(t *testing.T) {
 		t.Error("unexpected user ID match")
 	}
 }
+
+// The shape test exists because a bare prefix check swallows handles: --from
+// "Bella" would be treated as a bot id and never match anything.
+func TestIsBotIDRequiresTheIDShape(t *testing.T) {
+	if !IsBotID("B0FAKEAPP01") {
+		t.Error("a real bot id should be recognised")
+	}
+	for _, notABot := range []string{"Bella", "B", "bot", "B0fakeapp01", "U0FAKEUSER1"} {
+		if IsBotID(notABot) {
+			t.Errorf("IsBotID(%q) should be false", notABot)
+		}
+	}
+}

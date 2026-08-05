@@ -376,3 +376,36 @@ func TestMessageAwaitRejectsUnusableReactionName(t *testing.T) {
 		t.Errorf("fixable_by = %v", payload["fixable_by"])
 	}
 }
+
+// --from must key on the id *shape*. "Bella" is a handle, not a bot id; before
+// the shape test it was passed through unresolved, producing a filter that
+// silently matched nothing for the whole timeout.
+func TestMessageAwaitFromHandleIsResolvedNotPassedThrough(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+
+	_, stderr, err := f.run(t, "message", "await", mockslack.WSChannelID,
+		"--from", "Bella", "--timeout", "1s")
+	if err == nil {
+		t.Fatal("an unresolvable handle must error, not wait out the timeout")
+	}
+	if payload := errPayload(t, stderr); payload["error"] == nil {
+		t.Errorf("payload = %v", payload)
+	}
+}
+
+// A real bot id passes through — apps have no user record to resolve.
+func TestMessageAwaitFromAcceptsBotID(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{
+		mockslack.Hello(),
+		mockslack.WSBotMessage(mockslack.WSChannelID, "Fabricated App", "deploy done", "1700000015.000100"),
+	})
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
+		"--from", mockslack.WSBotID, "--timeout", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := parseJSON(t, stdout); payload["received"] != true {
+		t.Fatalf("a bot id should pass through and match its app's post: %v", payload)
+	}
+}
