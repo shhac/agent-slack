@@ -22,7 +22,7 @@ package mockslack
 const (
 	WSTeamID    = "T0FAKETEAM"
 	WSChannelID = "C0FAKEGENERAL"
-	WSDMID      = "D0FAKEDM"
+	WSDMID      = "D0FAKEDIRECT"
 	WSUserID    = "U0FAKEALEX"
 	WSOtherUser = "U0FAKESAM"
 	WSBotID     = "B0FAKEAPP"

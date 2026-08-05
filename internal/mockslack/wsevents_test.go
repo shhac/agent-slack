@@ -1,6 +1,10 @@
 package mockslack
 
-import "testing"
+import (
+	"regexp"
+	"strings"
+	"testing"
+)
 
 // The default script exists to expose the shapes that break a naive consumer.
 // These assertions pin the traps so a future edit cannot quietly sand them off
@@ -57,5 +61,24 @@ func TestPlainMessagesCarryBlocks(t *testing.T) {
 	}
 	if block, _ := blocks[0].(map[string]any); block["type"] != "rich_text" {
 		t.Errorf("first block = %v, want rich_text", blocks[0])
+	}
+}
+
+// Fixture ids must parse as real Slack ids (kind prefix + uppercase
+// alphanumerics, 9+ chars). This is not cosmetic: an id with an underscore is
+// not recognised as an id at all, so every test using it silently falls
+// through to a name-lookup path and exercises code the real flow never runs.
+func TestFixtureIDsAreShapedLikeSlackIDs(t *testing.T) {
+	idRe := regexp.MustCompile(`^[CDGUBTA][A-Z0-9]{8,}$`)
+	for _, id := range []string{WSTeamID, WSChannelID, WSDMID, WSUserID, WSOtherUser, WSBotID, WSAppID} {
+		if !idRe.MatchString(id) {
+			t.Errorf("fixture id %q is not Slack-shaped; tests using it take a different code path", id)
+		}
+	}
+	// And they must stay obviously invented — never a real workspace's ids.
+	for _, id := range []string{WSTeamID, WSChannelID, WSDMID, WSUserID, WSOtherUser, WSBotID, WSAppID} {
+		if !strings.Contains(id, "FAKE") {
+			t.Errorf("fixture id %q should be self-evidently fabricated", id)
+		}
 	}
 }
