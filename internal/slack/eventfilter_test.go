@@ -171,3 +171,23 @@ func TestInScopeIgnoresKindsTheCallerDidNotAskFor(t *testing.T) {
 		t.Error("a non-matching reaction is exactly what skipped is for")
 	}
 }
+
+// The real-world case this exists for: a question posted to a conversation,
+// answered by threading on it. A channel watch that drops that reply misses
+// exactly what it was started to collect.
+func TestFilterAdmitsRepliesToTheAwaitedMessage(t *testing.T) {
+	f := EventFilter{Channels: []string{"C1"}, Since: "1700000010.000100", RepliesTo: "1700000010.000100"}
+	inThread := messageEvent("C1", "U2", "1700000020.000200", "1700000010.000100")
+	if !f.Matches(inThread) {
+		t.Error("a reply threaded on the awaited message is an answer")
+	}
+	inChannel := messageEvent("C1", "U2", "1700000030.000300", "")
+	if !f.Matches(inChannel) {
+		t.Error("a channel-level reply is also an answer")
+	}
+	// Other threads stay excluded: RepliesTo is not --include-thread-replies.
+	elsewhere := messageEvent("C1", "U2", "1700000040.000400", "1700000005.000100")
+	if f.Matches(elsewhere) {
+		t.Error("an unrelated thread's reply is not an answer to this message")
+	}
+}

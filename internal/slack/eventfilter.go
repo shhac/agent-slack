@@ -22,6 +22,12 @@ type EventFilter struct {
 	// channel. Off by default so a channel target means what `message list`
 	// shows for that channel.
 	IncludeThreadReplies bool
+	// RepliesTo is the message the caller is awaiting answers to. Replies
+	// threaded on it match even when watching a channel, because a human
+	// answering a question picks in-thread or in-channel unpredictably and
+	// both are the answer. Without this an await on a channel misses exactly
+	// the reply it was posted to collect.
+	RepliesTo string
 	// From, when non-empty, restricts to these author ids (user or bot).
 	From []string
 	// SelfUserID is the authenticated user, excluded unless IncludeSelf.
@@ -78,10 +84,10 @@ func (f EventFilter) matchesThread(e Event) bool {
 		}
 		return e.ThreadTS == f.ThreadTS && e.TS != f.ThreadTS
 	}
-	if !f.IncludeThreadReplies && e.Kind == EventMessage && e.ThreadTS != "" && e.ThreadTS != e.TS {
-		return false
+	if e.Kind != EventMessage || e.ThreadTS == "" || e.ThreadTS == e.TS {
+		return true
 	}
-	return true
+	return f.IncludeThreadReplies || (f.RepliesTo != "" && e.ThreadTS == f.RepliesTo)
 }
 
 func (f EventFilter) matchesAuthor(e Event) bool {

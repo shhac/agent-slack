@@ -292,3 +292,53 @@ func TestWatchReconnectsWithoutDuplicatingEvents(t *testing.T) {
 		t.Errorf("gaps = %d, want 0 when the channel is known and re-readable", result.Gaps)
 	}
 }
+
+// A reply threaded on the awaited message does not appear in channel history,
+// so the backfill has to read the thread too or it misses answers that landed
+// before the await started.
+func TestWatchBackfillReadsRepliesToTheAwaitedMessage(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History()) // nothing at channel level
+	server.HandleBody("conversations.replies", mockslack.History(
+		mockslack.Message("1700000010.000100", mockslack.WSUserID, "the question"),
+		mockslack.Message("1700000020.000200", mockslack.WSOtherUser, "answered in the thread"),
+	))
+
+	got, _ := collectWatch(t, c, WatchOptions{
+		Filter: EventFilter{
+			Since:     "1700000010.000100",
+			Channels:  []string{mockslack.WSChannelID},
+			RepliesTo: "1700000010.000100",
+		},
+		BackfillChannel: mockslack.WSChannelID,
+		MaxEvents:       1,
+	})
+	if len(got) != 1 || got[0].Content != "answered in the thread" {
+		t.Fatalf("backfill missed the in-thread answer: %+v", got)
+	}
+}
+
+// --since may be a cursor from an earlier run rather than a message that
+// started a thread. The speculative thread read must not fail the await.
+func TestWatchTolerantOfAnUnreadableRepliesBackfill(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{
+		mockslack.Hello(),
+		mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "live answer", "1700000030.000300"),
+	}})
+	server.HandleBody("conversations.history", mockslack.History())
+	// No conversations.replies fixture: the call errors, as it would for a ts
+	// that never started a thread.
+
+	got, _ := collectWatch(t, c, WatchOptions{
+		Filter: EventFilter{
+			Since:     "1700000010.000100",
+			Channels:  []string{mockslack.WSChannelID},
+			RepliesTo: "1700000010.000100",
+		},
+		BackfillChannel: mockslack.WSChannelID,
+		MaxEvents:       1,
+	})
+	if len(got) != 1 || got[0].Content != "live answer" {
+		t.Fatalf("a failed thread read must not sink the await: %+v", got)
+	}
+}

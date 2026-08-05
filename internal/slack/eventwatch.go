@@ -401,7 +401,26 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 	if err != nil {
 		return nil, err
 	}
-	return afterCursor(messages, since), nil
+	out := afterCursor(messages, since)
+
+	// A reply threaded on the awaited message is not in channel history unless
+	// it was broadcast, so it needs its own read — otherwise the backfill
+	// misses the very answer RepliesTo exists to catch.
+	repliesTo := s.opts.Filter.RepliesTo
+	if repliesTo == "" {
+		return out, nil
+	}
+	// Best-effort, unlike the channel read: --since may be a cursor from an
+	// earlier run rather than a message the caller posted, in which case there
+	// is no thread to read. Failing the whole await over a speculative fetch
+	// would be worse than losing in-thread replies from before it started —
+	// the live socket still delivers them from here on.
+	replies, err := FetchThread(ctx, s.client, channelID, repliesTo, false)
+	if err != nil {
+		s.client.debugf("replies backfill for %s skipped: %v", repliesTo, err)
+		return out, nil
+	}
+	return append(out, afterCursor(replies, since)...), nil
 }
 
 // afterCursor enforces the exclusive semantics of --since: Slack's `oldest` is

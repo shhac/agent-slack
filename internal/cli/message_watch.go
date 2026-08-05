@@ -282,6 +282,11 @@ mistaken for silence.`,
 			}
 			filter.Channels = []string{channelID}
 			filter.ThreadTS = thread
+			if thread == "" {
+				// Watching a conversation: a human answering the message named
+				// by --since may reply in-channel or thread on it, so both count.
+				filter.RepliesTo = filter.Since
+			}
 			renderer, err := newEventRenderer(globals, cc, flags)
 			if err != nil {
 				return err

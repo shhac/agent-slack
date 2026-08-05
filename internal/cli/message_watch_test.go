@@ -16,6 +16,7 @@ func watchCLIFixture(t *testing.T, frames []map[string]any) *cliFixture {
 	f.server.EnableWebSocket(mockslack.WSScript{Frames: frames, KeepOpen: true})
 	f.server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(f.url))
 	f.server.HandleBody("conversations.history", mockslack.History())
+	f.server.HandleBody("conversations.replies", mockslack.History())
 	return f
 }
 
@@ -200,5 +201,47 @@ func TestMessageAwaitPollsOnStandardAuth(t *testing.T) {
 	payload := parseJSON(t, stdout)
 	if payload["received"] != true {
 		t.Fatalf("payload = %v", payload)
+	}
+}
+
+// Reproduces the live failure this behavior was added for: a question posted
+// to a conversation, answered by threading on it. Before RepliesTo, the
+// channel-target default dropped that reply and the await reported silence
+// while the answer sat in the thread.
+func TestMessageAwaitMatchesThreadReplyToTheAwaitedMessage(t *testing.T) {
+	question := "1700000010.000100"
+	reply := mockslack.WSThreadReply(mockslack.WSChannelID, mockslack.WSOtherUser,
+		"answered in the thread", "1700000020.000200", question)
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello(), reply})
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
+		"--since", question, "--timeout", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, stdout)
+	if payload["received"] != true {
+		t.Fatalf("an in-thread answer to --since must match: %v", payload)
+	}
+	event, _ := payload["event"].(map[string]any)
+	if event["thread_ts"] != question || event["content"] != "answered in the thread" {
+		t.Errorf("event = %v", event)
+	}
+}
+
+// RepliesTo is narrow: it admits answers to the awaited message, not every
+// thread in the conversation.
+func TestMessageAwaitStillExcludesOtherThreads(t *testing.T) {
+	other := mockslack.WSThreadReply(mockslack.WSChannelID, mockslack.WSOtherUser,
+		"unrelated thread chatter", "1700000020.000200", "1700000005.000100")
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello(), other})
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
+		"--since", "1700000010.000100", "--timeout", "400ms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := parseJSON(t, stdout); payload["received"] != false {
+		t.Fatalf("another thread's reply is not an answer: %v", payload)
 	}
 }
