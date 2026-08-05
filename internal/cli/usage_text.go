@@ -133,6 +133,13 @@ LIST   message list <target>
        channel_id/thread_ts; they're in meta lines). Reaction filters:
        --with-reaction/--without-reaction (repeatable, need --oldest).
        Files are metadata-only unless --download.
+WAIT   message await <target> [--since <ts>] [--timeout 5m] — block for the
+       next message (or reaction with --events reaction) and print
+       {received,cursor,waited_ms,event,skipped?} as JSON. Pass --since with
+       the ts a send returned so a reply that already arrived is still found;
+       it is exclusive. A timeout exits 0 with received:false plus a cursor.
+       message stream [--channel …] [--duration 10m] streams the same records
+       as NDJSON with a per-channel-cursor @summary. See 'message usage'.
 TEXT   --format transcript is the human-readable rendering (plain text on
        stdout, errors still JSON). Conversations (message get/list) read as a
        chronological transcript: a "──── <date> (<zone>) ────" divider opens
@@ -206,7 +213,36 @@ REACT  message react add|remove <target> <emoji>   (:rocket:, rocket, or 🚀)
 SCHED  message scheduled list [--channel …] [--cursor …]
        message scheduled cancel <id> [--channel <…>] --yes   (destructive)
        Browser auth: scheduled messages are drafts (cancel by id, no
-       --channel). Bot/user tokens: --channel required to cancel.`,
+       --channel). Bot/user tokens: --channel required to cancel.
+AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
+       Blocks until the next matching event, then prints one JSON object:
+       {received, cursor, waited_ms, event, skipped?}. A permalink target
+       awaits inside that message's thread; a channel target excludes replies
+       in existing threads (--include-thread-replies opts in).
+       --since <ts> is EXCLUSIVE and closes the send→wait gap: pass the ts
+       'message send' returned, or a previous call's cursor, and a reply that
+       arrived before this command started is still found.
+       A timeout is NOT an error — exit 0 with {"received":false} and a cursor
+       to resume from. 'skipped' lists in-scope events the filters excluded,
+       so a rejection is never mistaken for silence.
+       --events message|reaction|edit|delete (default message, comma list).
+       Reactions match ANY name by default (approval is ✅ ✔️ ☑️ 👍 …, so
+       judging intent is the caller's job); --reaction narrows, ignoring skin
+       tones. --from <@handle|U…|B…>, --include-self, --exclude-bots.
+       Browser auth streams live; a bot/user token falls back to polling
+       conversations.history (slower, rate-limited) with a stderr notice.
+STREAM message stream [--channel <…>] [--duration 10m] [--max-events N]
+       [--idle-timeout <dur>]
+       NDJSON of the same event records await returns, ending with an
+       {"@summary":{cursors:{<channel>:<ts>},events,stopped_by,…}} meta line.
+       Cursors are PER CHANNEL — gap-fill is per conversation. Without
+       --channel, every conversation you can see is streamed. Always bounded.
+       Browser auth only. No --since: resuming N conversations from one scalar
+       would fan out unboundedly; start live and resume per channel.
+       Both commands drop the socket's bookkeeping traffic (typing, read
+       marks, badges, presence) and never re-emit a thread's parent when a
+       reply arrives. Bot posts count as messages and carry author.bot_id
+       instead of author.user_id.`,
 
 	"channel": `agent-slack channel — conversations.
 

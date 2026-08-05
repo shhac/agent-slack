@@ -148,6 +148,31 @@ formatted message** — full table of links, mentions, escaping, and the
 `--slack-markdown` dialect.
 Scheduling, forwarding, and the draft hand-off flow: `agent-slack message usage`.
 
+## Waiting for a reply
+
+```bash
+agent-slack message send "<permalink>" "proceed or hold?"          # returns a ts
+agent-slack message await "<permalink>" --since <that-ts> --timeout 10m
+agent-slack message await "<permalink>" --events reaction,message --timeout 30m
+agent-slack message stream --channel "#deploys" --duration 15m     # NDJSON
+```
+
+Live delivery over the socket the Slack client uses: no polling, no rate-limit
+cost. **Always pass `--since` with the ts your send returned** — it is exclusive
+and it is the only thing that stops a reply landing in the gap between sending
+and waiting from being missed. A timeout is **not an error**: exit 0,
+`{"received": false}`, and a `cursor` to pass as the next `--since`.
+
+For approval, let reactions match by default and interpret the result yourself —
+✅ ✔️ ☑️ 👍 and a plain "yes" all mean approval, and `:white_check_mark:` is the
+*green* tick, not the grey one. If you do narrow with `--reaction`, always read
+`skipped`: it carries the ❌ that would otherwise look like silence, and
+"rejected" must not be read as "no answer yet".
+
+Bot posts count as messages and carry `author.bot_id` instead of
+`author.user_id`. Full flags, event kinds, and thread scoping:
+[references/commands/message.md](references/commands/message.md).
+
 ## Finding people & channels
 
 ```bash

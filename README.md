@@ -30,6 +30,10 @@ family so conventions, output contract, and credential handling are shared.
 - **Mutation safety**: destructive commands (`message edit|delete`,
   `scheduled cancel`, `channel new|invite`, `emoji add|remove`) require `--yes`
   and describe what would happen without it.
+- **Live delivery**: `message await` blocks until the next reply (or reaction)
+  and `message stream` emits events as NDJSON — over the same WebSocket the
+  Slack client uses, so neither polls or spends rate-limit budget. Browser auth
+  streams; a bot token falls back to polling for `await`.
 - **Multi-workspace**: disambiguate with `--workspace <url-or-substring>`.
 - **MCP server** (`agent-slack mcp`): exposes the command tree to MCP clients.
   With OAuth, named principals (`agent-slack mcp pair add <name> --bind
@@ -94,7 +98,7 @@ agent-slack message usage                  # per-domain detail pages
 | Domain     | Commands |
 |------------|----------|
 | `auth`     | `list` (`ls`), `test`, `add`, `set-default`, `remove`, `import-desktop`, `import-browser <name>`, `parse-curl` |
-| `message`  | `get`, `list`, `send`, `draft`, `edit`*, `delete`*, `react add/remove`, `scheduled list/cancel`* |
+| `message`  | `get`, `list`, `await`, `stream`, `send`, `draft`, `edit`*, `delete`*, `react add/remove`, `scheduled list/cancel`* |
 | `channel`  | `list`, `get`, `members`, `new`*, `invite`*, `mark` |
 | `user`     | `list`, `get`, `dm-open` |
 | `usergroup`| `list`, `get`, `members` (subteams; surfaces each group's default channels) |
@@ -117,6 +121,14 @@ A fixture Slack server for manual testing ships as `cmd/mockslack`:
 ```bash
 go run ./cmd/mockslack -addr 127.0.0.1:8765 -fixtures fixtures.json
 agent-slack --base-url http://127.0.0.1:8765 auth test
+```
+
+`-websocket` additionally serves a fake event socket with fabricated message,
+edit, reaction, and bookkeeping frames, so `message await`/`message stream` can
+be exercised without a real workspace:
+
+```bash
+go run ./cmd/mockslack -addr 127.0.0.1:8765 -websocket
 ```
 
 ## Development

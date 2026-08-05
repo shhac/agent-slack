@@ -17,6 +17,68 @@ In-binary version: `agent-slack message usage`. Formatting: [../formatting.md](.
 | `message react add\|remove <target> <emoji>` | `--ts` | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | |
 | `message scheduled cancel <id>` | `--channel` (required for bot/user tokens) | `--yes` |
+| `message await <target>` | `--since <ts>`, `--timeout` (5m), `--thread-ts`, `--events`, `--reaction`, `--from`, `--include-self`, `--exclude-bots`, `--include-thread-replies`, `--max-body-chars`, `--resolve` | |
+| `message stream` | `--channel` (repeatable), `--duration` (10m), `--max-events`, `--idle-timeout`, + the filter flags from `await` | |
+
+## Waiting for a reply (`await` / `stream`)
+
+Both deliver over the event socket the Slack client itself uses — no polling,
+no rate-limit cost. They emit the **same event record**; `await` returns one
+wrapped in an envelope, `stream` emits many as NDJSON, so one parser serves both.
+
+```bash
+# Post a question, then wait for the answer. --since is the ts the send
+# returned, and it is EXCLUSIVE — it closes the gap between sending and waiting.
+agent-slack message await "<permalink>" --since 1785459244.118200 --timeout 10m
+```
+
+```json
+{ "received": true, "cursor": "1785459301.114329", "waited_ms": 47120,
+  "event": { "event": "message", "channel_id": "C…", "ts": "1785459301.114329",
+             "thread_ts": "1785459201.114329",
+             "author": { "user_id": "U…" }, "content": "hold — 20 more min" } }
+```
+
+**A timeout is not an error.** Exit 0, `{"received": false}`, and a `cursor` to
+pass as the next `--since`. The cursor is the last ts examined, never "now", so
+resuming loses nothing.
+
+**Human-in-the-loop approval.** `reaction_added` arrives on the same socket:
+
+```bash
+agent-slack message await "<permalink>" --events reaction,message --timeout 30m
+```
+
+Reactions match **any** name by default and the event reports which one. Prefer
+that to `--reaction`: approval is expressed as ✅ ✔️ ☑️ 👍 🎉 or a reply, and
+judging intent is your job, not a string comparison. `:white_check_mark:` is the
+*green* ✅ — the grey ones are `heavy_check_mark` and `ballot_box_with_check`.
+
+If you do narrow with `--reaction`, read `skipped`: it lists in-scope events the
+filters excluded, so a ❌ shows up instead of looking like silence. Without it a
+rejection is indistinguishable from no answer — "stop" read as "retry".
+
+**Event kinds** (`--events`, comma list, default `message`): `message`,
+`reaction` (added + removed), `edit`, `delete`.
+
+**Scope.** A permalink target awaits inside that message's thread. A channel
+target excludes replies in existing threads, matching what `message list
+<channel>` shows; `--include-thread-replies` opts in.
+
+**Bot posts count as messages** and carry `author.bot_id` with no
+`author.user_id` — do not key on `user_id` alone or you drop app output, which
+is most of what an agent waits on. `--exclude-bots` to drop them.
+
+Streaming is NDJSON plus an `@summary` meta line whose `cursors` are **per
+channel**:
+
+```bash
+agent-slack message stream --channel C0FAKE1 --channel C0FAKE3 --duration 15m
+```
+
+`stream` needs browser auth (the socket is a client API). `await` falls back to
+polling `conversations.history` on a bot/user token, with a stderr notice —
+slower and rate-limited, but it works. Both runs are always bounded.
 
 `message list` accepts a `U…`/`@handle` target too: the DM auto-opens and its
 history (or a thread within it) lists like any channel.
