@@ -12,9 +12,10 @@ import (
 
 // AwaitOptions configures one await.
 type AwaitOptions struct {
+	// Filter names the conversation (and thread) to await in, via its Channels
+	// and ThreadTS. The engine reads the target from there rather than from a
+	// second set of fields that could disagree with it.
 	Filter    EventFilter
-	ChannelID string
-	ThreadTS  string
 	Timeout   time.Duration
 	Poll      bool
 	PollEvery time.Duration
@@ -55,19 +56,18 @@ func Await(ctx context.Context, c *Client, opts AwaitOptions) (AwaitResult, erro
 	var skipped []Event
 
 	started := time.Now()
-	result, err := Watch(ctx, c, WatchOptions{
-		Filter:           opts.Filter,
-		BackfillChannel:  opts.ChannelID,
-		BackfillThreadTS: opts.ThreadTS,
-		Duration:         opts.Timeout,
-		MaxEvents:        1,
-		PingEvery:        opts.PingEvery,
-		Poll:             opts.Poll,
-		PollEvery:        opts.PollEvery,
-		OnReconnect:      opts.OnReconnect,
-		MaxSkipped:       maxSkipped,
-		OnSkipped:        func(event Event) { skipped = append(skipped, event) },
-	}, func(event Event) error {
+	watchOpts := WatchOptions{
+		Filter:      opts.Filter,
+		Duration:    opts.Timeout,
+		MaxEvents:   1,
+		PingEvery:   opts.PingEvery,
+		Poll:        opts.Poll,
+		PollEvery:   opts.PollEvery,
+		OnReconnect: opts.OnReconnect,
+		MaxSkipped:  maxSkipped,
+		OnSkipped:   func(event Event) { skipped = append(skipped, event) },
+	}
+	result, err := Watch(ctx, c, watchOpts, func(event Event) error {
 		matched = &event
 		return nil
 	})
@@ -80,7 +80,7 @@ func Await(ctx context.Context, c *Client, opts AwaitOptions) (AwaitResult, erro
 		// The session's high-water mark for this conversation: everything
 		// examined, never past anything unreported. Falls back to the input so
 		// a run that saw nothing echoes its cursor rather than losing it.
-		Cursor:           FirstNonEmpty(result.Cursors[opts.ChannelID], opts.Filter.Since),
+		Cursor:           FirstNonEmpty(result.Cursors[watchOpts.targetChannel()], opts.Filter.Since),
 		WaitedMS:         time.Since(started).Milliseconds(),
 		Event:            matched,
 		Skipped:          skipped,

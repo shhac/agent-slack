@@ -108,10 +108,9 @@ func TestWatchBackfillsFromCursor(t *testing.T) {
 	const timeout = 3 * time.Second
 	started := time.Now()
 	got, result := collectWatch(t, c, WatchOptions{
-		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Duration:        timeout,
-		MaxEvents:       1,
+		Filter:    EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration:  timeout,
+		MaxEvents: 1,
 	})
 	elapsed := time.Since(started)
 	if len(got) != 1 {
@@ -138,9 +137,8 @@ func TestWatchDedupesBackfillAgainstLiveFrames(t *testing.T) {
 	))
 
 	got, _ := collectWatch(t, c, WatchOptions{
-		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Duration:        400 * time.Millisecond,
+		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration: 400 * time.Millisecond,
 	})
 	if len(got) != 1 {
 		t.Fatalf("the same message arrived twice and was emitted %d times: %+v", len(got), got)
@@ -174,9 +172,8 @@ func TestAwaitReturnsFirstMatchWithCursor(t *testing.T) {
 	c, _ := watchFixture(t, mockslack.WSScript{Frames: mockslack.DefaultEventScript()})
 
 	result, err := Await(context.Background(), c, AwaitOptions{
-		Filter:    EventFilter{Channels: []string{mockslack.WSChannelID}},
-		ChannelID: mockslack.WSChannelID,
-		Timeout:   2 * time.Second,
+		Filter:  EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Timeout: 2 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -196,9 +193,8 @@ func TestAwaitTimeoutEchoesCursor(t *testing.T) {
 	server.HandleBody("conversations.history", mockslack.History())
 
 	result, err := Await(context.Background(), c, AwaitOptions{
-		Filter:    EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
-		ChannelID: mockslack.WSChannelID,
-		Timeout:   200 * time.Millisecond,
+		Filter:  EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Timeout: 200 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("a timeout is not an error: %v", err)
@@ -226,8 +222,7 @@ func TestAwaitSurfacesTheRejectionItFilteredOut(t *testing.T) {
 			Channels:  []string{mockslack.WSChannelID},
 			Reactions: []string{"white_check_mark"},
 		},
-		ChannelID: mockslack.WSChannelID,
-		Timeout:   400 * time.Millisecond,
+		Timeout: 400 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -256,11 +251,10 @@ func TestWatchPollFallbackFindsNewMessages(t *testing.T) {
 	))
 
 	got, _ := collectWatch(t, c, WatchOptions{
-		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Poll:            true,
-		PollEvery:       10 * time.Millisecond,
-		MaxEvents:       1,
+		Filter:    EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Poll:      true,
+		PollEvery: 10 * time.Millisecond,
+		MaxEvents: 1,
 	})
 	if len(got) != 1 || got[0].Content != "posted while polling" {
 		t.Fatalf("poll fallback emitted %+v", got)
@@ -292,10 +286,9 @@ func TestWatchReconnectsWithoutDuplicatingEvents(t *testing.T) {
 		// A --since floor makes the gap-fill deterministic: without one, a drop
 		// that lands before any event is examined has nothing to re-read from
 		// and correctly records a gap, which would make this test race.
-		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Duration:        400 * time.Millisecond,
-		OnReconnect:     func(int) { reconnects++ },
+		Filter:      EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration:    400 * time.Millisecond,
+		OnReconnect: func(int) { reconnects++ },
 	})
 	if len(got) != 1 {
 		t.Fatalf("emitted %d events across reconnects, want 1: %+v", len(got), got)
@@ -326,8 +319,7 @@ func TestWatchBackfillReadsRepliesToTheAwaitedMessage(t *testing.T) {
 			Channels:  []string{mockslack.WSChannelID},
 			RepliesTo: "1700000010.000100",
 		},
-		BackfillChannel: mockslack.WSChannelID,
-		MaxEvents:       1,
+		MaxEvents: 1,
 	})
 	if len(got) != 1 || got[0].Content != "answered in the thread" {
 		t.Fatalf("backfill missed the in-thread answer: %+v", got)
@@ -351,8 +343,7 @@ func TestWatchTolerantOfAnUnreadableRepliesBackfill(t *testing.T) {
 			Channels:  []string{mockslack.WSChannelID},
 			RepliesTo: "1700000010.000100",
 		},
-		BackfillChannel: mockslack.WSChannelID,
-		MaxEvents:       1,
+		MaxEvents: 1,
 	})
 	if len(got) != 1 || got[0].Content != "live answer" {
 		t.Fatalf("a failed thread read must not sink the await: %+v", got)
@@ -376,11 +367,10 @@ func TestWatchPollBaselineStartsAtTheConversationTip(t *testing.T) {
 	)
 
 	got, _ := collectWatch(t, c, WatchOptions{
-		Filter:          EventFilter{Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Poll:            true,
-		PollEvery:       10 * time.Millisecond,
-		MaxEvents:       1,
+		Filter:    EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Poll:      true,
+		PollEvery: 10 * time.Millisecond,
+		MaxEvents: 1,
 	})
 	if len(got) != 1 || got[0].Content != "arrived after we started" {
 		t.Fatalf("poll should start at the tip, not replay history: %+v", got)
@@ -400,10 +390,9 @@ func TestWatchReportsReconnectFailureDistinctlyFromCancellation(t *testing.T) {
 	c := browserClientFor(ts.URL)
 
 	_, result := collectWatch(t, c, WatchOptions{
-		Filter:          EventFilter{Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Duration:        3 * time.Second,
-		OnReconnect:     func(int) { ts.Close() }, // the gateway goes away mid-run
+		Filter:      EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Duration:    3 * time.Second,
+		OnReconnect: func(int) { ts.Close() }, // the gateway goes away mid-run
 	})
 	if result.StoppedBy != WatchStoppedReconnectFailed {
 		t.Errorf("stopped_by = %q, want %q — a lost socket must not read as a cancellation",
@@ -458,7 +447,6 @@ func TestAwaitCursorStopsAtTheSkippedReportBound(t *testing.T) {
 			Reactions: []string{"white_check_mark"},
 			Since:     "1700000010.000100",
 		},
-		ChannelID:  mockslack.WSChannelID,
 		Timeout:    400 * time.Millisecond,
 		MaxSkipped: 2,
 	})
@@ -490,12 +478,11 @@ func TestWatchPollBaselineOnAnEmptyConversation(t *testing.T) {
 	)
 
 	got, _ := collectWatch(t, c, WatchOptions{
-		Filter:          EventFilter{Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Poll:            true,
-		PollEvery:       10 * time.Millisecond,
-		MaxEvents:       1,
-		Duration:        2 * time.Second,
+		Filter:    EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Poll:      true,
+		PollEvery: 10 * time.Millisecond,
+		MaxEvents: 1,
+		Duration:  2 * time.Second,
 	})
 	if len(got) != 1 || got[0].Content != "the first message ever" {
 		t.Fatalf("a poll on an empty conversation must still deliver: %+v", got)
@@ -543,9 +530,8 @@ func TestWatchBackfillFollowsHistoryPages(t *testing.T) {
 
 	var got []Event
 	_, err := Watch(context.Background(), c, WatchOptions{
-		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Duration:        2 * time.Second,
+		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration: 2 * time.Second,
 	}, func(e Event) error {
 		got = append(got, e)
 		return nil
@@ -573,9 +559,8 @@ func TestWatchGapFillSeedsFromSince(t *testing.T) {
 	c := browserClientFor(ts.URL)
 
 	got, result := collectWatch(t, c, WatchOptions{
-		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
-		BackfillChannel: mockslack.WSChannelID,
-		Duration:        600 * time.Millisecond,
+		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		Duration: 600 * time.Millisecond,
 	})
 	if len(got) == 0 || got[0].Content != "arrived during the gap" {
 		t.Fatalf("the gap-fill found nothing: %+v", got)
@@ -604,5 +589,21 @@ func TestWatchRecordsGapWhenItCannotRefill(t *testing.T) {
 	}
 	if result.Gaps == 0 {
 		t.Error("a reconnect with nothing to re-read must be reported as a gap")
+	}
+}
+
+// The run's target comes from the filter, so backfill, gap-fill, and polling
+// can never address a different conversation than the one being filtered for.
+func TestWatchTargetComesFromTheFilter(t *testing.T) {
+	one := WatchOptions{Filter: EventFilter{Channels: []string{"C0FAKEONE1"}}}
+	if got := one.targetChannel(); got != "C0FAKEONE1" {
+		t.Errorf("targetChannel = %q", got)
+	}
+	several := WatchOptions{Filter: EventFilter{Channels: []string{"C0FAKEONE1", "C0FAKETWO2"}}}
+	if got := several.targetChannel(); got != "" {
+		t.Errorf("a multi-channel run has no single target, got %q", got)
+	}
+	if got := (WatchOptions{}).targetChannel(); got != "" {
+		t.Errorf("a workspace-wide run has no target, got %q", got)
 	}
 }

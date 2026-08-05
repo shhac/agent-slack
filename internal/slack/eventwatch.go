@@ -35,12 +35,6 @@ const (
 type WatchOptions struct {
 	Filter EventFilter
 
-	// BackfillChannel and BackfillThreadTS name the conversation to catch up on
-	// before listening. Only set when the caller has a single target and a
-	// cursor — a workspace-wide backfill would fan out unboundedly.
-	BackfillChannel  string
-	BackfillThreadTS string
-
 	Duration    time.Duration
 	IdleTimeout time.Duration
 	MaxEvents   int
@@ -89,6 +83,18 @@ const (
 	maxReconnectAttempts = 20
 	reconnectBackoff     = 2 * time.Second
 )
+
+// targetChannel is the single conversation a run is scoped to, or "" when it
+// watches the whole workspace. Backfill, gap-fill, and the poll fallback all
+// key off the filter rather than carrying their own copy of the target: two
+// fields naming the same conversation can disagree, and then a run backfills
+// one place while filtering for another.
+func (o WatchOptions) targetChannel() string {
+	if len(o.Filter.Channels) != 1 {
+		return ""
+	}
+	return o.Filter.Channels[0]
+}
 
 // Watch delivers matching events to emit until a bound is reached. emit is
 // called synchronously and in order; returning an error from it stops the run.
@@ -241,7 +247,7 @@ func (s *watchSession) reconnect(ctx context.Context, attempt int) (rtmConn, err
 			s.result.Gaps++
 			continue
 		}
-		if err := s.backfillChannel(ctx, channelID, s.opts.BackfillThreadTS, cursor); err != nil {
+		if err := s.backfillChannel(ctx, channelID, s.opts.Filter.ThreadTS, cursor); err != nil {
 			s.result.Gaps++
 		}
 	}
@@ -264,12 +270,7 @@ func (s *watchSession) redial(ctx context.Context) (rtmConn, error) {
 	return conn, err
 }
 
-func (s *watchSession) gapFillChannels() []string {
-	if s.opts.BackfillChannel != "" {
-		return []string{s.opts.BackfillChannel}
-	}
-	return s.opts.Filter.Channels
-}
+func (s *watchSession) gapFillChannels() []string { return s.opts.Filter.Channels }
 
 // readFrames pumps the socket into a channel so the backfill can run while the
 // socket is already listening. The channel closes on any read error, which the
@@ -426,10 +427,11 @@ func eventKey(e Event) string {
 // backfill catches up the single conversation the caller named, so a reply
 // that arrived between sending and waiting is not missed.
 func (s *watchSession) backfill(ctx context.Context) error {
-	if s.opts.BackfillChannel == "" || s.opts.Filter.Since == "" {
+	channel := s.opts.targetChannel()
+	if channel == "" || s.opts.Filter.Since == "" {
 		return nil
 	}
-	return s.backfillChannel(ctx, s.opts.BackfillChannel, s.opts.BackfillThreadTS, s.opts.Filter.Since)
+	return s.backfillChannel(ctx, channel, s.opts.Filter.ThreadTS, s.opts.Filter.Since)
 }
 
 // backfillChannel replays history after a cursor through the same offer path
@@ -539,7 +541,8 @@ func afterCursor(messages []render.MessageSummary, since string) []render.Messag
 // runPoll is the standard-token fallback: no socket, just history reads after
 // the cursor. Only usable with a single named conversation.
 func (s *watchSession) runPoll(ctx context.Context) error {
-	if s.opts.BackfillChannel == "" {
+	channel := s.opts.targetChannel()
+	if channel == "" {
 		return agenterrors.New(
 			"polling requires a single conversation; the event socket is the only way to watch a whole workspace",
 			agenterrors.FixableByHuman).
@@ -554,13 +557,13 @@ func (s *watchSession) runPoll(ctx context.Context) error {
 		return err
 	}
 	for {
-		if err := s.backfillChannel(ctx, s.opts.BackfillChannel, s.opts.BackfillThreadTS, cursor); err != nil {
+		if err := s.backfillChannel(ctx, channel, s.opts.Filter.ThreadTS, cursor); err != nil {
 			return err
 		}
 		if s.stopped() {
 			return nil
 		}
-		cursor = maxTS(cursor, s.result.Cursors[s.opts.BackfillChannel])
+		cursor = maxTS(cursor, s.result.Cursors[channel])
 		if err := s.client.sleep(ctx, every); err != nil {
 			return nil
 		}
@@ -590,10 +593,11 @@ func (s *watchSession) pollBaseline(ctx context.Context) (string, error) {
 }
 
 func (s *watchSession) fetchTip(ctx context.Context) ([]render.MessageSummary, error) {
-	if s.opts.BackfillThreadTS != "" {
-		return FetchThread(ctx, s.client, s.opts.BackfillChannel, s.opts.BackfillThreadTS, false)
+	channel := s.opts.targetChannel()
+	if s.opts.Filter.ThreadTS != "" {
+		return FetchThread(ctx, s.client, channel, s.opts.Filter.ThreadTS, false)
 	}
-	return FetchChannelHistory(ctx, s.client, HistoryOptions{ChannelID: s.opts.BackfillChannel, Limit: 1})
+	return FetchChannelHistory(ctx, s.client, HistoryOptions{ChannelID: channel, Limit: 1})
 }
 
 // nowTS renders the current time as a Slack timestamp, for the one case with

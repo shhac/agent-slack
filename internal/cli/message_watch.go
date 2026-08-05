@@ -328,8 +328,6 @@ mistaken for silence.`,
 
 			result, err := slack.Await(ctx, cc.Client, slack.AwaitOptions{
 				Filter:      filter,
-				ChannelID:   channelID,
-				ThreadTS:    thread,
 				Timeout:     timeout,
 				Poll:        watchAuthMode(globals, cc, "message await"),
 				PingEvery:   watchPingInterval,
