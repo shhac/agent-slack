@@ -65,11 +65,34 @@ func (c *Client) debugJSON(label string, data map[string]any) {
 	if err != nil {
 		return
 	}
-	s := tokenRe.ReplaceAllString(string(b), "[redacted]")
+	s := redactSecrets(string(b))
 	if len(s) > debugBodyLimit {
 		s = s[:debugBodyLimit] + "…(truncated)"
 	}
 	c.debugf("%s %s", label, s)
+}
+
+// redactSecrets scrubs any Slack token from an arbitrary string — the single
+// scrubber for text that leaves the process (debug traces, capture output).
+func redactSecrets(s string) string {
+	return tokenRe.ReplaceAllString(s, "[redacted]")
+}
+
+// redactFrame returns a copy of a received frame with any token scrubbed at
+// any depth. It round-trips through JSON deliberately: a capture writes
+// whatever the server sends to a terminal or a file, and a key-name allowlist
+// would miss a token nested somewhere we have not seen yet. Unmarshalable
+// input collapses to an empty frame rather than passing through unredacted.
+func redactFrame(frame map[string]any) map[string]any {
+	raw, err := json.Marshal(frame)
+	if err != nil {
+		return map[string]any{}
+	}
+	var out map[string]any
+	if err := json.Unmarshal([]byte(redactSecrets(string(raw))), &out); err != nil {
+		return map[string]any{}
+	}
+	return out
 }
 
 // debugResponse logs a parsed API response body.

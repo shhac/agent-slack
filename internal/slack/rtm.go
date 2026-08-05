@@ -41,9 +41,11 @@ func (c *Client) connectRTM(ctx context.Context) (rtmConn, error) {
 }
 
 // rtmConn's ReadJSON must return once ctx is done — it is the await loop's
-// only unblock path.
+// only unblock path. WriteJSON serves the event socket, where the client is
+// expected to talk back (pings, subscriptions); the workflow flow never writes.
 type rtmConn interface {
 	ReadJSON(ctx context.Context) (map[string]any, error)
+	WriteJSON(ctx context.Context, msg map[string]any) error
 	Close()
 }
 
@@ -74,6 +76,14 @@ func (w *websocketConn) ReadJSON(ctx context.Context) (map[string]any, error) {
 		}
 		return msg, nil
 	}
+}
+
+func (w *websocketConn) WriteJSON(ctx context.Context, msg map[string]any) error {
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return w.conn.Write(ctx, websocket.MessageText, data)
 }
 
 func (w *websocketConn) Close() { _ = w.conn.Close(websocket.StatusNormalClosure, "") }

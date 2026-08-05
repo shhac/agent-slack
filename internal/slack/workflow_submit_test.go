@@ -12,7 +12,13 @@ import (
 
 type fakeRTM struct {
 	messages []map[string]any
+	sent     []map[string]any
 	closed   bool
+}
+
+func (f *fakeRTM) WriteJSON(ctx context.Context, msg map[string]any) error {
+	f.sent = append(f.sent, msg)
+	return nil
 }
 
 func (f *fakeRTM) ReadJSON(ctx context.Context) (map[string]any, error) {
@@ -265,7 +271,8 @@ type errRTM struct{}
 func (errRTM) ReadJSON(ctx context.Context) (map[string]any, error) {
 	return nil, context.Canceled
 }
-func (errRTM) Close() {}
+func (errRTM) WriteJSON(context.Context, map[string]any) error { return nil }
+func (errRTM) Close()                                          {}
 
 func TestAwaitOpenedViewReadError(t *testing.T) {
 	tripped := false
