@@ -37,10 +37,14 @@ type WSScript struct {
 	// pings, instead of closing. Manual captures want this; tests do not.
 	KeepOpen bool
 	// HangUpAfterScript makes the first N connections close once their script
-	// is exhausted, and every later one honour KeepOpen. It models a socket
-	// that drops a bounded number of times — a reconnect test that instead
-	// lets the fake hang up forever spins as fast as the retry loop allows,
-	// which makes anything it asserts about gaps or attempts a race.
+	// is exhausted, and every later one stay up. It models a socket that drops
+	// a bounded number of times — a reconnect test that instead lets the fake
+	// hang up forever spins as fast as the retry loop allows, which makes
+	// anything it asserts about gaps or attempts a race.
+	//
+	// It takes precedence over KeepOpen, which would otherwise silently void
+	// it: "hold every connection open" and "drop the first N" cannot both be
+	// true, and the drop is always the more specific request.
 	HangUpAfterScript int
 }
 
@@ -121,7 +125,10 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	record := s.wsConns[len(s.wsConns)-1]
 	connectionCount := len(s.wsConns)
 	s.mu.Unlock()
-	keepOpen := script.KeepOpen || (script.HangUpAfterScript > 0 && connectionCount > script.HangUpAfterScript)
+	keepOpen := script.KeepOpen
+	if script.HangUpAfterScript > 0 {
+		keepOpen = connectionCount > script.HangUpAfterScript
+	}
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {

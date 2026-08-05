@@ -127,3 +127,42 @@ func TestAwaitCursorStopsAtTheSkippedReportBound(t *testing.T) {
 // Without --since a poll run has nothing to anchor to in an empty conversation.
 // An empty cursor makes every read a no-op, so the await reports silence
 // forever even as messages arrive.
+
+// The resume cursor freezes at the skipped-report bound, but the engine's own
+// read position must not — sharing one value made a truncated report stall the
+// poll loop on a cursor it could never pass.
+func TestWatchKeepsReadingPastATruncatedSkippedReport(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	rejections := make([]map[string]any, 0, 4)
+	for i := range 4 {
+		rejections = append(rejections, mockslack.Message(
+			fmt.Sprintf("17000000%02d.000100", 20+i), mockslack.WSOtherUser, "not the answer"))
+	}
+	server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History(rejections...)},
+		mockslack.Response{Body: mockslack.History(append(rejections,
+			mockslack.Message("1700000099.000100", mockslack.WSBotID, "the answer"))...)},
+	)
+
+	// Only bot posts count; the human messages are in scope but excluded.
+	result, err := Await(context.Background(), c, AwaitOptions{
+		Filter: EventFilter{
+			Since:    "1700000010.000100",
+			Channels: []string{mockslack.WSChannelID},
+			From:     []string{mockslack.WSBotID},
+		},
+		Poll:       true,
+		PollEvery:  5 * time.Millisecond,
+		Timeout:    2 * time.Second,
+		MaxSkipped: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.SkippedTruncated {
+		t.Fatalf("expected the skipped report to truncate: %+v", result)
+	}
+	if !result.Received {
+		t.Fatal("polling must keep advancing past a truncated report and find the answer")
+	}
+}

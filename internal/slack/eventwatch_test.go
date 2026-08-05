@@ -12,19 +12,35 @@ import (
 	"github.com/shhac/agent-slack/internal/mockslack"
 )
 
-// watchFixture wires a browser client to a server serving both the socket and
-// the Web API, and returns the server so tests can add history fixtures.
-func watchFixture(t *testing.T, script mockslack.WSScript) (*Client, *mockslack.Server) {
+// socketFixture wires a browser client to a server serving both the socket and
+// the Web API, and returns the server so tests can add fixtures. The script is
+// used as given: a helper that forces KeepOpen silently voids a caller's
+// HangUpAfterScript, which is what drove every drop test to hand-roll its own
+// server.
+func socketFixture(t *testing.T, script mockslack.WSScript) (*Client, *mockslack.Server) {
+	t.Helper()
+	c, server, _ := socketFixtureAt(t, script)
+	return c, server
+}
+
+// socketFixtureAt also hands back the server's base URL, for the few tests
+// that need to build their own client.getWebSocketURL responses.
+func socketFixtureAt(t *testing.T, script mockslack.WSScript) (*Client, *mockslack.Server, string) {
 	t.Helper()
 	server := mockslack.New()
 	ts := httptest.NewServer(server)
 	t.Cleanup(ts.Close)
-	// The fake socket always stays open: a closed script would look like a
-	// dropped connection and send the engine into its reconnect loop.
-	script.KeepOpen = true
 	server.EnableWebSocket(script)
 	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
-	return browserClientFor(ts.URL), server
+	return browserClientFor(ts.URL), server, ts.URL
+}
+
+// watchFixture is socketFixture with a socket that stays up, which is what
+// every test that is not about reconnection wants.
+func watchFixture(t *testing.T, script mockslack.WSScript) (*Client, *mockslack.Server) {
+	t.Helper()
+	script.KeepOpen = true
+	return socketFixture(t, script)
 }
 
 func collectWatch(t *testing.T, c *Client, opts WatchOptions) ([]Event, WatchResult) {
@@ -193,22 +209,17 @@ func TestWatchPollFallbackFindsNewMessages(t *testing.T) {
 // A dropped socket must be invisible to the caller: reconnect, gap-fill, and
 // do not re-emit what was already delivered.
 func TestWatchReconnectsWithoutDuplicatingEvents(t *testing.T) {
-	server := mockslack.New()
-	ts := httptest.NewServer(server)
-	defer ts.Close()
 	// The first socket hangs up once its script is exhausted — exactly what a
 	// dropped connection looks like to the engine — and the replacement stays
 	// up, so the run reconnects exactly once.
-	server.EnableWebSocket(mockslack.WSScript{
+	c, server := socketFixture(t, mockslack.WSScript{
 		Frames: []map[string]any{
 			mockslack.Hello(),
 			mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "only once", "1700000015.000100"),
 		},
 		HangUpAfterScript: 1,
 	})
-	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
 	server.HandleBody("conversations.history", mockslack.History())
-	c := browserClientFor(ts.URL)
 
 	var reconnects int
 	got, result := collectWatch(t, c, WatchOptions{
@@ -438,20 +449,15 @@ func TestWatchBackfillFollowsHistoryPages(t *testing.T) {
 // from. Without it the catch-up reads nothing and records no gap, so the caller
 // is told the stream is intact when it is not.
 func TestWatchGapFillSeedsFromSince(t *testing.T) {
-	server := mockslack.New()
-	ts := httptest.NewServer(server)
-	defer ts.Close()
 	// One bounded drop, so the gap-fill runs exactly once rather than the run
 	// flapping as fast as the retry loop allows.
-	server.EnableWebSocket(mockslack.WSScript{
+	c, server := socketFixture(t, mockslack.WSScript{
 		Frames:            []map[string]any{mockslack.Hello()},
 		HangUpAfterScript: 1,
 	})
-	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
 	server.HandleBody("conversations.history", mockslack.History(
 		mockslack.Message("1700000015.000100", mockslack.WSOtherUser, "arrived during the gap"),
 	))
-	c := browserClientFor(ts.URL)
 
 	got, result := collectWatch(t, c, WatchOptions{
 		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
@@ -468,15 +474,10 @@ func TestWatchGapFillSeedsFromSince(t *testing.T) {
 // A workspace-wide stream has no channel list to re-read, so a reconnect
 // leaves a hole. Gaps is how a caller learns its stream is not complete.
 func TestWatchRecordsGapWhenItCannotRefill(t *testing.T) {
-	server := mockslack.New()
-	ts := httptest.NewServer(server)
-	defer ts.Close()
-	server.EnableWebSocket(mockslack.WSScript{
+	c, _ := socketFixture(t, mockslack.WSScript{
 		Frames:            []map[string]any{mockslack.Hello()},
 		HangUpAfterScript: 1,
 	})
-	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
-	c := browserClientFor(ts.URL)
 
 	_, result := collectWatch(t, c, WatchOptions{
 		Filter:   EventFilter{}, // no channels: the default `message stream`
@@ -575,15 +576,10 @@ func TestWatchFallsBackWhenThePushedURLIsStale(t *testing.T) {
 // A reconnect notice that claims a catch-up which did not happen tells the
 // caller their stream is intact when events are missing.
 func TestWatchReconnectNoticeReportsWhetherItCaughtUp(t *testing.T) {
-	server := mockslack.New()
-	ts := httptest.NewServer(server)
-	defer ts.Close()
-	server.EnableWebSocket(mockslack.WSScript{
+	c, _ := socketFixture(t, mockslack.WSScript{
 		Frames:            []map[string]any{mockslack.Hello()},
 		HangUpAfterScript: 1,
 	})
-	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
-	c := browserClientFor(ts.URL)
 
 	var filled []bool
 	// No channels: a workspace-wide stream has nothing to re-read.
@@ -606,14 +602,9 @@ func TestWatchReconnectNoticeReportsWhetherItCaughtUp(t *testing.T) {
 // retire the run. Every socket is greeted with a hello the instant it opens,
 // so counting delivered frames can never tell a flap from a healthy drop.
 func TestWatchGivesUpOnAFlappingSocket(t *testing.T) {
-	server := mockslack.New()
-	ts := httptest.NewServer(server)
-	defer ts.Close()
 	// Never keeps a connection: every dial greets and hangs up.
-	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
-	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	c, server := socketFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
 	server.HandleBody("conversations.history", mockslack.History())
-	c := browserClientFor(ts.URL)
 
 	_, result := collectWatch(t, c, WatchOptions{
 		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
@@ -631,21 +622,17 @@ func TestWatchGivesUpOnAFlappingSocket(t *testing.T) {
 // A refused redial is usually transient. Ending the run on the first one made
 // the retry budget unreachable.
 func TestWatchRetriesARefusedRedial(t *testing.T) {
-	server := mockslack.New()
-	ts := httptest.NewServer(server)
-	defer ts.Close()
-	server.EnableWebSocket(mockslack.WSScript{
+	c, server, baseURL := socketFixtureAt(t, mockslack.WSScript{
 		Frames:            []map[string]any{mockslack.Hello()},
 		HangUpAfterScript: 1,
 	})
 	// The first redial is sent to a host that refuses; the next one succeeds.
 	server.Handle("client.getWebSocketURL",
-		mockslack.Response{Body: mockslack.GetWebSocketURL(ts.URL)},
+		mockslack.Response{Body: mockslack.GetWebSocketURL(baseURL)},
 		mockslack.Response{Body: map[string]any{"ok": true, "primary_websocket_url": "ws://127.0.0.1:1/websocket"}},
-		mockslack.Response{Body: mockslack.GetWebSocketURL(ts.URL)},
+		mockslack.Response{Body: mockslack.GetWebSocketURL(baseURL)},
 	)
 	server.HandleBody("conversations.history", mockslack.History())
-	c := browserClientFor(ts.URL)
 
 	_, result := collectWatch(t, c, WatchOptions{
 		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},

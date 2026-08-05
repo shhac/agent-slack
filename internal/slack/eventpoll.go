@@ -41,7 +41,7 @@ func (s *watchSession) runPoll(ctx context.Context) error {
 		if s.stopped() {
 			return nil
 		}
-		cursor = maxTS(cursor, s.result.Cursors[channel])
+		cursor = maxTS(cursor, s.watermark[channel])
 		if err := s.client.sleep(ctx, every); err != nil {
 			return nil
 		}

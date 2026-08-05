@@ -39,11 +39,10 @@ func (s *watchSession) backfillChannel(ctx context.Context, channelID, threadTS,
 		return err
 	}
 	for _, msg := range messages {
-		_, done, emitErr := s.offer(EventFromMessage(channelID, msg))
-		if emitErr != nil {
+		if _, emitErr := s.offer(EventFromMessage(channelID, msg)); emitErr != nil {
 			return emitErr
 		}
-		if done {
+		if s.stopped() {
 			return nil
 		}
 	}

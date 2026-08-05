@@ -95,11 +95,12 @@ func (o WatchOptions) targetChannel() string {
 // called synchronously and in order; returning an error from it stops the run.
 func Watch(ctx context.Context, c *Client, opts WatchOptions, emit func(Event) error) (WatchResult, error) {
 	session := &watchSession{
-		client: c,
-		opts:   opts,
-		emit:   emit,
-		seen:   map[string]bool{},
-		result: WatchResult{Cursors: map[string]string{}},
+		client:    c,
+		opts:      opts,
+		emit:      emit,
+		seen:      map[string]bool{},
+		watermark: map[string]string{},
+		result:    WatchResult{Cursors: map[string]string{}},
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -126,6 +127,12 @@ type watchSession struct {
 	result WatchResult
 
 	skippedCount int
+	// watermark is the engine's read position — advanced over every examined
+	// event, and used to drive polling and gap-fill. It is deliberately
+	// separate from result.Cursors, which is the caller's resume point and
+	// must freeze at the skipped-report bound: sharing one value made a
+	// truncated report stall the poll loop on a cursor it could not pass.
+	watermark map[string]string
 	// connectedAt marks when the current socket came up. A socket that lived a
 	// meaningful while and then dropped is healthy; one that dies immediately
 	// is flapping. Counting frames cannot tell them apart — every socket is
@@ -249,7 +256,7 @@ func (s *watchSession) reconnect(ctx context.Context, attempt int) (rtmConn, err
 		// Seed from --since: a run that has not matched anything yet still has
 		// a floor to re-read from. Without it the cursor is empty, the catch-up
 		// silently reads nothing, and the gap goes unrecorded.
-		cursor := maxTS(s.result.Cursors[channelID], s.opts.Filter.Since)
+		cursor := maxTS(s.watermark[channelID], s.opts.Filter.Since)
 		if cursor == "" {
 			s.result.Gaps++
 			filled = false
@@ -336,8 +343,8 @@ func (s *watchSession) consume(ctx context.Context, frames <-chan map[string]any
 			if !isEvent {
 				continue
 			}
-			matched, done, err := s.offer(event)
-			if err != nil || done {
+			matched, err := s.offer(event)
+			if err != nil || s.stopped() {
 				return true, err
 			}
 			// --idle-timeout means "no MATCHING event": on a busy workspace the
@@ -376,9 +383,9 @@ func (s *watchSession) resetIdle(t *time.Timer) {
 // it matches and reporting it as skipped when it was in scope but excluded.
 // matched says whether it reached the caller; done is true once the run's
 // event cap is reached.
-func (s *watchSession) offer(event Event) (matched, done bool, err error) {
+func (s *watchSession) offer(event Event) (matched bool, err error) {
 	if s.seen[eventKey(event)] {
-		return false, false, nil
+		return false, nil
 	}
 	s.seen[eventKey(event)] = true
 
@@ -386,21 +393,21 @@ func (s *watchSession) offer(event Event) (matched, done bool, err error) {
 		if s.opts.Filter.InScope(event) {
 			s.reportSkipped(event)
 		}
-		return false, false, nil
+		return false, nil
 	}
 
-	s.advanceCursor(event)
 	if err := s.emit(event); err != nil {
-		return false, true, err
+		return false, err
 	}
-	// Counted only after a successful emit: an event the caller never received
-	// has not been delivered.
+	// Both counted and cursored only after a successful emit: an event the
+	// caller never received has not been delivered, and resuming past it would
+	// lose it.
+	s.advanceCursor(event)
 	s.result.Events++
 	if s.opts.MaxEvents > 0 && s.result.Events >= s.opts.MaxEvents {
 		s.stop(WatchStoppedMaxEvents)
-		return true, true, nil
 	}
-	return true, false, nil
+	return true, nil
 }
 
 // reportSkipped hands an excluded in-scope event to the caller and moves the
@@ -408,6 +415,9 @@ func (s *watchSession) offer(event Event) (matched, done bool, err error) {
 // is full the cursor freezes, so a resumed run re-offers the events the caller
 // never saw rather than stepping over a rejection.
 func (s *watchSession) reportSkipped(event Event) {
+	// The engine has examined it either way; only the caller's resume point
+	// freezes, so a truncated report does not stall reads.
+	s.advanceWatermark(event)
 	if s.opts.MaxSkipped > 0 && s.skippedCount >= s.opts.MaxSkipped {
 		s.result.SkippedTruncated = true
 		return
@@ -421,8 +431,17 @@ func (s *watchSession) reportSkipped(event Event) {
 
 // advanceCursor moves the channel's high-water mark, never backwards — a
 // backfill and the live socket can interleave out of order.
+// advanceCursor moves both positions: the caller-facing resume point and the
+// engine's read watermark.
 func (s *watchSession) advanceCursor(event Event) {
 	s.result.Cursors[event.ChannelID] = maxTS(s.result.Cursors[event.ChannelID], event.Cursor())
+	s.advanceWatermark(event)
+}
+
+// advanceWatermark moves only the engine's read position, for events that were
+// examined but must not move the caller's resume point.
+func (s *watchSession) advanceWatermark(event Event) {
+	s.watermark[event.ChannelID] = maxTS(s.watermark[event.ChannelID], event.Cursor())
 }
 
 // eventKey identifies an event for dedup across backfill and live delivery.
