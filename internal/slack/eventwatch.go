@@ -336,14 +336,7 @@ func (s *watchSession) notBefore(event Event) bool {
 // advanceCursor moves the channel's high-water mark, never backwards — a
 // backfill and the live socket can interleave out of order.
 func (s *watchSession) advanceCursor(event Event) {
-	cursor := event.Cursor()
-	if cursor == "" {
-		return
-	}
-	if current, ok := s.result.Cursors[event.ChannelID]; ok && !tsAfter(cursor, current) {
-		return
-	}
-	s.result.Cursors[event.ChannelID] = cursor
+	s.result.Cursors[event.ChannelID] = maxTS(s.result.Cursors[event.ChannelID], event.Cursor())
 }
 
 // eventKey identifies an event for dedup across backfill and live delivery.
@@ -459,9 +452,7 @@ func (s *watchSession) runPoll(ctx context.Context) error {
 		if s.stopped != "" {
 			return nil
 		}
-		if latest, ok := s.result.Cursors[s.opts.BackfillChannel]; ok && tsAfter(latest, cursor) {
-			cursor = latest
-		}
+		cursor = maxTS(cursor, s.result.Cursors[s.opts.BackfillChannel])
 		if err := s.client.sleep(ctx, every); err != nil {
 			return nil
 		}

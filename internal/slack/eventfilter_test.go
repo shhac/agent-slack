@@ -145,14 +145,39 @@ func TestInScopeKeepsExcludedEventsFromTheWatchedThread(t *testing.T) {
 }
 
 func TestTSAfterOrdersTimestamps(t *testing.T) {
-	if !tsAfter("1700000010.000101", "1700000010.000100") {
-		t.Error("micros should order")
+	cases := []struct {
+		candidate, cursor string
+		want              bool
+		why               string
+	}{
+		{"1700000010.000101", "1700000010.000100", true, "micros order"},
+		{"1700000010.000100", "1700000010.000100", false, "equal is not after"},
+		{"17000000100.000100", "1700000010.000100", true, "a larger seconds part is later"},
+		// A cursor can arrive from a caller in a different shape than the wire
+		// uses. Comparing by string length inverts every one of these.
+		{"1700000010.000100", "1800000000", false, "coarse cursor in the future"},
+		{"1800000000", "1700000010.000100", true, "coarse candidate in the future"},
+		{"1700000010.000100", "1700000010.1", false, "fewer micro digits mean more micros"},
+		{"1700000010.2", "1700000010.000100", true, "short micros right-pad, not left"},
+		{"1700000010.100000", "1700000010.1", false, "padded and unpadded micros are equal"},
+		{"", "1700000010.000100", false, "an empty candidate is not later"},
 	}
-	if tsAfter("1700000010.000100", "1700000010.000100") {
-		t.Error("equal is not after")
+	for _, c := range cases {
+		if got := tsAfter(c.candidate, c.cursor); got != c.want {
+			t.Errorf("tsAfter(%q, %q) = %v, want %v — %s", c.candidate, c.cursor, got, c.want, c.why)
+		}
 	}
-	if !tsAfter("17000000100.000100", "1700000010.000100") {
-		t.Error("a longer integer part is later")
+}
+
+func TestMaxTSNeverMovesBackwards(t *testing.T) {
+	if got := maxTS("1700000020.000100", "1700000010.000100"); got != "1700000020.000100" {
+		t.Errorf("maxTS = %q, want the later value", got)
+	}
+	if got := maxTS("", "1700000010.000100"); got != "1700000010.000100" {
+		t.Errorf("maxTS from unset = %q", got)
+	}
+	if got := maxTS("1700000010.000100", ""); got != "1700000010.000100" {
+		t.Errorf("an empty candidate must not clear the cursor, got %q", got)
 	}
 }
 

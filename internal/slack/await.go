@@ -66,14 +66,14 @@ func Await(ctx context.Context, c *Client, opts AwaitOptions) (AwaitResult, erro
 		PollEvery:        opts.PollEvery,
 		OnReconnect:      opts.OnReconnect,
 		OnSkipped: func(event Event) {
-			examined = laterTS(examined, event.Cursor())
+			examined = maxTS(examined, event.Cursor())
 			if len(skipped) < maxSkipped {
 				skipped = append(skipped, event)
 			}
 		},
 	}, func(event Event) error {
 		matched = &event
-		examined = laterTS(examined, event.Cursor())
+		examined = maxTS(examined, event.Cursor())
 		return nil
 	})
 	if err != nil {
@@ -88,15 +88,4 @@ func Await(ctx context.Context, c *Client, opts AwaitOptions) (AwaitResult, erro
 		Skipped:    skipped,
 		Reconnects: result.Reconnects,
 	}, nil
-}
-
-// laterTS returns whichever timestamp is later, treating empty as "unset".
-func laterTS(current, candidate string) string {
-	if candidate == "" {
-		return current
-	}
-	if current == "" || tsAfter(candidate, current) {
-		return candidate
-	}
-	return current
 }

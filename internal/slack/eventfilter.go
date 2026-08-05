@@ -5,7 +5,11 @@ package slack
 // that hides a rejection turns it into a timeout, and an agent cannot tell
 // "no" from "no answer".
 
-import "slices"
+import (
+	"slices"
+	"strconv"
+	"strings"
+)
 
 // EventFilter narrows the classified event stream. A zero filter matches
 // message events in any conversation, from anyone but the authenticated user.
@@ -142,13 +146,48 @@ func isReactionKind(kind EventKind) bool {
 	return kind == EventReactionAdded || kind == EventReactionRemoved
 }
 
-// tsAfter compares Slack timestamps ("1700000000.000100"). They are fixed-form
-// decimal seconds, so a plain string comparison orders them correctly once the
-// integer parts are the same length — which they are for any timestamp this
-// side of 2286. Lengths are compared first so the ordering survives anyway.
+// tsAfter reports whether candidate is strictly later than cursor.
+//
+// Slack timestamps are "<seconds>.<micros>", but a cursor can reach us from a
+// caller rather than the wire — `--since 1700000000` or a value with fewer
+// micro digits — so the two sides are not always the same shape. Comparing
+// them as strings (or by length) inverts the ordering whenever the shapes
+// differ, which silently makes a filter match everything or nothing. Parse and
+// compare numerically instead.
 func tsAfter(candidate, cursor string) bool {
-	if len(candidate) != len(cursor) {
-		return len(candidate) > len(cursor)
+	candSec, candMicro := splitTS(candidate)
+	curSec, curMicro := splitTS(cursor)
+	if candSec != curSec {
+		return candSec > curSec
 	}
-	return candidate > cursor
+	return candMicro > curMicro
+}
+
+// splitTS parses "<seconds>.<micros>" into its two integer parts. Micros are
+// right-padded to six digits so ".1" and ".100000" compare equal, and any
+// unparseable part reads as 0 — a malformed timestamp sorts earliest rather
+// than randomly.
+func splitTS(ts string) (seconds, micros int64) {
+	secPart, microPart, _ := strings.Cut(strings.TrimSpace(ts), ".")
+	seconds, _ = strconv.ParseInt(secPart, 10, 64)
+	if microPart == "" {
+		return seconds, 0
+	}
+	if len(microPart) > 6 {
+		microPart = microPart[:6]
+	}
+	micros, _ = strconv.ParseInt(microPart+strings.Repeat("0", 6-len(microPart)), 10, 64)
+	return seconds, micros
+}
+
+// maxTS returns whichever timestamp is later, treating empty as "unset". It is
+// the one place cursors advance, so a high-water mark can never move backwards.
+func maxTS(current, candidate string) string {
+	if candidate == "" {
+		return current
+	}
+	if current == "" || tsAfter(candidate, current) {
+		return candidate
+	}
+	return current
 }
