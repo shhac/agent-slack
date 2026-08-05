@@ -517,3 +517,85 @@ func TestWatchIdleTimeoutIgnoresNonMatchingTraffic(t *testing.T) {
 			result.StoppedBy, WatchStoppedIdle)
 	}
 }
+
+// A catch-up from a stale cursor must follow pages. Stopping at the first
+// silently drops older post-cursor messages while reporting no gap.
+func TestWatchBackfillFollowsHistoryPages(t *testing.T) {
+	firstPage := make([]map[string]any, 0, backfillPageLimit)
+	for i := range backfillPageLimit {
+		firstPage = append(firstPage, mockslack.Message(
+			fmt.Sprintf("17000001%02d.000100", i), mockslack.WSOtherUser, "page one"))
+	}
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History(firstPage...)},
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000099.000100", mockslack.WSOtherUser, "on the second page"),
+		)},
+	)
+
+	var got []Event
+	_, err := Watch(context.Background(), c, WatchOptions{
+		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		BackfillChannel: mockslack.WSChannelID,
+		Duration:        2 * time.Second,
+	}, func(e Event) error {
+		got = append(got, e)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) <= backfillPageLimit {
+		t.Fatalf("emitted %d events; a second page was never read", len(got))
+	}
+}
+
+// Reconnecting before anything matched still has --since as a floor to re-read
+// from. Without it the catch-up reads nothing and records no gap, so the caller
+// is told the stream is intact when it is not.
+func TestWatchGapFillSeedsFromSince(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.Message("1700000015.000100", mockslack.WSOtherUser, "arrived during the gap"),
+	))
+	c := browserClientFor(ts.URL)
+
+	got, result := collectWatch(t, c, WatchOptions{
+		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		BackfillChannel: mockslack.WSChannelID,
+		Duration:        600 * time.Millisecond,
+	})
+	if len(got) == 0 || got[0].Content != "arrived during the gap" {
+		t.Fatalf("the gap-fill found nothing: %+v", got)
+	}
+	if result.Gaps != 0 {
+		t.Errorf("gaps = %d, want 0 when the channel is re-readable", result.Gaps)
+	}
+}
+
+// A workspace-wide stream has no channel list to re-read, so a reconnect
+// leaves a hole. Gaps is how a caller learns its stream is not complete.
+func TestWatchRecordsGapWhenItCannotRefill(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	c := browserClientFor(ts.URL)
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:   EventFilter{}, // no channels: the default `message stream`
+		Duration: 600 * time.Millisecond,
+	})
+	if result.Reconnects == 0 {
+		t.Fatal("expected the dropped socket to be re-established")
+	}
+	if result.Gaps == 0 {
+		t.Error("a reconnect with nothing to re-read must be reported as a gap")
+	}
+}

@@ -80,9 +80,12 @@ type WatchResult struct {
 }
 
 const (
-	defaultPollEvery     = 15 * time.Second
-	defaultPingEvery     = 30 * time.Second
-	backfillLimit        = 200
+	defaultPollEvery = 15 * time.Second
+	defaultPingEvery = 30 * time.Second
+	// backfillPageLimit is one conversations.history page; backfillMaxMessages
+	// bounds a catch-up so a very stale cursor cannot pull an unbounded read.
+	backfillPageLimit    = 200
+	backfillMaxMessages  = 1000
 	maxReconnectAttempts = 20
 	reconnectBackoff     = 2 * time.Second
 )
@@ -230,7 +233,15 @@ func (s *watchSession) reconnect(ctx context.Context, attempt int) (rtmConn, err
 		return conn, nil
 	}
 	for _, channelID := range channels {
-		if err := s.backfillChannel(ctx, channelID, s.opts.BackfillThreadTS, s.result.Cursors[channelID]); err != nil {
+		// Seed from --since: a run that has not matched anything yet still has
+		// a floor to re-read from. Without it the cursor is empty, the catch-up
+		// silently reads nothing, and the gap goes unrecorded.
+		cursor := maxTS(s.result.Cursors[channelID], s.opts.Filter.Since)
+		if cursor == "" {
+			s.result.Gaps++
+			continue
+		}
+		if err := s.backfillChannel(ctx, channelID, s.opts.BackfillThreadTS, cursor); err != nil {
 			s.result.Gaps++
 		}
 	}
@@ -454,11 +465,7 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 		}
 		return afterCursor(replies, since), nil
 	}
-	messages, err := FetchChannelHistory(ctx, s.client, HistoryOptions{
-		ChannelID: channelID,
-		Limit:     backfillLimit,
-		Oldest:    since,
-	})
+	messages, err := s.historySince(ctx, channelID, since)
 	if err != nil {
 		return nil, err
 	}
@@ -482,6 +489,39 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 		return out, nil
 	}
 	return append(out, afterCursor(replies, since)...), nil
+}
+
+// historySince reads every message after a cursor, following pages rather than
+// stopping at the first. A single page silently truncates a catch-up from a
+// stale cursor — the caller would be told it had missed nothing.
+func (s *watchSession) historySince(ctx context.Context, channelID, since string) ([]render.MessageSummary, error) {
+	var all []render.MessageSummary
+	latest := ""
+	for len(all) < backfillMaxMessages {
+		page, err := FetchChannelHistory(ctx, s.client, HistoryOptions{
+			ChannelID: channelID,
+			Limit:     backfillPageLimit,
+			Oldest:    since,
+			Latest:    latest,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(page) == 0 {
+			return all, nil
+		}
+		all = append(all, page...)
+		if len(page) < backfillPageLimit {
+			return all, nil
+		}
+		// Pages run newest-first; step back from the oldest message we hold.
+		// Overlap at the boundary is harmless — dedup collapses it.
+		latest = page[0].TS
+	}
+	// Hitting the cap means older post-cursor messages were not read. That is
+	// exactly what Gaps reports: events may be missing.
+	s.result.Gaps++
+	return all, nil
 }
 
 // afterCursor enforces the exclusive semantics of --since: Slack's `oldest` is
