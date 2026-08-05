@@ -15,14 +15,18 @@ package mockslack
 // capture has not yet observed; treat their details as less certain than the
 // rest.
 
-// Fabricated workspace. Ids are deliberately unlike real Slack ids (which are
-// opaque uppercase strings) so a fixture value can never be mistaken for one.
+// Fabricated workspace. The ids follow Slack's shape — a kind prefix plus
+// uppercase alphanumerics — because id *parsing* is part of what a consumer
+// does, and an id that cannot round-trip through the channel/user resolvers
+// would exercise the wrong path. "FAKE" keeps them unmistakably invented.
 const (
-	WSTeamID    = "T_FAKE"
-	WSChannelID = "C_FAKE_GENERAL"
-	WSDMID      = "D_FAKE_DM"
-	WSUserID    = "U_FAKE_ALEX"
-	WSOtherUser = "U_FAKE_SAM"
+	WSTeamID    = "T0FAKETEAM"
+	WSChannelID = "C0FAKEGENERAL"
+	WSDMID      = "D0FAKEDM"
+	WSUserID    = "U0FAKEALEX"
+	WSOtherUser = "U0FAKESAM"
+	WSBotID     = "B0FAKEAPP"
+	WSAppID     = "A0FAKEAPP"
 )
 
 // Hello is the first frame after the upgrade. It is far smaller than the
@@ -126,9 +130,9 @@ func WSBotMessage(channel, username, text, ts string) map[string]any {
 		"subtype":               "bot_message",
 		"channel":               channel,
 		"username":              username,
-		"bot_id":                "B_FAKE_APP",
-		"app_id":                "A_FAKE_APP",
-		"bot_profile":           map[string]any{"id": "B_FAKE_APP", "name": username, "app_id": "A_FAKE_APP", "team_id": WSTeamID},
+		"bot_id":                WSBotID,
+		"app_id":                WSAppID,
+		"bot_profile":           map[string]any{"id": WSBotID, "name": username, "app_id": WSAppID, "team_id": WSTeamID},
 		"icons":                 map[string]any{"image_48": "https://fake.invalid/icon48.png"},
 		"text":                  text,
 		"blocks":                RichTextBlocks(text),

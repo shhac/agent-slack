@@ -65,7 +65,7 @@ func GetWebSocketURL(baseURL string) map[string]any {
 		"primary_websocket_url":  WebSocketURLFor(baseURL),
 		"fallback_websocket_url": WebSocketURLFor(baseURL),
 		"ttl_seconds":            float64(604800),
-		"routing_context":        "T_FAKE-1",
+		"routing_context":        WSTeamID + "-1",
 	}
 }
 

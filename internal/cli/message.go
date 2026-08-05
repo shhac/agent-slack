@@ -29,6 +29,8 @@ func registerMessage(parent *cobra.Command, globals *GlobalFlags) {
 	registerMessageDelete(messageCmd, globals)
 	registerMessageReact(messageCmd, globals)
 	registerMessageScheduled(messageCmd, globals)
+	registerMessageAwait(messageCmd, globals)
+	registerMessageStream(messageCmd, globals)
 }
 
 // readFlags are the shared read-path options.
@@ -193,11 +195,16 @@ func messageDownloadOptions(globals *GlobalFlags, cc *clientContext) slack.Messa
 // when resolution is off or nothing resolved; the caller merges the entries into
 // its payload/meta.
 func resolveReferencedEntities(ctx context.Context, cc *clientContext, globals *GlobalFlags, flags *readFlags, messages []render.MessageSummary) map[string]any {
-	mode := flags.resolveMode()
+	return resolveReferencesIn(ctx, cc, globals, flags.resolveMode(), flags.includeReactions, messages)
+}
+
+// resolveReferencesIn is resolveReferencedEntities with the mode passed
+// directly, for commands whose flags are not readFlags (await/stream).
+func resolveReferencesIn(ctx context.Context, cc *clientContext, globals *GlobalFlags, mode resolveMode, includeReactions bool, messages []render.MessageSummary) map[string]any {
 	if !mode.resolve() {
 		return nil
 	}
-	refs := render.CollectReferencedIDs(messages, flags.includeReactions)
+	refs := render.CollectReferencedIDs(messages, includeReactions)
 	ents := slack.ResolveReferenced(ctx, cc.Client, refs, mode.policy())
 	maybeWarmHint(globals, mode, ents.Fetched)
 	out := referencedPayload(ents)
