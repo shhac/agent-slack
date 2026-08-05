@@ -11,6 +11,8 @@ package slack
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"time"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -50,8 +52,13 @@ type WatchOptions struct {
 	PollEvery time.Duration
 
 	// OnSkipped receives in-scope events the filter excluded, so a caller can
-	// tell a rejection from silence. Bounded by the caller.
+	// tell a rejection from silence.
 	OnSkipped func(Event)
+	// MaxSkipped bounds how many excluded events are reported (0 = unlimited).
+	// Past the bound the cursor stops advancing over them: resuming from a
+	// cursor that skipped past unreported rejections would lose them for good,
+	// which is the failure the skipped report exists to prevent.
+	MaxSkipped int
 	// OnReconnect reports a dropped socket that was re-established.
 	OnReconnect func(attempt int)
 }
@@ -65,8 +72,11 @@ type WatchResult struct {
 	Reconnects int               `json:"reconnects,omitempty"`
 	// Gaps counts reconnects that could not be gap-filled because the run has
 	// no explicit channel list to re-read. Non-zero means events may be missing.
-	Gaps      int    `json:"gaps,omitempty"`
-	StoppedBy string `json:"stopped_by"`
+	Gaps int `json:"gaps,omitempty"`
+	// SkippedTruncated reports that excluded events went unreported because
+	// MaxSkipped was reached; the cursor stopped advancing at that point.
+	SkippedTruncated bool   `json:"skipped_truncated,omitempty"`
+	StoppedBy        string `json:"stopped_by"`
 }
 
 const (
@@ -111,6 +121,7 @@ type watchSession struct {
 	seen   map[string]bool
 	result WatchResult
 
+	skippedCount int
 	// framesSinceReconnect counts what the current socket has delivered, so a
 	// reconnect that immediately drops again is not mistaken for a healthy one.
 	framesSinceReconnect int
@@ -304,11 +315,15 @@ func (s *watchSession) consume(ctx context.Context, frames <-chan map[string]any
 			if !isEvent {
 				continue
 			}
-			done, err := s.offer(event)
+			matched, done, err := s.offer(event)
 			if err != nil || done {
 				return true, err
 			}
-			s.resetIdle(idle)
+			// --idle-timeout means "no MATCHING event": on a busy workspace the
+			// firehose would otherwise reset it forever and it would never trip.
+			if matched {
+				s.resetIdle(idle)
+			}
 		}
 	}
 }
@@ -335,30 +350,49 @@ func (s *watchSession) resetIdle(t *time.Timer) {
 
 // offer applies dedup and the filter to one classified event, emitting it when
 // it matches and reporting it as skipped when it was in scope but excluded.
-// done is true once the run's event cap is reached.
-func (s *watchSession) offer(event Event) (bool, error) {
+// matched says whether it reached the caller; done is true once the run's
+// event cap is reached.
+func (s *watchSession) offer(event Event) (matched, done bool, err error) {
 	if s.seen[eventKey(event)] {
-		return false, nil
+		return false, false, nil
 	}
 	s.seen[eventKey(event)] = true
 
 	if !s.opts.Filter.Matches(event) {
-		if s.opts.OnSkipped != nil && s.opts.Filter.InScope(event) && s.notBefore(event) {
-			s.opts.OnSkipped(event)
+		if s.opts.Filter.InScope(event) && s.notBefore(event) {
+			s.reportSkipped(event)
 		}
-		return false, nil
+		return false, false, nil
 	}
 
 	s.advanceCursor(event)
-	s.result.Events++
 	if err := s.emit(event); err != nil {
-		return true, err
+		return false, true, err
 	}
+	// Counted only after a successful emit: an event the caller never received
+	// has not been delivered.
+	s.result.Events++
 	if s.opts.MaxEvents > 0 && s.result.Events >= s.opts.MaxEvents {
 		s.stop(WatchStoppedMaxEvents)
-		return true, nil
+		return true, true, nil
 	}
-	return false, nil
+	return true, false, nil
+}
+
+// reportSkipped hands an excluded in-scope event to the caller and moves the
+// cursor past it — but only while there is room to report it. Once the report
+// is full the cursor freezes, so a resumed run re-offers the events the caller
+// never saw rather than stepping over a rejection.
+func (s *watchSession) reportSkipped(event Event) {
+	if s.opts.MaxSkipped > 0 && s.skippedCount >= s.opts.MaxSkipped {
+		s.result.SkippedTruncated = true
+		return
+	}
+	s.skippedCount++
+	s.advanceCursor(event)
+	if s.opts.OnSkipped != nil {
+		s.opts.OnSkipped(event)
+	}
 }
 
 // notBefore keeps stale traffic out of the skipped report: an event from before
@@ -398,7 +432,7 @@ func (s *watchSession) backfillChannel(ctx context.Context, channelID, threadTS,
 		return err
 	}
 	for _, msg := range messages {
-		done, emitErr := s.offer(EventFromMessage(channelID, msg))
+		_, done, emitErr := s.offer(EventFromMessage(channelID, msg))
 		if emitErr != nil {
 			return emitErr
 		}
@@ -506,7 +540,11 @@ func (s *watchSession) pollBaseline(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if len(messages) == 0 {
-		return "", nil
+		// An empty conversation has no tip to start from, and an empty cursor
+		// makes every later read a no-op — the poll would spin until timeout
+		// and report silence even as messages arrived. Start from now instead:
+		// the caller asked what happens next, and nothing exists before it.
+		return nowTS(), nil
 	}
 	return messages[len(messages)-1].TS, nil
 }
@@ -516,4 +554,11 @@ func (s *watchSession) fetchTip(ctx context.Context) ([]render.MessageSummary, e
 		return FetchThread(ctx, s.client, s.opts.BackfillChannel, s.opts.BackfillThreadTS, false)
 	}
 	return FetchChannelHistory(ctx, s.client, HistoryOptions{ChannelID: s.opts.BackfillChannel, Limit: 1})
+}
+
+// nowTS renders the current time as a Slack timestamp, for the one case with
+// no message to anchor to.
+func nowTS() string {
+	now := time.Now()
+	return strconv.FormatInt(now.Unix(), 10) + "." + fmt.Sprintf("%06d", now.Nanosecond()/1000)
 }

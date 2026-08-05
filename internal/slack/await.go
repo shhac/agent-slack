@@ -33,8 +33,11 @@ type AwaitResult struct {
 	Event    *Event `json:"event,omitempty"`
 	// Skipped are in-scope events the filter excluded — a "no" the caller would
 	// otherwise read as silence.
-	Skipped    []Event `json:"skipped,omitempty"`
-	Reconnects int     `json:"reconnects,omitempty"`
+	Skipped []Event `json:"skipped,omitempty"`
+	// SkippedTruncated reports that more were excluded than could be listed.
+	// The cursor stops before them, so resuming re-offers them.
+	SkippedTruncated bool `json:"skipped_truncated,omitempty"`
+	Reconnects       int  `json:"reconnects,omitempty"`
 }
 
 const defaultMaxSkipped = 20
@@ -50,9 +53,6 @@ func Await(ctx context.Context, c *Client, opts AwaitOptions) (AwaitResult, erro
 
 	var matched *Event
 	var skipped []Event
-	// examined tracks the high-water mark of everything we looked at, matched
-	// or not, so a resumed run does not re-offer events already reported.
-	examined := opts.Filter.Since
 
 	started := time.Now()
 	result, err := Watch(ctx, c, WatchOptions{
@@ -65,15 +65,10 @@ func Await(ctx context.Context, c *Client, opts AwaitOptions) (AwaitResult, erro
 		Poll:             opts.Poll,
 		PollEvery:        opts.PollEvery,
 		OnReconnect:      opts.OnReconnect,
-		OnSkipped: func(event Event) {
-			examined = maxTS(examined, event.Cursor())
-			if len(skipped) < maxSkipped {
-				skipped = append(skipped, event)
-			}
-		},
+		MaxSkipped:       maxSkipped,
+		OnSkipped:        func(event Event) { skipped = append(skipped, event) },
 	}, func(event Event) error {
 		matched = &event
-		examined = maxTS(examined, event.Cursor())
 		return nil
 	})
 	if err != nil {
@@ -81,11 +76,15 @@ func Await(ctx context.Context, c *Client, opts AwaitOptions) (AwaitResult, erro
 	}
 
 	return AwaitResult{
-		Received:   matched != nil,
-		Cursor:     examined,
-		WaitedMS:   time.Since(started).Milliseconds(),
-		Event:      matched,
-		Skipped:    skipped,
-		Reconnects: result.Reconnects,
+		Received: matched != nil,
+		// The session's high-water mark for this conversation: everything
+		// examined, never past anything unreported. Falls back to the input so
+		// a run that saw nothing echoes its cursor rather than losing it.
+		Cursor:           FirstNonEmpty(result.Cursors[opts.ChannelID], opts.Filter.Since),
+		WaitedMS:         time.Since(started).Milliseconds(),
+		Event:            matched,
+		Skipped:          skipped,
+		SkippedTruncated: result.SkippedTruncated,
+		Reconnects:       result.Reconnects,
 	}, nil
 }

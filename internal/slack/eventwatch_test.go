@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -427,5 +428,92 @@ func TestWatchReportsDurationAndCancellation(t *testing.T) {
 	}
 	if cancelled.StoppedBy != StoppedByCancel {
 		t.Errorf("stopped_by = %q, want %q", cancelled.StoppedBy, StoppedByCancel)
+	}
+}
+
+// Past the skipped-report bound the cursor must freeze. Advancing over
+// rejections the caller never saw loses them permanently on resume — the exact
+// "a rejection must not look like silence" failure this feature exists to stop.
+func TestAwaitCursorStopsAtTheSkippedReportBound(t *testing.T) {
+	frames := []map[string]any{mockslack.Hello()}
+	for i := range 6 {
+		frames = append(frames, mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser,
+			"x", "1700000010.000100", fmt.Sprintf("17000000%02d.000100", 20+i)))
+	}
+	c, server := watchFixture(t, mockslack.WSScript{Frames: frames})
+	server.HandleBody("conversations.history", mockslack.History())
+	server.HandleBody("conversations.replies", mockslack.History())
+
+	result, err := Await(context.Background(), c, AwaitOptions{
+		Filter: EventFilter{
+			Kinds:     []EventKind{EventReactionAdded},
+			Channels:  []string{mockslack.WSChannelID},
+			Reactions: []string{"white_check_mark"},
+			Since:     "1700000010.000100",
+		},
+		ChannelID:  mockslack.WSChannelID,
+		Timeout:    400 * time.Millisecond,
+		MaxSkipped: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Skipped) != 2 || !result.SkippedTruncated {
+		t.Fatalf("skipped=%d truncated=%v, want 2 and a truncation flag", len(result.Skipped), result.SkippedTruncated)
+	}
+	lastReported := result.Skipped[len(result.Skipped)-1].Cursor()
+	if tsAfter(result.Cursor, lastReported) {
+		t.Errorf("cursor %q advanced past the last reported rejection %q; resuming there loses the ones never shown",
+			result.Cursor, lastReported)
+	}
+}
+
+// Without --since a poll run has nothing to anchor to in an empty conversation.
+// An empty cursor makes every read a no-op, so the await reports silence
+// forever even as messages arrive.
+func TestWatchPollBaselineOnAnEmptyConversation(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History()}, // empty: no tip to start from
+		// Arriving after the run started, which is the only thing an empty
+		// conversation's baseline can mean.
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("9999999999.000100", mockslack.WSOtherUser, "the first message ever"),
+		)},
+	)
+
+	got, _ := collectWatch(t, c, WatchOptions{
+		Filter:          EventFilter{Channels: []string{mockslack.WSChannelID}},
+		BackfillChannel: mockslack.WSChannelID,
+		Poll:            true,
+		PollEvery:       10 * time.Millisecond,
+		MaxEvents:       1,
+		Duration:        2 * time.Second,
+	})
+	if len(got) != 1 || got[0].Content != "the first message ever" {
+		t.Fatalf("a poll on an empty conversation must still deliver: %+v", got)
+	}
+}
+
+// --idle-timeout is documented as "no matching event". On a busy workspace the
+// firehose would reset it forever if any classified frame counted.
+func TestWatchIdleTimeoutIgnoresNonMatchingTraffic(t *testing.T) {
+	// Reactions keep arriving; the filter wants messages. Idle must still trip.
+	frames := []map[string]any{mockslack.Hello()}
+	for i := range 8 {
+		frames = append(frames, mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser,
+			"eyes", "1700000010.000100", fmt.Sprintf("17000000%02d.000100", 30+i)))
+	}
+	c, server := watchFixture(t, mockslack.WSScript{Frames: frames, Interval: 10 * time.Millisecond})
+	server.HandleBody("conversations.history", mockslack.History())
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:      EventFilter{Channels: []string{mockslack.WSChannelID}},
+		IdleTimeout: 60 * time.Millisecond,
+		Duration:    3 * time.Second,
+	})
+	if result.StoppedBy != WatchStoppedIdle {
+		t.Errorf("stopped_by = %q, want %q — non-matching traffic must not hold the timer open",
+			result.StoppedBy, WatchStoppedIdle)
 	}
 }
