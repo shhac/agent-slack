@@ -11,9 +11,11 @@ import (
 	"github.com/shhac/agent-slack/internal/mockslack"
 )
 
-// browserClientFor builds a browser-auth client pointed at a mock server.
+// browserClientFor builds a browser-auth client pointed at a mock server. The
+// no-op sleep keeps retry and reconnect backoff out of test wall-clock.
 func browserClientFor(baseURL string) *Client {
-	return New(Auth{Type: AuthBrowser, XOXC: "xoxc-secret", XOXD: "xoxd-secret", WorkspaceURL: baseURL})
+	return New(Auth{Type: AuthBrowser, XOXC: "xoxc-secret", XOXD: "xoxd-secret", WorkspaceURL: baseURL},
+		WithSleep(func(ctx context.Context, _ time.Duration) error { return ctx.Err() }))
 }
 
 func TestFetchEventSocketRequiresBrowserAuth(t *testing.T) {
