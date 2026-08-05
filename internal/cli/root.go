@@ -113,6 +113,7 @@ func newRootCmdWithDeps(deps rootDeps) *cobra.Command {
 	registerCache(root, globals)
 	registerConfig(root, globals)
 	registerAPI(root, globals)
+	registerDebug(root, globals)
 	attachDomainUsage(root)
 
 	// Expose the whole command tree as an MCP server (added last, so it reflects
