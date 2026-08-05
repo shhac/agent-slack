@@ -232,7 +232,8 @@ AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
        arrived before this command started is still found.
        A timeout is NOT an error — exit 0 with {"received":false} and a cursor
        to resume from. 'skipped' lists in-scope events the filters excluded,
-       so a rejection is never mistaken for silence.
+       so a rejection is never mistaken for silence; 'skipped_truncated' means
+       more were excluded than listed, and the cursor stopped before them.
        --events message|reaction|edit|delete (default message, comma list).
        Reactions match ANY name by default (approval is ✅ ✔️ ☑️ 👍 …, so
        judging intent is the caller's job); --reaction narrows, ignoring skin
@@ -247,6 +248,9 @@ STREAM message stream [--channel <…>] [--duration 10m] [--max-events N]
            --idle-timeout 10m
        NDJSON of the same event records await returns, ending with an
        {"@summary":{cursors:{<channel>:<ts>},events,stopped_by,…}} meta line.
+       stopped_by: max-events|idle-timeout|duration|cancelled|reconnect-failed
+       — a lost socket is NOT a cancellation. 'gaps' > 0 means a reconnect
+       could not be caught up and events may be missing.
        Cursors are PER CHANNEL — gap-fill is per conversation. Without
        --channel, every conversation you can see is streamed. Always bounded.
        Browser auth only. No --since: resuming N conversations from one scalar

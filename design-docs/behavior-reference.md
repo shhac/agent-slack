@@ -325,6 +325,13 @@ messages roughly 15:1, so a stream must filter rather than forward.
   `message-pane/requestHistory` — i.e. the cursor pattern a polling fallback
   would use, on the workspace client endpoint, where the 1 req/min
   non-Marketplace tier does not apply.
+- The `client.getWebSocketURL` response carries a **fallback gateway** as well
+  as the primary. It is dialed when the primary refuses, so one gateway's
+  outage does not end a run.
+- Reaction names arrive with the reactor's skin tone attached
+  (`+1::skin-tone-3`). One normalizer (`render.NormalizeReactionName`) serves
+  every command that takes an emoji, so `message react` and
+  `message await --reaction` accept the same inputs — including unicode.
 - Two methods worth using for a stream that are not wrapped yet:
   `client.counts` (per-conversation latest ts + unread state in one call — the
   cheap way to find *which* conversation moved) and `messages.list`

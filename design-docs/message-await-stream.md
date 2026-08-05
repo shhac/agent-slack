@@ -71,6 +71,11 @@ frame already delivered.
 
 ## `--since`, and why ordering matters
 
+Timestamps are compared numerically, not as strings: a cursor can arrive from
+a caller in a different shape than the wire uses (`--since 1700000000`, or
+fewer micro digits), and comparing those as text inverts the ordering and makes
+a filter match everything or nothing.
+
 `--since <ts>` means *strictly after this timestamp*, and it exists to close the
 gap between sending and waiting:
 
@@ -185,6 +190,24 @@ appears only in `--debug` output and in the stream's `@summary`.
 `await` falls back to polling `conversations.history` with a stderr notice —
 degraded but honest, and a 5-minute wait is fine even on the 1 req/min tier.
 `stream` refuses: polling every conversation in a workspace is not viable.
+
+## What a run reports about itself
+
+`stopped_by` distinguishes the ways a run ends, because an agent decides
+whether to resume from it: `max-events`, `idle-timeout`, `duration`,
+`cancelled`, and `reconnect-failed`. The last is the one worth stating —
+a socket that dropped and could not be re-established is **not** a
+cancellation, and reporting it as one tells the caller they stopped a run that
+in fact broke under them.
+
+`gaps` counts reconnects that could not be caught up: a workspace-wide stream
+has no channel list to re-read, and a catch-up that hits its page bound has
+older messages it never fetched. Non-zero means events may be missing.
+
+`skipped_truncated` reports that more events were excluded than could be
+listed. The cursor stops advancing at that point, so resuming re-offers the
+ones the caller never saw — silently stepping over a rejection is the failure
+the skipped report exists to prevent.
 
 ## Bounds
 
