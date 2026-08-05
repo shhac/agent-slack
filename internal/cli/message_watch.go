@@ -226,7 +226,6 @@ func projectEvent(event slack.Event, maxBodyChars int, slackMarkdown bool) compa
 			TS:        event.TS,
 			ThreadTS:  event.ThreadTS,
 			Author:    event.Author,
-			Content:   event.Content(),
 		}
 		return out
 	}

@@ -79,7 +79,6 @@ mistaken for silence.`,
 
 // awaitOutput is the single JSON resource `message await` prints. Event is the
 // same record a stream line carries, so one parser serves both commands.
-
 type awaitOutput struct {
 	Received bool          `json:"received"`
 	Cursor   string        `json:"cursor,omitempty"`

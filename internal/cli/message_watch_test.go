@@ -478,9 +478,7 @@ func TestStreamLineCarriesEveryCompactMessageField(t *testing.T) {
 // went through the shared kernel, a permalink fell into the default branch and
 // was resolved as if it were a channel *name* — an API call that could only fail.
 func TestStreamChannelsResolveAPermalinkWithoutALookup(t *testing.T) {
-	f := newBrowserCLIFixture(t)
-	cc := &clientContext{Client: nil, WorkspaceURL: "https://acme.slack.com"}
-	_ = f
+	cc := &clientContext{WorkspaceURL: "https://acme.slack.com"}
 
 	target, err := render.ParseTarget("https://acme.slack.com/archives/C0FAKECHAN/p1700000010000100")
 	if err != nil {

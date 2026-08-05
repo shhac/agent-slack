@@ -32,7 +32,6 @@ type CaptureOptions struct {
 }
 
 // CaptureFrame is one received frame with its position in the stream.
-
 type CaptureFrame struct {
 	Seq       int            `json:"seq"`
 	ElapsedMS int64          `json:"elapsed_ms"`
@@ -42,7 +41,6 @@ type CaptureFrame struct {
 }
 
 // CaptureSummary is the tally emitted when a capture finishes.
-
 type CaptureSummary struct {
 	SocketURL string         `json:"socket_url"`
 	Frames    int            `json:"frames"`
@@ -53,7 +51,6 @@ type CaptureSummary struct {
 }
 
 // Capture stop reasons.
-
 const (
 	StoppedByDuration  = "duration"
 	StoppedByMaxFrames = "max-frames"
@@ -65,7 +62,6 @@ const (
 // received frame to emit until the run's bound is reached. Frames are redacted
 // before they reach emit, so a capture can never leak the session token into a
 // terminal or a file.
-
 func CaptureEvents(ctx context.Context, c *Client, opts CaptureOptions, emit func(CaptureFrame) error) (CaptureSummary, error) {
 	conn, socketURL, err := ConnectEvents(ctx, c)
 	if err != nil {
@@ -129,10 +125,6 @@ func CaptureEvents(ctx context.Context, c *Client, opts CaptureOptions, emit fun
 	return summary, nil
 }
 
-// deadlineStopReason names the ways a bounded run ends when nothing else
-// recorded a reason: the caller cancelled, or the run's own duration expired.
-// Shared by the capture and watch loops so one vocabulary describes both.
-
 // stopReason distinguishes the ways a capture read loop ends. A read error
 // with both contexts still live means the server hung up.
 func stopReason(outer, run context.Context, opts CaptureOptions) string {
@@ -145,7 +137,6 @@ func stopReason(outer, run context.Context, opts CaptureOptions) string {
 // tallyKey groups the summary by type, splitting message subtypes out —
 // "message/message_changed" behaves nothing like a plain "message", and a
 // tally that merges them hides the distinction we are capturing to find.
-
 func tallyKey(frame map[string]any, frameType string) string {
 	if frameType == "" {
 		frameType = "(none)"
@@ -166,8 +157,6 @@ func frameTypeFilter(types []string) map[string]bool {
 	}
 	return set
 }
-
-// pingLoop keeps a long capture alive; Slack closes idle sockets.
 
 // SortedTally renders a by-type tally as descending "type=count" pairs, for
 // the human-readable end-of-capture line.

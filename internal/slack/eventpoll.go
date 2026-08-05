@@ -16,6 +16,8 @@ import (
 
 const defaultPollEvery = 15 * time.Second
 
+// runPoll is the standard-token fallback: no socket, just history reads after
+// the cursor. Only usable with a single named conversation.
 func (s *watchSession) runPoll(ctx context.Context) error {
 	channel := s.opts.targetChannel()
 	if channel == "" {
@@ -50,7 +52,6 @@ func (s *watchSession) runPoll(ctx context.Context) error {
 // is no cursor, and "everything in history" is the wrong answer — the caller
 // asked what happens next — so the conversation's current tip becomes the
 // baseline.
-
 func (s *watchSession) pollBaseline(ctx context.Context) (string, error) {
 	if s.opts.Filter.Since != "" {
 		return s.opts.Filter.Since, nil
@@ -79,7 +80,6 @@ func (s *watchSession) fetchTip(ctx context.Context) ([]render.MessageSummary, e
 
 // nowTS renders the current time as a Slack timestamp, for the one case with
 // no message to anchor to.
-
 func nowTS() string {
 	now := time.Now()
 	return strconv.FormatInt(now.Unix(), 10) + "." + fmt.Sprintf("%06d", now.Nanosecond()/1000)

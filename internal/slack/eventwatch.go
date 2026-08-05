@@ -1,7 +1,8 @@
 package slack
 
 // The delivery engine behind `message await` and `message stream`: attach the
-// socket, backfill the gap, emit matching events, and survive reconnects.
+// socket, emit matching events, and survive reconnects. Catching up over HTTP
+// lives in eventbackfill.go; the no-socket fallback in eventpoll.go.
 //
 // Ordering is load-bearing. The socket is attached BEFORE the backfill query
 // runs, because anything landing between a history response and a completed
@@ -15,7 +16,7 @@ import (
 )
 
 // Watch stop reasons. StoppedByDuration/StoppedByCancel/StoppedByClosed are
-// shared with the capture loop (events.go) so one vocabulary describes every
+// shared with the capture loop (eventcapture.go) so one vocabulary describes every
 // way a socket run can end.
 const (
 	WatchStoppedMaxEvents = "max-events"
@@ -238,7 +239,7 @@ func (s *watchSession) reconnect(ctx context.Context, attempt int) (rtmConn, err
 			s.opts.OnReconnect(attempt, filled)
 		}
 	}()
-	channels := s.gapFillChannels()
+	channels := s.opts.Filter.Channels
 	if len(channels) == 0 {
 		s.result.Gaps++
 		filled = false
@@ -277,8 +278,6 @@ func (s *watchSession) redial(ctx context.Context) (rtmConn, error) {
 	conn, _, err := ConnectEvents(ctx, s.client)
 	return conn, err
 }
-
-func (s *watchSession) gapFillChannels() []string { return s.opts.Filter.Channels }
 
 // readFrames pumps the socket into a channel so the backfill can run while the
 // socket is already listening. The channel closes on any read error, which the

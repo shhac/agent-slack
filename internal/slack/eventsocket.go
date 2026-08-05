@@ -114,12 +114,19 @@ func ConnectEvents(ctx context.Context, c *Client) (rtmConn, string, error) {
 	return nil, "", agenterrors.Wrap(lastErr, agenterrors.FixableByRetry).
 		WithHint("could not open the event WebSocket on either gateway — retry")
 }
+
+// deadlineStopReason names the ways a bounded run ends when nothing else
+// recorded a reason: the caller cancelled, or the run's own duration expired.
+// Shared by the capture and watch loops so one vocabulary describes both.
 func deadlineStopReason(outer, run context.Context, hasDuration bool) string {
 	if outer.Err() == nil && run.Err() != nil && hasDuration {
 		return StoppedByDuration
 	}
 	return StoppedByCancel
 }
+
+// pingLoop keeps a socket alive: Slack closes idle connections, and a
+// multi-minute await is mostly idle.
 func pingLoop(ctx context.Context, conn rtmConn, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()

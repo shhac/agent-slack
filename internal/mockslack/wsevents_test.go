@@ -9,7 +9,6 @@ import (
 // The default script exists to expose the shapes that break a naive consumer.
 // These assertions pin the traps so a future edit cannot quietly sand them off
 // and leave the fixture agreeable but useless.
-
 func TestDefaultScriptPairsThreadReplyWithParentResend(t *testing.T) {
 	var replies, resends int
 	for _, frame := range DefaultEventScript() {

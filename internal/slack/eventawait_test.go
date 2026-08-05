@@ -29,7 +29,6 @@ func TestAwaitReturnsFirstMatchWithCursor(t *testing.T) {
 
 // A timeout is a successful outcome: no error, and a cursor that has not moved
 // past anything unexamined.
-
 func TestAwaitTimeoutEchoesCursor(t *testing.T) {
 	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
 	server.HandleBody("conversations.history", mockslack.History())
@@ -50,7 +49,6 @@ func TestAwaitTimeoutEchoesCursor(t *testing.T) {
 }
 
 // The rejection case: awaiting a ✅ while someone reacts ❌.
-
 func TestAwaitSurfacesTheRejectionItFilteredOut(t *testing.T) {
 	rejection := mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser,
 		"x", "1700000010.000100", "1700000030.000100")

@@ -30,7 +30,6 @@ func (s *watchSession) backfill(ctx context.Context) error {
 
 // backfillChannel replays history after a cursor through the same offer path
 // as live frames, so dedup and filtering behave identically.
-
 func (s *watchSession) backfillChannel(ctx context.Context, channelID, threadTS, since string) error {
 	if since == "" {
 		return nil
@@ -54,7 +53,6 @@ func (s *watchSession) backfillChannel(ctx context.Context, channelID, threadTS,
 // fetchSince reads a thread's replies or a channel's history after a cursor.
 // A thread's replies never appear in channel history unless broadcast, so the
 // two cases genuinely need different calls.
-
 func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, since string) ([]render.MessageSummary, error) {
 	if threadTS != "" {
 		replies, err := FetchThread(ctx, s.client, channelID, threadTS, false)
@@ -92,7 +90,6 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 // historySince reads every message after a cursor, following pages rather than
 // stopping at the first. A single page silently truncates a catch-up from a
 // stale cursor — the caller would be told it had missed nothing.
-
 func (s *watchSession) historySince(ctx context.Context, channelID, since string) ([]render.MessageSummary, error) {
 	var all []render.MessageSummary
 	latest := ""
@@ -135,7 +132,6 @@ func orderedBackfill(messages []render.MessageSummary) []render.MessageSummary {
 
 // afterCursor enforces the exclusive semantics of --since: Slack's `oldest` is
 // inclusive, and the cursor is usually the caller's own message.
-
 func afterCursor(messages []render.MessageSummary, since string) []render.MessageSummary {
 	out := make([]render.MessageSummary, 0, len(messages))
 	for _, msg := range messages {
@@ -145,6 +141,3 @@ func afterCursor(messages []render.MessageSummary, since string) []render.Messag
 	}
 	return out
 }
-
-// runPoll is the standard-token fallback: no socket, just history reads after
-// the cursor. Only usable with a single named conversation.

@@ -141,7 +141,6 @@ func TestCaptureEventsSendsProbeFrames(t *testing.T) {
 
 // A capture writes raw frames to a terminal or a file, so a token appearing
 // anywhere in a payload must not survive the trip.
-
 func TestCaptureEventsRedactsTokensInFrames(t *testing.T) {
 	leaky := map[string]any{
 		"type":  "hello",
