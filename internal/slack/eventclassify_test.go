@@ -112,3 +112,40 @@ func TestClassifyReactionTargetsTheMessage(t *testing.T) {
 		t.Errorf("cursor should be when the reaction happened, got %q", event.Cursor())
 	}
 }
+
+// A frame without a conversation and timestamp cannot be filtered, deduped, or
+// resumed from. Admitting one puts an identity-less record into a
+// workspace-wide stream, where it also collides with every other such frame
+// under the dedup key.
+func TestClassifyRejectsFramesWithoutIdentity(t *testing.T) {
+	cases := map[string]map[string]any{
+		"message with no channel or ts": {"type": "message", "text": "orphan"},
+		"message with no ts":            {"type": "message", "channel": mockslack.WSChannelID},
+		"edit with no channel": {"type": "message", "subtype": "message_changed",
+			"message": map[string]any{"ts": "1700000010.000100"}},
+		"delete with no deleted_ts": {"type": "message", "subtype": "message_deleted",
+			"channel": mockslack.WSChannelID},
+		"reaction on a file": {"type": "reaction_added", "user": mockslack.WSOtherUser,
+			"reaction": "eyes", "item": map[string]any{"type": "file", "file": "F0FAKEFILE"}},
+		"reaction with no channel": {"type": "reaction_added", "user": mockslack.WSOtherUser,
+			"reaction": "eyes", "item": map[string]any{"type": "message", "ts": "1700000010.000100"}},
+	}
+	for name, frame := range cases {
+		if event, ok := ClassifyFrame(frame); ok {
+			t.Errorf("%s classified as %+v", name, event)
+		}
+	}
+}
+
+// A delete carries no body, but Slack still names the author in
+// previous_message — without it --from and --exclude-bots cannot filter deletes.
+func TestClassifyDeleteKeepsTheOriginalAuthor(t *testing.T) {
+	frame := mockslack.WSMessageDeleted(mockslack.WSChannelID, "1700000020.000200", "1700000050.000500")
+	event, ok := ClassifyFrame(frame)
+	if !ok {
+		t.Fatal("message_deleted should classify")
+	}
+	if event.AuthorID() != mockslack.WSOtherUser {
+		t.Errorf("author = %q, want the deleted message's author", event.AuthorID())
+	}
+}

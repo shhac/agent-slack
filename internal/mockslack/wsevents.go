@@ -184,6 +184,14 @@ func WSMessageDeleted(channel, deletedTS, eventTS string) map[string]any {
 		"deleted_ts": deletedTS,
 		"ts":         eventTS,
 		"event_ts":   eventTS,
+		// The body is gone but the author is not: this is the only way a
+		// consumer can tell whose message was deleted.
+		"previous_message": map[string]any{
+			"type": "message",
+			"user": WSOtherUser,
+			"text": "fabricated text before the delete",
+			"ts":   deletedTS,
+		},
 	}
 }
 

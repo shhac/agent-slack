@@ -87,9 +87,9 @@ func ClassifyFrame(frame map[string]any) (Event, bool) {
 	case "message":
 		return classifyMessageFrame(frame)
 	case "reaction_added":
-		return classifyReactionFrame(frame, EventReactionAdded), true
+		return classifyReactionFrame(frame, EventReactionAdded)
 	case "reaction_removed":
-		return classifyReactionFrame(frame, EventReactionRemoved), true
+		return classifyReactionFrame(frame, EventReactionRemoved)
 	default:
 		return Event{}, false
 	}
@@ -104,6 +104,12 @@ func classifyMessageFrame(frame map[string]any) (Event, bool) {
 	switch getStr(frame, "subtype") {
 	case "", "bot_message", "thread_broadcast", "file_share", "me_message":
 		summary := SummaryFromRaw(channelID, frame)
+		if channelID == "" || summary.TS == "" {
+			// Without a conversation and a timestamp an event cannot be
+			// filtered, deduped, or resumed from — and a workspace-wide stream
+			// would carry it as a message with no identity at all.
+			return Event{}, false
+		}
 		return Event{
 			Kind:      EventMessage,
 			ChannelID: channelID,
@@ -117,6 +123,9 @@ func classifyMessageFrame(frame map[string]any) (Event, bool) {
 		edited := getRec(frame, "message")
 		previous := getRec(frame, "previous_message")
 		summary := SummaryFromRaw(channelID, edited)
+		if channelID == "" || summary.TS == "" {
+			return Event{}, false
+		}
 		return Event{
 			Kind:            EventMessageChanged,
 			ChannelID:       channelID,
@@ -129,11 +138,20 @@ func classifyMessageFrame(frame map[string]any) (Event, bool) {
 		}, true
 
 	case "message_deleted":
+		deletedTS := getStr(frame, "deleted_ts")
+		if channelID == "" || deletedTS == "" {
+			return Event{}, false
+		}
+		// The deleted body is gone, but Slack still names who wrote it in
+		// previous_message — without which --from, --exclude-bots, and
+		// self-exclusion cannot filter a delete at all.
+		previous := getRec(frame, "previous_message")
 		return Event{
 			Kind:      EventMessageDeleted,
 			ChannelID: channelID,
-			TS:        getStr(frame, "deleted_ts"),
+			TS:        deletedTS,
 			EventTS:   FirstNonEmpty(getStr(frame, "event_ts"), getStr(frame, "ts")),
+			Author:    render.AuthorRef(getStr(previous, "user"), getStr(previous, "bot_id")),
 		}, true
 
 	default:
@@ -143,8 +161,14 @@ func classifyMessageFrame(frame map[string]any) (Event, bool) {
 	}
 }
 
-func classifyReactionFrame(frame map[string]any, kind EventKind) Event {
+// classifyReactionFrame keeps only reactions on messages. Slack also reports
+// reactions on files, which carry no conversation or message timestamp — as
+// events they would be indistinguishable from a malformed frame.
+func classifyReactionFrame(frame map[string]any, kind EventKind) (Event, bool) {
 	item := getRec(frame, "item")
+	if getStr(item, "type") != "message" || getStr(item, "channel") == "" || getStr(item, "ts") == "" {
+		return Event{}, false
+	}
 	return Event{
 		Kind:      kind,
 		ChannelID: getStr(item, "channel"),
@@ -152,7 +176,7 @@ func classifyReactionFrame(frame map[string]any, kind EventKind) Event {
 		EventTS:   FirstNonEmpty(getStr(frame, "event_ts"), getStr(frame, "ts")),
 		Author:    render.AuthorRef(getStr(frame, "user"), ""),
 		Reaction:  getStr(frame, "reaction"),
-	}
+	}, true
 }
 
 // EventFromMessage adapts a history/thread message into a message event, so a
