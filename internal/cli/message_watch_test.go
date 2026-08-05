@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/shhac/agent-slack/internal/mockslack"
+	"github.com/shhac/agent-slack/internal/slack"
 )
 
 // watchCLIFixture is a browser-auth fixture whose mock server also serves the
@@ -215,7 +217,7 @@ func TestMessageAwaitMatchesThreadReplyToTheAwaitedMessage(t *testing.T) {
 	f := watchCLIFixture(t, []map[string]any{mockslack.Hello(), reply})
 
 	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
-		"--since", question, "--timeout", "5s")
+		"--since", question, "--timeout", "2s")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,5 +245,83 @@ func TestMessageAwaitStillExcludesOtherThreads(t *testing.T) {
 	}
 	if payload := parseJSON(t, stdout); payload["received"] != false {
 		t.Fatalf("another thread's reply is not an answer: %v", payload)
+	}
+}
+
+// Self-exclusion is wired through the credential's cache key, which is parsed
+// by hand — a unit test on the filter would not catch that wiring breaking.
+// In a self-DM every message is your own, so a regression here makes await
+// look permanently silent.
+func TestMessageAwaitExcludesYourOwnMessages(t *testing.T) {
+	own := mockslack.WSMessage(mockslack.WSChannelID, fixtureUserID, "posted by me", "1700000015.000100")
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello(), own})
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--timeout", "400ms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := parseJSON(t, stdout); payload["received"] != false {
+		t.Fatalf("your own message is not a reply to yourself: %v", payload)
+	}
+
+	stdout, _, err = f.run(t, "message", "await", mockslack.WSChannelID, "--include-self", "--timeout", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := parseJSON(t, stdout); payload["received"] != true {
+		t.Fatalf("--include-self should admit it: %v", payload)
+	}
+}
+
+// The contract that one parser serves both commands: an await's `event` object
+// and a stream line for the same frame must be identical. Divergence here is
+// invisible in each command's own tests.
+func TestAwaitEventAndStreamLineAreTheSameRecord(t *testing.T) {
+	frames := []map[string]any{
+		mockslack.Hello(),
+		mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "one record", "1700000015.000100"),
+	}
+
+	f := watchCLIFixture(t, frames)
+	awaitOut, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--timeout", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	awaitEvent, _ := parseJSON(t, awaitOut)["event"].(map[string]any)
+
+	f2 := watchCLIFixture(t, frames)
+	streamOut, _, err := f2.run(t, "message", "stream", "--max-events", "1", "--duration", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamLine := parseNDJSON(t, streamOut)[0]
+
+	if !reflect.DeepEqual(awaitEvent, streamLine) {
+		t.Errorf("await and stream must emit the same record\n await:  %v\n stream: %v", awaitEvent, streamLine)
+	}
+}
+
+// "reaction" is one word to the caller but two kinds on the wire. A regression
+// that expanded it to adds-only would make a retraction invisible.
+func TestParseEventKindsExpandsAliases(t *testing.T) {
+	kinds, err := parseEventKinds([]string{"reaction", "message", "reaction"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[slack.EventKind]bool{
+		slack.EventReactionAdded:   true,
+		slack.EventReactionRemoved: true,
+		slack.EventMessage:         true,
+	}
+	if len(kinds) != len(want) {
+		t.Fatalf("kinds = %v; want %d distinct (duplicates collapsed)", kinds, len(want))
+	}
+	for _, kind := range kinds {
+		if !want[kind] {
+			t.Errorf("unexpected kind %q", kind)
+		}
+	}
+	if _, err := parseEventKinds([]string{"typing"}); err == nil {
+		t.Error("an unknown kind must be rejected, not silently ignored")
 	}
 }

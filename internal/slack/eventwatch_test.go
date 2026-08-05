@@ -100,20 +100,28 @@ func TestWatchBackfillsFromCursor(t *testing.T) {
 		mockslack.Message("1700000015.000100", mockslack.WSOtherUser, "missed while we were away"),
 	))
 
+	// The timeout is far longer than the work, so a run that fails to notice
+	// its cap was met in the backfill blocks for the whole of it. Timing is
+	// the property under test: asserting only stopped_by would still pass a
+	// build that returned the right answer minutes late.
+	const timeout = 3 * time.Second
+	started := time.Now()
 	got, result := collectWatch(t, c, WatchOptions{
 		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
 		BackfillChannel: mockslack.WSChannelID,
-		Duration:        30 * time.Second,
+		Duration:        timeout,
 		MaxEvents:       1,
 	})
+	elapsed := time.Since(started)
 	if len(got) != 1 {
 		t.Fatalf("want the backfilled message, got %+v", got)
 	}
-	// The answer was already in the backfill: the run must end there, not sit
-	// out the remaining timeout.
+	if elapsed > timeout/3 {
+		t.Errorf("took %s of a %s timeout; a satisfied backfill must return at once, not wait it out",
+			elapsed, timeout)
+	}
 	if result.StoppedBy != WatchStoppedMaxEvents {
-		t.Errorf("stopped_by = %q, want %q — a satisfied backfill must return at once",
-			result.StoppedBy, WatchStoppedMaxEvents)
+		t.Errorf("stopped_by = %q, want %q", result.StoppedBy, WatchStoppedMaxEvents)
 	}
 	if got[0].Content != "missed while we were away" {
 		t.Errorf("event = %+v; --since is exclusive, so the earlier message must not match", got[0])
@@ -340,5 +348,33 @@ func TestWatchTolerantOfAnUnreadableRepliesBackfill(t *testing.T) {
 	})
 	if len(got) != 1 || got[0].Content != "live answer" {
 		t.Fatalf("a failed thread read must not sink the await: %+v", got)
+	}
+}
+
+// Without --since a poll run has no cursor, and "everything in history" is the
+// wrong answer — the caller asked what happens next. The conversation's
+// current tip becomes the baseline, so only later messages are emitted.
+func TestWatchPollBaselineStartsAtTheConversationTip(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	// First read establishes the tip; later reads include a newer message.
+	server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "already there"),
+		)},
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "already there"),
+			mockslack.Message("1700000020.000200", mockslack.WSOtherUser, "arrived after we started"),
+		)},
+	)
+
+	got, _ := collectWatch(t, c, WatchOptions{
+		Filter:          EventFilter{Channels: []string{mockslack.WSChannelID}},
+		BackfillChannel: mockslack.WSChannelID,
+		Poll:            true,
+		PollEvery:       10 * time.Millisecond,
+		MaxEvents:       1,
+	})
+	if len(got) != 1 || got[0].Content != "arrived after we started" {
+		t.Fatalf("poll should start at the tip, not replay history: %+v", got)
 	}
 }
