@@ -123,7 +123,7 @@ func TestWatchBackfillsFromCursor(t *testing.T) {
 	if result.StoppedBy != WatchStoppedMaxEvents {
 		t.Errorf("stopped_by = %q, want %q", result.StoppedBy, WatchStoppedMaxEvents)
 	}
-	if got[0].Content != "missed while we were away" {
+	if got[0].Content() != "missed while we were away" {
 		t.Errorf("event = %+v; --since is exclusive, so the earlier message must not match", got[0])
 	}
 }
@@ -256,7 +256,7 @@ func TestWatchPollFallbackFindsNewMessages(t *testing.T) {
 		PollEvery: 10 * time.Millisecond,
 		MaxEvents: 1,
 	})
-	if len(got) != 1 || got[0].Content != "posted while polling" {
+	if len(got) != 1 || got[0].Content() != "posted while polling" {
 		t.Fatalf("poll fallback emitted %+v", got)
 	}
 }
@@ -321,7 +321,7 @@ func TestWatchBackfillReadsRepliesToTheAwaitedMessage(t *testing.T) {
 		},
 		MaxEvents: 1,
 	})
-	if len(got) != 1 || got[0].Content != "answered in the thread" {
+	if len(got) != 1 || got[0].Content() != "answered in the thread" {
 		t.Fatalf("backfill missed the in-thread answer: %+v", got)
 	}
 }
@@ -345,7 +345,7 @@ func TestWatchTolerantOfAnUnreadableRepliesBackfill(t *testing.T) {
 		},
 		MaxEvents: 1,
 	})
-	if len(got) != 1 || got[0].Content != "live answer" {
+	if len(got) != 1 || got[0].Content() != "live answer" {
 		t.Fatalf("a failed thread read must not sink the await: %+v", got)
 	}
 }
@@ -372,7 +372,7 @@ func TestWatchPollBaselineStartsAtTheConversationTip(t *testing.T) {
 		PollEvery: 10 * time.Millisecond,
 		MaxEvents: 1,
 	})
-	if len(got) != 1 || got[0].Content != "arrived after we started" {
+	if len(got) != 1 || got[0].Content() != "arrived after we started" {
 		t.Fatalf("poll should start at the tip, not replay history: %+v", got)
 	}
 }
@@ -484,7 +484,7 @@ func TestWatchPollBaselineOnAnEmptyConversation(t *testing.T) {
 		MaxEvents: 1,
 		Duration:  2 * time.Second,
 	})
-	if len(got) != 1 || got[0].Content != "the first message ever" {
+	if len(got) != 1 || got[0].Content() != "the first message ever" {
 		t.Fatalf("a poll on an empty conversation must still deliver: %+v", got)
 	}
 }
@@ -562,7 +562,7 @@ func TestWatchGapFillSeedsFromSince(t *testing.T) {
 		Filter:   EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
 		Duration: 600 * time.Millisecond,
 	})
-	if len(got) == 0 || got[0].Content != "arrived during the gap" {
+	if len(got) == 0 || got[0].Content() != "arrived during the gap" {
 		t.Fatalf("the gap-fill found nothing: %+v", got)
 	}
 	if result.Gaps != 0 {

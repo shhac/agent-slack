@@ -300,14 +300,16 @@ func (s *watchSession) readFrames(ctx context.Context, conn rtmConn) <-chan map[
 // consume drains frames until a bound trips (done=true) or the socket drops
 // (done=false, so the caller reconnects).
 func (s *watchSession) consume(ctx context.Context, frames <-chan map[string]any) (bool, error) {
-	idle := s.newIdleTimer()
-	defer idle.Stop()
+	idle, idleC := s.newIdleTimer()
+	if idle != nil {
+		defer idle.Stop()
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return true, nil
-		case <-idle.C:
+		case <-idleC:
 			s.stop(WatchStoppedIdle)
 			return true, nil
 		case frame, ok := <-frames:
@@ -340,23 +342,26 @@ func (s *watchSession) consume(ctx context.Context, frames <-chan map[string]any
 	}
 }
 
-func (s *watchSession) newIdleTimer() *time.Timer {
+// newIdleTimer returns the timer and the channel to select on. With no idle
+// timeout there is no timer and the channel is nil, which blocks forever in a
+// select — the intended semantics, stated directly instead of via a sentinel
+// duration that then has to be special-cased on every reset.
+func (s *watchSession) newIdleTimer() (*time.Timer, <-chan time.Time) {
 	if s.opts.IdleTimeout <= 0 {
-		return time.NewTimer(time.Duration(1<<62 - 1))
+		return nil, nil
 	}
-	return time.NewTimer(s.opts.IdleTimeout)
+	timer := time.NewTimer(s.opts.IdleTimeout)
+	return timer, timer.C
 }
 
+// resetIdle restarts the countdown. Since Go 1.23 timer channels are
+// unbuffered, so a stopped timer cannot deliver a stale value and Reset alone
+// is correct — no drain dance.
 func (s *watchSession) resetIdle(t *time.Timer) {
-	if s.opts.IdleTimeout <= 0 {
+	if t == nil {
 		return
 	}
-	if !t.Stop() {
-		select {
-		case <-t.C:
-		default:
-		}
-	}
+	t.Stop()
 	t.Reset(s.opts.IdleTimeout)
 }
 

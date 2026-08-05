@@ -247,3 +247,46 @@ func TestSortedTallyOrdersByCountThenName(t *testing.T) {
 		}
 	}
 }
+
+// Slack offers a second gateway for exactly this case. Returning on the first
+// dial failure turns one gateway's outage into a failed run.
+func TestConnectEventsFallsBackToTheSecondGateway(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}, KeepOpen: true})
+	server.HandleBody("client.getWebSocketURL", map[string]any{
+		"ok": true,
+		// Primary points at a host that refuses; the fallback is the live mock.
+		"primary_websocket_url":  "ws://127.0.0.1:1/websocket",
+		"fallback_websocket_url": mockslack.WebSocketURLFor(ts.URL),
+		"routing_context":        "T0FAKETEAM-1",
+	})
+	c := browserClientFor(ts.URL)
+
+	conn, socketURL, err := ConnectEvents(context.Background(), c)
+	if err != nil {
+		t.Fatalf("the fallback gateway should have been dialed: %v", err)
+	}
+	defer conn.Close()
+	if !strings.Contains(socketURL, ts.Listener.Addr().String()) {
+		t.Errorf("connected to %q, want the fallback host", socketURL)
+	}
+}
+
+// Both gateways down is a retryable failure, not a silent one.
+func TestConnectEventsReportsBothGatewaysDown(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	server.HandleBody("client.getWebSocketURL", map[string]any{
+		"ok":                     true,
+		"primary_websocket_url":  "ws://127.0.0.1:1/websocket",
+		"fallback_websocket_url": "ws://127.0.0.1:2/websocket",
+	})
+	c := browserClientFor(ts.URL)
+
+	if _, _, err := ConnectEvents(context.Background(), c); err == nil {
+		t.Fatal("want an error when no gateway answers")
+	}
+}

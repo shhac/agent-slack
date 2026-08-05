@@ -63,7 +63,7 @@ func TestClassifyBotMessageKeepsAppAuthor(t *testing.T) {
 	if !event.IsBot() || event.Author.UserID != "" {
 		t.Errorf("author = %+v, want a bot id and no user id", event.Author)
 	}
-	if event.AuthorID() == "" || event.Content != "deploy finished" {
+	if event.AuthorID() == "" || event.Content() != "deploy finished" {
 		t.Errorf("event = %+v", event)
 	}
 }
@@ -75,7 +75,7 @@ func TestClassifyEditCarriesBothBodies(t *testing.T) {
 	if !ok {
 		t.Fatal("message_changed should classify")
 	}
-	if event.Kind != EventMessageChanged || event.Content != "after" {
+	if event.Kind != EventMessageChanged || event.Content() != "after" {
 		t.Errorf("event = %+v", event)
 	}
 	if event.PreviousContent == "" {

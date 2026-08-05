@@ -25,20 +25,21 @@ type AwaitOptions struct {
 	OnReconnect func(attempt int)
 }
 
-// AwaitResult is the single JSON resource `message await` prints. Received is
-// false on a clean timeout, which is a successful outcome, not an error.
+// AwaitResult is what one await produced. Received is false on a clean
+// timeout, which is a successful outcome, not an error. Like Event this is the
+// engine's shape, not the wire's — the CLI projects it into awaitOutput.
 type AwaitResult struct {
-	Received bool   `json:"received"`
-	Cursor   string `json:"cursor,omitempty"`
-	WaitedMS int64  `json:"waited_ms"`
-	Event    *Event `json:"event,omitempty"`
+	Received bool
+	Cursor   string
+	WaitedMS int64
+	Event    *Event
 	// Skipped are in-scope events the filter excluded — a "no" the caller would
 	// otherwise read as silence.
-	Skipped []Event `json:"skipped,omitempty"`
+	Skipped []Event
 	// SkippedTruncated reports that more were excluded than could be listed.
 	// The cursor stops before them, so resuming re-offers them.
-	SkippedTruncated bool `json:"skipped_truncated,omitempty"`
-	Reconnects       int  `json:"reconnects,omitempty"`
+	SkippedTruncated bool
+	Reconnects       int
 }
 
 const defaultMaxSkipped = 20

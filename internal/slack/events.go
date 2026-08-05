@@ -3,9 +3,10 @@
 // client.getWebSocketURL returns the socket hosts and a routing context, and
 // the caller assembles the connect URL with the client's own query params.
 //
-// This is the read side of a future 'message await' / 'message stream'. Today
-// only CaptureEvents consumes it, so we can learn which frames a real session
-// actually delivers.
+// Two things read it: the delivery engine behind `message await` / `message
+// stream` (eventwatch.go), and the frame capture behind the hidden
+// `debug ws-capture`, which exists to learn what a real session sends when
+// Slack changes the wire.
 package slack
 
 import (
@@ -20,14 +21,13 @@ import (
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
-// EventSocket is the client.getWebSocketURL response. TTL is a week, so the
-// endpoint is worth caching rather than re-fetching per connect (unlike
-// rtm.connect, whose URL is single-use and short-lived).
+// EventSocket is the client.getWebSocketURL response.
 type EventSocket struct {
-	PrimaryURL     string `json:"primary_websocket_url"`
-	FallbackURL    string `json:"fallback_websocket_url,omitempty"`
-	RoutingContext string `json:"routing_context,omitempty"`
-	TTLSeconds     int    `json:"ttl_seconds,omitempty"`
+	PrimaryURL string
+	// FallbackURL is the secondary gateway Slack offers. Dialed when the
+	// primary refuses, so a single gateway's outage does not end a run.
+	FallbackURL    string
+	RoutingContext string
 }
 
 // eventSocketStartArgs are the connect-time behavior flags, passed as one
@@ -52,7 +52,6 @@ func FetchEventSocket(ctx context.Context, c *Client) (EventSocket, error) {
 		PrimaryURL:     getStr(resp, "primary_websocket_url"),
 		FallbackURL:    getStr(resp, "fallback_websocket_url"),
 		RoutingContext: getStr(resp, "routing_context"),
-		TTLSeconds:     int(getNum(resp, "ttl_seconds")),
 	}
 	if socket.PrimaryURL == "" {
 		return EventSocket{}, agenterrors.New("client.getWebSocketURL returned no socket URL", agenterrors.FixableByRetry)
@@ -95,16 +94,29 @@ func ConnectEvents(ctx context.Context, c *Client) (rtmConn, string, error) {
 		return nil, "", err
 	}
 	auth := c.currentAuth()
-	wsURL, err := eventSocketURL(socket, auth.XOXC)
-	if err != nil {
-		return nil, "", err
+	cookie := xoxdCookie(auth.XOXD)
+	hosts := []string{socket.PrimaryURL}
+	if socket.FallbackURL != "" && socket.FallbackURL != socket.PrimaryURL {
+		hosts = append(hosts, socket.FallbackURL)
 	}
-	conn, err := c.dialRTM(ctx, wsURL, xoxdCookie(auth.XOXD))
-	if err != nil {
-		return nil, "", agenterrors.Wrap(err, agenterrors.FixableByRetry).
-			WithHint("could not open the event WebSocket — retry")
+
+	var lastErr error
+	for _, host := range hosts {
+		wsURL, err := eventSocketURL(EventSocket{PrimaryURL: host, RoutingContext: socket.RoutingContext}, auth.XOXC)
+		if err != nil {
+			return nil, "", err
+		}
+		conn, dialErr := c.dialRTM(ctx, wsURL, cookie)
+		if dialErr == nil {
+			return conn, redactSecrets(wsURL), nil
+		}
+		// Slack hands us a second gateway precisely for this; not trying it
+		// turns one gateway's outage into a failed run.
+		lastErr = dialErr
+		c.debugf("event socket dial failed, trying the next gateway: %v", dialErr)
 	}
-	return conn, redactSecrets(wsURL), nil
+	return nil, "", agenterrors.Wrap(lastErr, agenterrors.FixableByRetry).
+		WithHint("could not open the event WebSocket on either gateway — retry")
 }
 
 // CaptureOptions bounds one capture run. A zero Duration and MaxFrames means
