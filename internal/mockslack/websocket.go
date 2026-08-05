@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -77,6 +78,25 @@ type WSConnection struct {
 	Sent   []map[string]any
 }
 
+// wsWriter serializes writes to one socket. The script pushes frames on its own
+// schedule while the drainer answers pings, and a websocket connection permits
+// only one concurrent writer — without this the fixture races under -race and
+// can corrupt frames under load.
+type wsWriter struct {
+	mu   sync.Mutex
+	conn *websocket.Conn
+}
+
+func (w *wsWriter) write(ctx context.Context, frame map[string]any) error {
+	data, err := json.Marshal(frame)
+	if err != nil {
+		return err
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.conn.Write(ctx, websocket.MessageText, data)
+}
+
 // WSConnections returns the recorded socket connections in order.
 func (s *Server) WSConnections() []WSConnection {
 	s.mu.Lock()
@@ -102,9 +122,10 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = conn.CloseNow() }()
 
 	ctx := r.Context()
+	writer := &wsWriter{conn: conn}
 	// Client writes are drained concurrently: the script pushes on its own
 	// schedule, and a client that pings mid-script must still be answered.
-	go s.drainWebSocket(ctx, conn, record)
+	go s.drainWebSocket(ctx, conn, writer, record)
 
 	for _, frame := range script.Frames {
 		if script.Interval > 0 {
@@ -114,7 +135,7 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 			case <-time.After(script.Interval):
 			}
 		}
-		if err := writeFrame(ctx, conn, frame); err != nil {
+		if err := writer.write(ctx, frame); err != nil {
 			return
 		}
 	}
@@ -128,7 +149,7 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 
 // drainWebSocket records what the client sends and answers pings, so a capture
 // that keeps the socket alive behaves the way it would against real Slack.
-func (s *Server) drainWebSocket(ctx context.Context, conn *websocket.Conn, record *WSConnection) {
+func (s *Server) drainWebSocket(ctx context.Context, conn *websocket.Conn, writer *wsWriter, record *WSConnection) {
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
@@ -143,17 +164,9 @@ func (s *Server) drainWebSocket(ctx context.Context, conn *websocket.Conn, recor
 		s.mu.Unlock()
 
 		if msg["type"] == "ping" {
-			if err := writeFrame(ctx, conn, Pong(msg["id"])); err != nil {
+			if err := writer.write(ctx, Pong(msg["id"])); err != nil {
 				return
 			}
 		}
 	}
-}
-
-func writeFrame(ctx context.Context, conn *websocket.Conn, frame map[string]any) error {
-	data, err := json.Marshal(frame)
-	if err != nil {
-		return err
-	}
-	return conn.Write(ctx, websocket.MessageText, data)
 }

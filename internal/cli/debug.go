@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
-	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
@@ -68,7 +67,10 @@ sensitive and never commit it.`,
 				return err
 			}
 
-			writer := output.NewNDJSONWriter(globals.stdout)
+			writer, err := streamNDJSON(globals, "debug ws-capture")
+			if err != nil {
+				return err
+			}
 			emit := func(frame slack.CaptureFrame) error {
 				if quiet {
 					return nil

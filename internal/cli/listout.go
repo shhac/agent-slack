@@ -7,6 +7,7 @@ import (
 
 	libcli "github.com/shhac/lib-agent-cli/cli"
 
+	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/slack"
 )
@@ -130,4 +131,21 @@ func listMeta(nextCursor string, extra map[string]any) map[string]any {
 		return nil
 	}
 	return meta
+}
+
+// streamNDJSON is the writer for commands that emit events as they arrive.
+// They cannot buffer into printList, so they bypass it — but a bypass that
+// ignores --format silently hands back NDJSON to a caller who asked for JSON.
+// Refuse instead: an unsupported format is the caller's to fix.
+func streamNDJSON(globals *GlobalFlags, command string) (*output.NDJSONWriter, error) {
+	format, err := output.ResolveFormat(globals.Format, output.FormatNDJSON)
+	if err != nil {
+		return nil, err
+	}
+	if format != output.FormatNDJSON {
+		return nil, agenterrors.Newf(agenterrors.FixableByAgent,
+			"%s emits events as they arrive, so --format %s is not available", command, format).
+			WithHint("drop --format to read NDJSON, one event per line")
+	}
+	return output.NewNDJSONWriter(globals.stdout), nil
 }

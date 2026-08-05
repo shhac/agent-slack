@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
-	"github.com/shhac/agent-slack/internal/output"
 	"github.com/shhac/agent-slack/internal/render"
 	"github.com/shhac/agent-slack/internal/slack"
 )
@@ -404,7 +403,10 @@ polling every conversation in a workspace is not viable.`,
 				return err
 			}
 
-			writer := output.NewNDJSONWriter(globals.stdout)
+			writer, err := streamNDJSON(globals, "message stream")
+			if err != nil {
+				return err
+			}
 			result, err := slack.Watch(ctx, cc.Client, slack.WatchOptions{
 				Filter:      filter,
 				Duration:    duration,

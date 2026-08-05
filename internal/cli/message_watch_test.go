@@ -409,3 +409,22 @@ func TestMessageAwaitFromAcceptsBotID(t *testing.T) {
 		t.Fatalf("a bot id should pass through and match its app's post: %v", payload)
 	}
 }
+
+// Streaming commands cannot buffer into a JSON document. Handing back NDJSON
+// to a caller who asked for JSON is worse than refusing: they parse the first
+// line as the whole result.
+func TestMessageStreamRejectsNonNDJSONFormat(t *testing.T) {
+	f := watchCLIFixture(t, mockslack.DefaultEventScript())
+
+	_, stderr, err := f.run(t, "message", "stream", "--format", "json", "--duration", "200ms")
+	if err == nil {
+		t.Fatal("--format json must be refused, not silently ignored")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" {
+		t.Errorf("fixable_by = %v", payload["fixable_by"])
+	}
+	if msg, _ := payload["error"].(string); !strings.Contains(msg, "--format") {
+		t.Errorf("error should name the flag: %v", payload["error"])
+	}
+}
