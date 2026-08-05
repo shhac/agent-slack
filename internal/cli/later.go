@@ -85,7 +85,7 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringVar(&state, "state", "in_progress", "Filter: in_progress|archived|completed|all")
 	_ = cmd.RegisterFlagCompletionFunc("state", fixedCompletions("in_progress", "archived", "completed", "all"))
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max items")
-	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", 4000, "Max content chars per item (-1 = unlimited)")
+	registerMaxBodyChars(cmd, &maxBodyChars, 4000, "item")
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only counts per state, no content")
 	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
 	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")

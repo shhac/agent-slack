@@ -87,6 +87,10 @@ polling every conversation in a workspace is not viable.`,
 	parent.AddCommand(cmd)
 }
 
+// resolveStreamChannels maps every --channel value to a conversation id
+// through the shared target kernel, so a permalink, #name, id, or @handle all
+// mean here what they mean everywhere else. One client serves them all: a
+// stream watches a single workspace.
 func resolveStreamChannels(ctx context.Context, cc *clientContext, inputs []string) ([]string, error) {
 	ids := make([]string, 0, len(inputs))
 	for _, input := range inputs {
@@ -94,19 +98,7 @@ func resolveStreamChannels(ctx context.Context, cc *clientContext, inputs []stri
 		if err != nil {
 			return nil, err
 		}
-		if target.Kind == render.TargetUser {
-			userID, err := slack.ResolveUserID(ctx, cc.Client, target.UserID)
-			if err != nil {
-				return nil, err
-			}
-			channelID, err := slack.OpenDMChannel(ctx, cc.Client, userID)
-			if err != nil {
-				return nil, err
-			}
-			ids = append(ids, channelID)
-			continue
-		}
-		channelID, err := slack.ResolveChannelID(ctx, cc.Client, target.Channel)
+		channelID, err := channelIDForTarget(ctx, cc, target)
 		if err != nil {
 			return nil, err
 		}

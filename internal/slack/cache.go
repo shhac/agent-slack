@@ -369,6 +369,14 @@ func IdentityCacheKey(teamID, userID string) string {
 	return filepath.Join(team, user)
 }
 
+// IdentityCacheParts is the inverse of IdentityCacheKey. Callers that need the
+// authenticated user's id read it from here rather than re-deriving the key's
+// format, which is this file's to own.
+func IdentityCacheParts(key string) (teamID, userID string) {
+	team, user, _ := strings.Cut(key, string(filepath.Separator))
+	return team, user
+}
+
 // sanitizeKeySegment keeps a single path segment safe: it strips directory
 // separators and the "."/".." traversal forms, so an id can only ever name a
 // child directory of the cache root. Shares replaceUnsafePathChars with the

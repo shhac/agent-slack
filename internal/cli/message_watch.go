@@ -44,7 +44,7 @@ func (w *watchFlags) bind(cmd *cobra.Command, defaultEvents string) {
 	cmd.Flags().BoolVar(&w.excludeBots, "exclude-bots", false, "Ignore messages posted by apps")
 	cmd.Flags().BoolVar(&w.includeThreadReplies, "include-thread-replies", false,
 		"For a channel target, also match replies inside existing threads")
-	cmd.Flags().IntVar(&w.maxBodyChars, "max-body-chars", render.DefaultMaxBodyChars, "Max content chars per message (-1 = unlimited)")
+	registerMaxBodyChars(cmd, &w.maxBodyChars, render.DefaultMaxBodyChars, "message")
 	cmd.Flags().BoolVar(&w.slackMarkdown, "slack-markdown", false, "Render bodies as Slack mrkdwn instead of standard Markdown")
 	// cached by default: a live stream must not spend an API call per event to
 	// expand mentions, so misses stay bare unless the caller opts into fetching.
@@ -147,10 +147,9 @@ func resolveAuthorIDs(ctx context.Context, cc *clientContext, values []string) (
 }
 
 // selfUserID is the authenticated user, so their own messages don't satisfy an
-// await. The cache key carries it as "<team>/<user>"; an unresolved identity
-// just means the exclusion is inert.
+// await. An unresolved identity just means the exclusion is inert.
 func selfUserID(cc *clientContext) string {
-	_, userID, _ := strings.Cut(cc.CacheKey, "/")
+	_, userID := slack.IdentityCacheParts(cc.CacheKey)
 	return userID
 }
 

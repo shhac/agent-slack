@@ -43,7 +43,7 @@ func registerUnreads(parent *cobra.Command, globals *GlobalFlags) {
 	registerResolveFlag(cmd, &tflags.resolve, resolveAuto)
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only unread counts, no message content")
 	cmd.Flags().IntVar(&maxMessages, "max-messages", 10, "Max unread messages per channel")
-	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", 4000, "Max content chars per message (-1 = unlimited)")
+	registerMaxBodyChars(cmd, &maxBodyChars, 4000, "message")
 	cmd.Flags().BoolVar(&includeSystem, "include-system", false, "Include system messages (joins, topic changes, …)")
 	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
 	parent.AddCommand(cmd)

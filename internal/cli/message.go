@@ -46,7 +46,7 @@ type readFlags struct {
 func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
 	cmd.Flags().StringVar(&f.ts, "ts", "", "Message ts (required when the target is a channel name/ID)")
 	cmd.Flags().StringVar(&f.threadTS, "thread-ts", "", "Thread root ts hint")
-	cmd.Flags().IntVar(&f.maxBodyChars, "max-body-chars", defaultMaxBody, "Max content chars per message (-1 = unlimited)")
+	registerMaxBodyChars(cmd, &f.maxBodyChars, defaultMaxBody, "message")
 	cmd.Flags().BoolVar(&f.includeReactions, "include-reactions", false, "Include reactions and reacting users")
 	registerResolveFlag(cmd, &f.resolve, resolveAuto)
 	cmd.Flags().BoolVar(&f.slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
@@ -101,6 +101,13 @@ func warnTruncatedURL(globals *GlobalFlags, ref *render.MessageRef) {
 	}
 }
 
+// registerMaxBodyChars adds the shared body-truncation flag. Four commands
+// offer it with the same meaning and differing defaults; registering it once
+// keeps the help text from drifting between them.
+func registerMaxBodyChars(cmd *cobra.Command, target *int, def int, noun string) {
+	cmd.Flags().IntVar(target, "max-body-chars", def, "Max content chars per "+noun+" (-1 = unlimited)")
+}
+
 // resolveTargetClient maps a parsed CLI <target> to a connected client and a
 // channel ID — the kernel every target-taking command shares. Permalinks pin
 // their workspace (overriding --workspace); channels resolve names to IDs.
@@ -120,12 +127,7 @@ func resolveTargetClient(ctx context.Context, globals *GlobalFlags, target rende
 		if err != nil {
 			return nil, "", err
 		}
-		// target.UserID may be a U… id or an "@handle"; resolve either to an id.
-		userID, err := slack.ResolveUserID(ctx, cc.Client, target.UserID)
-		if err != nil {
-			return nil, "", err
-		}
-		channelID, err := slack.OpenDMChannel(ctx, cc.Client, userID)
+		channelID, err := channelIDForTarget(ctx, cc, target)
 		return cc, channelID, err
 	default:
 		// A channel URL pins its workspace like a permalink; bare names/IDs
@@ -134,8 +136,28 @@ func resolveTargetClient(ctx context.Context, globals *GlobalFlags, target rende
 		if err != nil {
 			return nil, "", err
 		}
-		channelID, err := slack.ResolveChannelID(ctx, cc.Client, target.Channel)
+		channelID, err := channelIDForTarget(ctx, cc, target)
 		return cc, channelID, err
+	}
+}
+
+// channelIDForTarget resolves a parsed target to a conversation id against an
+// already-chosen client. It is the half of resolveTargetClient that commands
+// with several targets and one workspace need — reimplementing it is how
+// `--channel <permalink>` came to resolve a URL as a channel name.
+func channelIDForTarget(ctx context.Context, cc *clientContext, target render.Target) (string, error) {
+	switch target.Kind {
+	case render.TargetURL:
+		return target.Ref.ChannelID, nil
+	case render.TargetUser:
+		// target.UserID may be a U… id or an "@handle"; resolve either to an id.
+		userID, err := slack.ResolveUserID(ctx, cc.Client, target.UserID)
+		if err != nil {
+			return "", err
+		}
+		return slack.OpenDMChannel(ctx, cc.Client, userID)
+	default:
+		return slack.ResolveChannelID(ctx, cc.Client, target.Channel)
 	}
 }
 

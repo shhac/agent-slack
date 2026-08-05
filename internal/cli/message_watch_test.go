@@ -466,3 +466,28 @@ func TestStreamLineCarriesEveryCompactMessageField(t *testing.T) {
 		t.Error("forwarded_threads specifically — the field the hand-built map lost")
 	}
 }
+
+// --channel takes the same target vocabulary as every other command. Before it
+// went through the shared kernel, a permalink fell into the default branch and
+// was resolved as if it were a channel *name* — an API call that could only fail.
+func TestStreamChannelsResolveAPermalinkWithoutALookup(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	cc := &clientContext{Client: nil, WorkspaceURL: "https://acme.slack.com"}
+	_ = f
+
+	target, err := render.ParseTarget("https://acme.slack.com/archives/C0FAKECHAN/p1700000010000100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Kind != render.TargetURL {
+		t.Fatalf("target kind = %v, want a permalink", target.Kind)
+	}
+	// A nil client is deliberate: resolving a permalink must not call the API.
+	got, err := channelIDForTarget(t.Context(), cc, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "C0FAKECHAN" {
+		t.Errorf("channel = %q, want the permalink's conversation", got)
+	}
+}
