@@ -36,6 +36,12 @@ type WSScript struct {
 	// KeepOpen holds the connection after the script is exhausted, answering
 	// pings, instead of closing. Manual captures want this; tests do not.
 	KeepOpen bool
+	// HangUpAfterScript makes the first N connections close once their script
+	// is exhausted, and every later one honour KeepOpen. It models a socket
+	// that drops a bounded number of times — a reconnect test that instead
+	// lets the fake hang up forever spins as fast as the retry loop allows,
+	// which makes anything it asserts about gaps or attempts a race.
+	HangUpAfterScript int
 }
 
 // EnableWebSocket installs a script on WebSocketPath. Without it the path 404s
@@ -113,7 +119,9 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	script := *s.wsScript
 	s.wsConns = append(s.wsConns, &WSConnection{Query: r.URL.RawQuery, Cookie: r.Header.Get("Cookie")})
 	record := s.wsConns[len(s.wsConns)-1]
+	connectionCount := len(s.wsConns)
 	s.mu.Unlock()
+	keepOpen := script.KeepOpen || (script.HangUpAfterScript > 0 && connectionCount > script.HangUpAfterScript)
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
@@ -140,7 +148,7 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if !script.KeepOpen {
+	if !keepOpen {
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 		return
 	}

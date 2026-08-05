@@ -273,19 +273,26 @@ func TestWatchReconnectsWithoutDuplicatingEvents(t *testing.T) {
 	server := mockslack.New()
 	ts := httptest.NewServer(server)
 	defer ts.Close()
-	// KeepOpen false: the server hangs up once the script is exhausted, which
-	// is exactly what a dropped connection looks like to the engine.
-	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{
-		mockslack.Hello(),
-		mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "only once", "1700000015.000100"),
-	}})
+	// The first socket hangs up once its script is exhausted — exactly what a
+	// dropped connection looks like to the engine — and the replacement stays
+	// up, so the run reconnects exactly once.
+	server.EnableWebSocket(mockslack.WSScript{
+		Frames: []map[string]any{
+			mockslack.Hello(),
+			mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "only once", "1700000015.000100"),
+		},
+		HangUpAfterScript: 1,
+	})
 	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
 	server.HandleBody("conversations.history", mockslack.History())
 	c := browserClientFor(ts.URL)
 
 	var reconnects int
 	got, result := collectWatch(t, c, WatchOptions{
-		Filter:          EventFilter{Channels: []string{mockslack.WSChannelID}},
+		// A --since floor makes the gap-fill deterministic: without one, a drop
+		// that lands before any event is examined has nothing to re-read from
+		// and correctly records a gap, which would make this test race.
+		Filter:          EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
 		BackfillChannel: mockslack.WSChannelID,
 		Duration:        400 * time.Millisecond,
 		OnReconnect:     func(int) { reconnects++ },
@@ -293,8 +300,8 @@ func TestWatchReconnectsWithoutDuplicatingEvents(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("emitted %d events across reconnects, want 1: %+v", len(got), got)
 	}
-	if reconnects == 0 || result.Reconnects == 0 {
-		t.Fatal("a dropped socket should have been re-established")
+	if reconnects != 1 || result.Reconnects != 1 {
+		t.Fatalf("reconnects = %d (callback %d), want exactly 1", result.Reconnects, reconnects)
 	}
 	// Gap-fill re-reads the conversation we know about, so no hole is recorded.
 	if result.Gaps != 0 {

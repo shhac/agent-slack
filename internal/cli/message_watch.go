@@ -31,6 +31,7 @@ type watchFlags struct {
 	includeThreadReplies bool
 	maxBodyChars         int
 	resolve              string
+	slackMarkdown        bool
 }
 
 func (w *watchFlags) bind(cmd *cobra.Command, defaultEvents string) {
@@ -44,6 +45,7 @@ func (w *watchFlags) bind(cmd *cobra.Command, defaultEvents string) {
 	cmd.Flags().BoolVar(&w.includeThreadReplies, "include-thread-replies", false,
 		"For a channel target, also match replies inside existing threads")
 	cmd.Flags().IntVar(&w.maxBodyChars, "max-body-chars", render.DefaultMaxBodyChars, "Max content chars per message (-1 = unlimited)")
+	cmd.Flags().BoolVar(&w.slackMarkdown, "slack-markdown", false, "Render bodies as Slack mrkdwn instead of standard Markdown")
 	// cached by default: a live stream must not spend an API call per event to
 	// expand mentions, so misses stay bare unless the caller opts into fetching.
 	registerResolveFlag(cmd, &w.resolve, resolveCached)
@@ -155,10 +157,11 @@ func selfUserID(cc *clientContext) string {
 // eventRenderer projects events for output, carrying the settings both
 // commands share so call sites stay short.
 type eventRenderer struct {
-	globals      *GlobalFlags
-	cc           *clientContext
-	mode         resolveMode
-	maxBodyChars int
+	globals       *GlobalFlags
+	cc            *clientContext
+	mode          resolveMode
+	maxBodyChars  int
+	slackMarkdown bool
 }
 
 func newEventRenderer(globals *GlobalFlags, cc *clientContext, flags *watchFlags) (*eventRenderer, error) {
@@ -166,65 +169,75 @@ func newEventRenderer(globals *GlobalFlags, cc *clientContext, flags *watchFlags
 	if err != nil {
 		return nil, err
 	}
-	return &eventRenderer{globals: globals, cc: cc, mode: mode, maxBodyChars: flags.maxBodyChars}, nil
+	return &eventRenderer{globals: globals, cc: cc, mode: mode, maxBodyChars: flags.maxBodyChars, slackMarkdown: flags.slackMarkdown}, nil
 }
 
 // render projects one event and folds in any referenced-entity maps, so every
 // emitted line is self-contained — a stream consumer cannot go back for
 // context it did not receive.
-func (r *eventRenderer) render(ctx context.Context, event slack.Event) map[string]any {
-	out := projectEvent(event, r.maxBodyChars, false)
+func (r *eventRenderer) render(ctx context.Context, event slack.Event) compactEvent {
+	out := projectEvent(event, r.maxBodyChars, r.slackMarkdown)
 	if event.Message == nil {
 		return out
 	}
-	for key, value := range resolveReferencesIn(ctx, r.cc, r.globals, r.mode, true, []render.MessageSummary{*event.Message}) {
-		out[key] = value
-	}
+	refs := resolveReferencesIn(ctx, r.cc, r.globals, r.mode, true, []render.MessageSummary{*event.Message})
+	out.ReferencedUsers, _ = refs["referenced_users"].(map[string]any)
+	out.ReferencedChannels, _ = refs["referenced_channels"].(map[string]any)
+	out.ReferencedUsergroups, _ = refs["referenced_usergroups"].(map[string]any)
 	return out
 }
 
-// projectEvent renders one event for output: message bodies go through the
+// compactEvent is what await and stream emit. It embeds render.CompactMessage
+// so a stream line carries exactly the fields a `message list` line does —
+// hand-copying those keys is how forwarded_threads silently went missing — and
+// adds the event discriminator plus the fields only an event has.
+type compactEvent struct {
+	Kind string `json:"event"`
+	render.CompactMessage
+	// EventTS is when the event happened, present only when that differs from
+	// the ts it points at (a reaction's target, an edit's original).
+	EventTS         string `json:"event_ts,omitempty"`
+	Reaction        string `json:"reaction,omitempty"`
+	PreviousContent string `json:"previous_content,omitempty"`
+	// The referenced-entity maps read commands attach, so every streamed line
+	// is self-contained: a consumer cannot go back for context it did not get.
+	ReferencedUsers      map[string]any `json:"referenced_users,omitempty"`
+	ReferencedChannels   map[string]any `json:"referenced_channels,omitempty"`
+	ReferencedUsergroups map[string]any `json:"referenced_usergroups,omitempty"`
+}
+
+// projectEvent renders one event for output. Message bodies go through the
 // same compact projection the read commands use, so a stream line and a
-// `message list` line describe a message identically.
-func projectEvent(event slack.Event, maxBodyChars int, slackMarkdown bool) map[string]any {
-	out := map[string]any{"event": string(event.Kind), "channel_id": event.ChannelID, "ts": event.TS}
-	if event.ThreadTS != "" {
-		out["thread_ts"] = event.ThreadTS
+// `message list` line describe a message identically — enforced by the embed
+// rather than promised in a comment.
+func projectEvent(event slack.Event, maxBodyChars int, slackMarkdown bool) compactEvent {
+	out := compactEvent{
+		Kind:            string(event.Kind),
+		EventTS:         event.EventTS,
+		Reaction:        event.Reaction,
+		PreviousContent: event.PreviousContent,
 	}
-	if event.EventTS != "" && event.EventTS != event.TS {
-		out["event_ts"] = event.EventTS
-	}
-	if event.Author != nil {
-		out["author"] = event.Author
-	}
-	if event.Reaction != "" {
-		out["reaction"] = event.Reaction
+	if out.EventTS == event.TS {
+		out.EventTS = ""
 	}
 	if event.Message == nil {
-		addNonEmpty(out, "content", event.Content)
-		addNonEmpty(out, "previous_content", event.PreviousContent)
+		// Reactions and deletes have no message body of their own.
+		out.CompactMessage = render.CompactMessage{
+			ChannelID: event.ChannelID,
+			TS:        event.TS,
+			ThreadTS:  event.ThreadTS,
+			Author:    event.Author,
+			Content:   event.Content,
+		}
 		return out
 	}
-	compact := render.ToCompactMessage(*event.Message, render.CompactOptions{
+	out.CompactMessage = render.ToCompactMessage(*event.Message, render.CompactOptions{
 		MaxBodyChars:     maxBodyChars,
 		IncludeReactions: true,
 		SlackMarkdown:    slackMarkdown,
 	})
-	addNonEmpty(out, "content", compact.Content)
-	addNonEmpty(out, "previous_content", event.PreviousContent)
-	if len(compact.Files) > 0 {
-		out["files"] = compact.Files
-	}
-	if len(compact.Reactions) > 0 {
-		out["reactions"] = compact.Reactions
-	}
+	out.CompactMessage.ChannelID = event.ChannelID
 	return out
-}
-
-func addNonEmpty(target map[string]any, key, value string) {
-	if value != "" {
-		target[key] = value
-	}
 }
 
 // watchAuthMode decides socket vs poll. The socket is a client API, so a
@@ -335,28 +348,34 @@ mistaken for silence.`,
 	parent.AddCommand(cmd)
 }
 
-// awaitPayload shapes the single JSON resource. The event is the same record a
-// stream line carries, so one parser serves both commands.
-func awaitPayload(ctx context.Context, renderer *eventRenderer, result slack.AwaitResult) map[string]any {
-	payload := map[string]any{
-		"received":  result.Received,
-		"waited_ms": result.WaitedMS,
-	}
-	if result.Cursor != "" {
-		payload["cursor"] = result.Cursor
+// awaitOutput is the single JSON resource `message await` prints. Event is the
+// same record a stream line carries, so one parser serves both commands.
+type awaitOutput struct {
+	Received bool          `json:"received"`
+	Cursor   string        `json:"cursor,omitempty"`
+	WaitedMS int64         `json:"waited_ms"`
+	Event    *compactEvent `json:"event,omitempty"`
+	// Skipped are in-scope events the filters excluded — the "no" that would
+	// otherwise read as silence.
+	Skipped          []compactEvent `json:"skipped,omitempty"`
+	SkippedTruncated bool           `json:"skipped_truncated,omitempty"`
+	Reconnects       int            `json:"reconnects,omitempty"`
+}
+
+func awaitPayload(ctx context.Context, renderer *eventRenderer, result slack.AwaitResult) awaitOutput {
+	payload := awaitOutput{
+		Received:         result.Received,
+		Cursor:           result.Cursor,
+		WaitedMS:         result.WaitedMS,
+		SkippedTruncated: result.SkippedTruncated,
+		Reconnects:       result.Reconnects,
 	}
 	if result.Event != nil {
-		payload["event"] = renderer.render(ctx, *result.Event)
+		event := renderer.render(ctx, *result.Event)
+		payload.Event = &event
 	}
-	if len(result.Skipped) > 0 {
-		skipped := make([]any, 0, len(result.Skipped))
-		for _, event := range result.Skipped {
-			skipped = append(skipped, renderer.render(ctx, event))
-		}
-		payload["skipped"] = skipped
-	}
-	if result.Reconnects > 0 {
-		payload["reconnects"] = result.Reconnects
+	for _, event := range result.Skipped {
+		payload.Skipped = append(payload.Skipped, renderer.render(ctx, event))
 	}
 	return payload
 }

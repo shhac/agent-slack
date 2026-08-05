@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/shhac/agent-slack/internal/mockslack"
+	"github.com/shhac/agent-slack/internal/render"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
@@ -426,5 +427,42 @@ func TestMessageStreamRejectsNonNDJSONFormat(t *testing.T) {
 	}
 	if msg, _ := payload["error"].(string); !strings.Contains(msg, "--format") {
 		t.Errorf("error should name the flag: %v", payload["error"])
+	}
+}
+
+// The typed projection embeds render.CompactMessage, so a stream line carries
+// every field a `message list` line does. Hand-copying those keys is how
+// forwarded_threads silently went missing from the output.
+func TestStreamLineCarriesEveryCompactMessageField(t *testing.T) {
+	compactFields := map[string]bool{}
+	compactType := reflect.TypeOf(render.CompactMessage{})
+	for i := range compactType.NumField() {
+		tag, _, _ := strings.Cut(compactType.Field(i).Tag.Get("json"), ",")
+		if tag != "" && tag != "-" {
+			compactFields[tag] = true
+		}
+	}
+
+	eventFields := map[string]bool{}
+	eventType := reflect.TypeOf(compactEvent{})
+	for i := range eventType.NumField() {
+		field := eventType.Field(i)
+		if field.Anonymous {
+			for name := range compactFields {
+				eventFields[name] = true
+			}
+			continue
+		}
+		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		eventFields[tag] = true
+	}
+
+	for name := range compactFields {
+		if !eventFields[name] {
+			t.Errorf("a stream line drops %q, which `message list` emits", name)
+		}
+	}
+	if !eventFields["forwarded_threads"] {
+		t.Error("forwarded_threads specifically — the field the hand-built map lost")
 	}
 }
