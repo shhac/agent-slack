@@ -32,6 +32,8 @@ type watchFlags struct {
 	maxBodyChars         int
 	resolve              string
 	slackMarkdown        bool
+	poll                 bool
+	pollInterval         time.Duration
 }
 
 func (w *watchFlags) bind(cmd *cobra.Command, defaultEvents string) {
@@ -45,6 +47,9 @@ func (w *watchFlags) bind(cmd *cobra.Command, defaultEvents string) {
 	cmd.Flags().BoolVar(&w.includeThreadReplies, "include-thread-replies", false,
 		"For a channel target, also match replies inside existing threads")
 	registerMaxBodyChars(cmd, &w.maxBodyChars, render.DefaultMaxBodyChars, "message")
+	cmd.Flags().BoolVar(&w.poll, "poll", false,
+		"Read history on an interval instead of the event socket — needed for your own DM, which publishes no socket events")
+	cmd.Flags().DurationVar(&w.pollInterval, "poll-interval", 0, "How often --poll re-reads history (default 15s)")
 	registerSlackMarkdown(cmd, &w.slackMarkdown, true)
 	// cached by default: a live stream must not spend an API call per event to
 	// expand mentions, so misses stay bare unless the caller opts into fetching.
@@ -238,10 +243,14 @@ func projectEvent(event slack.Event, maxBodyChars int, slackMarkdown bool) compa
 	return out
 }
 
-// watchAuthMode decides socket vs poll. The socket is a client API, so a
-// standard token has to fall back to history reads — honest but slower, and
-// the caller is told.
-func watchAuthMode(globals *GlobalFlags, cc *clientContext, command string) bool {
+// pollMode decides socket vs history polling. --poll is an explicit request
+// (the only way to watch a conversation the socket stays silent on, such as
+// your own DM), and a standard token has no socket to use at all — honest but
+// slower, and the caller is told which of the two applies.
+func pollMode(globals *GlobalFlags, cc *clientContext, flags *watchFlags, command string) bool {
+	if flags.poll {
+		return true
+	}
 	if cc.AuthType == slack.AuthBrowser {
 		return false
 	}

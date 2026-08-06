@@ -60,7 +60,8 @@ mistaken for silence.`,
 			result, err := slack.Await(ctx, cc.Client, slack.AwaitOptions{
 				Filter:      filter,
 				Timeout:     timeout,
-				Poll:        watchAuthMode(globals, cc, "message await"),
+				Poll:        pollMode(globals, cc, flags, "message await"),
+				PollEvery:   flags.pollInterval,
 				PingEvery:   watchPingInterval,
 				OnReconnect: reconnectNotice(globals),
 			})

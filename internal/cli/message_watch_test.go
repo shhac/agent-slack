@@ -512,3 +512,46 @@ func TestMessageStreamRequiresABound(t *testing.T) {
 		t.Errorf("fixable_by = %v", payload["fixable_by"])
 	}
 }
+
+// --poll is the only way to watch a conversation the socket stays silent on —
+// your own DM publishes no socket events at all, for anyone, by any send path.
+func TestMessageAwaitPollForcesHistoryOnBrowserAuth(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+	// The socket delivers nothing, so only repeated history reads can find
+	// this. The fixture's first (empty) response is the tip read; the message
+	// appears two polls later, which also proves the loop keeps going.
+	f.server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History()},
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000020.000200", mockslack.WSOtherUser, "found by polling"),
+		)},
+	)
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
+		"--poll", "--poll-interval", "10ms", "--timeout", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, stdout)
+	if payload["received"] != true {
+		t.Fatalf("--poll should have found the message over history: %v", payload)
+	}
+	event, _ := payload["event"].(map[string]any)
+	if event["content"] != "found by polling" {
+		t.Errorf("event = %v", event)
+	}
+}
+
+// Polling reads one conversation per interval; a workspace-wide poll would be
+// a request storm.
+func TestMessageStreamPollNeedsExactlyOneChannel(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+
+	_, stderr, err := f.run(t, "message", "stream", "--poll", "--duration", "300ms")
+	if err == nil {
+		t.Fatal("a workspace-wide poll must be refused")
+	}
+	if payload := errPayload(t, stderr); payload["fixable_by"] != "agent" {
+		t.Errorf("fixable_by = %v", payload["fixable_by"])
+	}
+}

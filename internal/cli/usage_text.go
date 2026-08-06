@@ -238,6 +238,10 @@ AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
        Reactions match ANY name by default (approval is ✅ ✔️ ☑️ 👍 …, so
        judging intent is the caller's job); --reaction narrows, ignoring skin
        tones. --from <@handle|U…|B…>, --include-self, --exclude-bots.
+       --poll reads history on an interval instead of the socket. Needed for
+       YOUR OWN DM, which publishes no socket events at all (verified: neither
+       client nor API sends produce a frame there), and useful for debugging.
+       --poll-interval tunes the cadence (default 15s).
        Browser auth streams live; a bot/user token falls back to polling
        conversations.history (slower, rate-limited) with a stderr notice —
        messages only, since history carries no reactions/edits/deletes, so

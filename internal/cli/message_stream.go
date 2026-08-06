@@ -40,11 +40,15 @@ polling every conversation in a workspace is not viable.`,
 			if err != nil {
 				return err
 			}
-			if cc.AuthType != slack.AuthBrowser {
+			// Explicit only: unlike await, stream never auto-falls-back, because
+			// polling every conversation in a workspace is not viable. --poll is
+			// how a caller asks for one conversation the socket stays silent on.
+			poll := flags.poll
+			if !poll && cc.AuthType != slack.AuthBrowser {
 				return agenterrors.New(
 					"message stream requires browser auth (xoxc/xoxd); the event socket is a client API",
 					agenterrors.FixableByHuman).
-					WithHint("import browser credentials with 'agent-slack auth import-desktop', or use 'message await' which can poll")
+					WithHint("import browser credentials with 'agent-slack auth import-desktop', or pass --poll --channel <one conversation>")
 			}
 			if duration <= 0 && maxEvents <= 0 && idleTimeout <= 0 {
 				// The help says a run is always bounded, and it must be: an
@@ -59,6 +63,12 @@ polling every conversation in a workspace is not viable.`,
 			}
 			if filter.Channels, err = resolveStreamChannels(ctx, cc, channels); err != nil {
 				return err
+			}
+			if poll && len(filter.Channels) != 1 {
+				// Polling reads one conversation's history per interval; a
+				// workspace-wide poll would be a request storm.
+				return agenterrors.New("--poll streams one conversation at a time", agenterrors.FixableByAgent).
+					WithHint("pass exactly one --channel, or drop --poll to use the event socket")
 			}
 			renderer, err := newEventRenderer(globals, cc, flags)
 			if err != nil {
@@ -75,6 +85,8 @@ polling every conversation in a workspace is not viable.`,
 				IdleTimeout: idleTimeout,
 				MaxEvents:   maxEvents,
 				PingEvery:   watchPingInterval,
+				Poll:        poll,
+				PollEvery:   flags.pollInterval,
 				OnReconnect: reconnectNotice(globals),
 			}, func(event slack.Event) error {
 				return writer.WriteItem(renderer.render(ctx, event))

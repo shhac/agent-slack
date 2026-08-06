@@ -325,6 +325,14 @@ messages roughly 15:1, so a stream must filter rather than forward.
   `message-pane/requestHistory` — i.e. the cursor pattern a polling fallback
   would use, on the workspace client endpoint, where the 1 req/min
   non-Marketplace tier does not apply.
+- **Your own DM publishes no socket events at all.** Verified from both ends:
+  messages sent to it from the Slack client and via `chat.postMessage`, plus a
+  reaction, an edit, and a thread reply, produced zero frames — while a passive
+  capture over the same window carried traffic from other conversations. The
+  same API send to a real DM comes straight back on the socket, so this is the
+  conversation, not the send path. Presumably Slack has nobody to notify and
+  the client renders "note to self" locally. `message await`/`stream` therefore
+  need `--poll` for that one conversation.
 - The `client.getWebSocketURL` response carries a **fallback gateway** as well
   as the primary. It is dialed when the primary refuses, so one gateway's
   outage does not end a run.

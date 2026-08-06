@@ -6,8 +6,6 @@ package slack
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"time"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -41,6 +39,12 @@ func (s *watchSession) runPoll(ctx context.Context) error {
 	}
 	for {
 		if err := s.backfillChannel(ctx, channel, s.opts.Filter.ThreadTS, cursor); err != nil {
+			if ctx.Err() != nil {
+				// The run's own deadline expired mid-request. That is a clean
+				// timeout, not a failure — surfacing it as an error would make
+				// every --poll await that finds nothing return non-zero.
+				return nil
+			}
 			return err
 		}
 		if s.stopped() {
@@ -81,9 +85,11 @@ func (s *watchSession) pollBaseline(ctx context.Context) (string, error) {
 	if len(messages) == 0 {
 		// An empty conversation has no tip to start from, and an empty cursor
 		// makes every later read a no-op — the poll would spin until timeout
-		// and report silence even as messages arrived. Start from now instead:
-		// the caller asked what happens next, and nothing exists before it.
-		return nowTS(), nil
+		// and report silence even as messages arrived. "0" is the right
+		// baseline: the read that established emptiness already proved there
+		// is nothing to replay, and unlike a wall-clock stamp it cannot be
+		// skewed against Slack's own timestamps.
+		return "0", nil
 	}
 	return messages[len(messages)-1].TS, nil
 }
@@ -94,11 +100,4 @@ func (s *watchSession) fetchTip(ctx context.Context) ([]render.MessageSummary, e
 		return FetchThread(ctx, s.client, channel, s.opts.Filter.ThreadTS, false)
 	}
 	return FetchChannelHistory(ctx, s.client, HistoryOptions{ChannelID: channel, Limit: 1})
-}
-
-// nowTS renders the current time as a Slack timestamp, for the one case with
-// no message to anchor to.
-func nowTS() string {
-	now := time.Now()
-	return strconv.FormatInt(now.Unix(), 10) + "." + fmt.Sprintf("%06d", now.Nanosecond()/1000)
 }

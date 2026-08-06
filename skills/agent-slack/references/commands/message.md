@@ -17,7 +17,7 @@ In-binary version: `agent-slack message usage`. Formatting: [../formatting.md](.
 | `message react add\|remove <target> <emoji>` | `--ts` | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | |
 | `message scheduled cancel <id>` | `--channel` (required for bot/user tokens) | `--yes` |
-| `message await <target>` | `--since <ts>`, `--timeout` (5m), `--thread-ts`, `--events`, `--reaction`, `--from`, `--include-self`, `--exclude-bots`, `--include-thread-replies`, `--max-body-chars`, `--resolve` | |
+| `message await <target>` | `--since <ts>`, `--timeout` (5m), `--thread-ts`, `--events`, `--reaction`, `--from`, `--include-self`, `--exclude-bots`, `--include-thread-replies`, `--poll`, `--poll-interval`, `--max-body-chars`, `--resolve` | |
 | `message stream` | `--channel` (repeatable), `--duration` (10m), `--max-events`, `--idle-timeout`, + the filter flags from `await` | |
 
 ## Waiting for a reply (`await` / `stream`)
@@ -91,7 +91,13 @@ agent-slack message stream --channel "#alerts" --duration 30m --idle-timeout 10m
 
 NDJSON plus an `@summary` meta line whose `cursors` are **per channel**.
 
-`stream` needs browser auth (the socket is a client API). `await` falls back to
+**Your own DM is the one conversation the socket never reports on.** Nothing
+published there produces an event — not client sends, not API sends, not
+reactions or edits. Use `--poll` (history reads on an interval, `--poll-interval`
+to tune) for that conversation; everything else works over the socket.
+
+`stream` needs browser auth (the socket is a client API), or `--poll` with
+exactly one `--channel`. `await` falls back to
 polling `conversations.history` on a bot/user token, with a stderr notice —
 slower and rate-limited, but it works.
 
