@@ -8,8 +8,10 @@ import (
 
 var (
 	// Enterprise-grid W IDs count as users here, unlike target parsing.
-	referencedChannelIDRe   = regexp.MustCompile(`^[CG][A-Z0-9]{8,}$`)
-	referencedUsergroupIDRe = regexp.MustCompile(`^S[A-Z0-9]{8,}$`)
+	// Deliberately narrower than IsChannelID, which also accepts D…: a <#…>
+	// token is a channel mention, and a DM cannot be mentioned. Anything
+	// D-prefixed inside one is malformed, not a conversation to resolve.
+	referencedChannelIDRe = regexp.MustCompile(`^[CG][A-Z0-9]{8,}$`)
 
 	mentionTokenRe          = regexp.MustCompile(`<@([UW][A-Z0-9]{8,})(?:\|[^>]+)?>`)
 	channelMentionTokenRe   = regexp.MustCompile(`<#([CG][A-Z0-9]{8,})(?:\|[^>]+)?>`)
@@ -26,7 +28,8 @@ func IsReferencedUserID(s string) bool { return IsUserID(s) }
 func IsReferencedChannelID(s string) bool { return referencedChannelIDRe.MatchString(s) }
 
 // IsReferencedUsergroupID reports whether s is a usergroup (subteam) ID (S…).
-func IsReferencedUsergroupID(s string) bool { return referencedUsergroupIDRe.MatchString(s) }
+// Same rule as IsUsergroupID: one shape, one definition.
+func IsReferencedUsergroupID(s string) bool { return IsUsergroupID(s) }
 
 // ReferencedIDs holds the distinct entity ids a set of messages refers to. A
 // rich_text mention element carries only the bare id (no label), so resolving

@@ -183,3 +183,43 @@ func TestEnterpriseUserIDsWorkAsTargetsAndReactors(t *testing.T) {
 		t.Error("mention rendering should still accept it")
 	}
 }
+
+// Every predicate that answers "is this an X id" must agree about a real id.
+// They drifted once — IsUserID rejected W… while IsReferencedUserID accepted
+// it — and the symptom was silent misrouting rather than an error, so the
+// agreement is worth pinning rather than trusting.
+func TestIDPredicatesAgreePerConcept(t *testing.T) {
+	users := map[string]bool{
+		"U12345ABCDE": true, "W12345ABCDE": true, // both id forms
+		"Wendy": false, "U1234": false, "C12345ABCDE": false,
+	}
+	for id, want := range users {
+		if IsUserID(id) != want || IsReferencedUserID(id) != want {
+			t.Errorf("user %q: IsUserID=%v IsReferencedUserID=%v, want %v",
+				id, IsUserID(id), IsReferencedUserID(id), want)
+		}
+	}
+
+	groups := map[string]bool{"S12345ABCDE": true, "U12345ABCDE": false, "Subteam": false}
+	for id, want := range groups {
+		if IsUsergroupID(id) != want || IsReferencedUsergroupID(id) != want {
+			t.Errorf("usergroup %q: IsUsergroupID=%v IsReferencedUsergroupID=%v, want %v",
+				id, IsUsergroupID(id), IsReferencedUsergroupID(id), want)
+		}
+	}
+
+	// Channels are the one concept where the two rules differ on purpose: a
+	// DM is a conversation but cannot be mentioned, so it is a channel id and
+	// not a referenced one. Asserted so the difference stays deliberate.
+	if !IsChannelID("D12345ABCDE") {
+		t.Error("a DM is a channel id")
+	}
+	if IsReferencedChannelID("D12345ABCDE") {
+		t.Error("a DM cannot appear in a <#…> mention")
+	}
+	for _, id := range []string{"C12345ABCDE", "G12345ABCDE"} {
+		if !IsChannelID(id) || !IsReferencedChannelID(id) {
+			t.Errorf("%q should be both a channel id and a referenced channel id", id)
+		}
+	}
+}
