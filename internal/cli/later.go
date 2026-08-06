@@ -87,8 +87,8 @@ func registerLaterList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max items")
 	registerMaxBodyChars(cmd, &maxBodyChars, 4000, "item")
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only counts per state, no content")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
-	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
+	registerCursor(cmd, &cursor)
+	registerSlackMarkdown(cmd, &slackMarkdown, true)
 	parent.AddCommand(cmd)
 }
 
@@ -119,7 +119,7 @@ func registerLaterMark(parent *cobra.Command, globals *GlobalFlags, name, short 
 			return printOK(globals)
 		},
 	}
-	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel ID)")
+	registerMessageTS(cmd, &ts)
 	parent.AddCommand(cmd)
 }
 
@@ -150,7 +150,7 @@ func registerLaterRemind(parent *cobra.Command, globals *GlobalFlags) {
 			return printSingle(globals, map[string]any{"ok": true, "remind_at": remindAt})
 		},
 	}
-	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel ID)")
+	registerMessageTS(cmd, &ts)
 	cmd.Flags().StringVar(&in, "in", "", "When to remind: 30m, 1h, 2d, tomorrow 5pm, next friday (required)")
 	parent.AddCommand(cmd)
 }

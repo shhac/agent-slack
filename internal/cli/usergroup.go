@@ -50,7 +50,7 @@ func registerUsergroupList(parent *cobra.Command, globals *GlobalFlags) {
 	}
 	cmd.Flags().BoolVar(&includeDisabled, "include-disabled", false, "Include deactivated usergroups")
 	cmd.Flags().IntVar(&limit, "limit", 200, "Max results per page (capped at 1000)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a prior page's @pagination.next_cursor")
+	registerCursor(cmd, &cursor)
 	enableTranscript(cmd, tflags)
 	parent.AddCommand(cmd)
 }

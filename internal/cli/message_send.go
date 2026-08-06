@@ -79,7 +79,7 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringArrayVar(&flags.attach, "attach", nil, "Attach a local file (repeatable)")
 	cmd.Flags().StringVar(&flags.blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
 	flags.register(cmd, "Schedule")
-	cmd.Flags().BoolVar(&flags.slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn (*bold*, <url|label>) instead of standard Markdown")
+	registerSlackMarkdown(cmd, &flags.slackMarkdown, false)
 	cmd.Flags().StringVar(&flags.forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
 	parent.AddCommand(cmd)
 }

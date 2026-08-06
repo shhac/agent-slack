@@ -44,12 +44,12 @@ type readFlags struct {
 }
 
 func (f *readFlags) register(cmd *cobra.Command, defaultMaxBody int) {
-	cmd.Flags().StringVar(&f.ts, "ts", "", "Message ts (required when the target is a channel name/ID)")
+	registerMessageTS(cmd, &f.ts)
 	cmd.Flags().StringVar(&f.threadTS, "thread-ts", "", "Thread root ts hint")
 	registerMaxBodyChars(cmd, &f.maxBodyChars, defaultMaxBody, "message")
 	cmd.Flags().BoolVar(&f.includeReactions, "include-reactions", false, "Include reactions and reacting users")
 	registerResolveFlag(cmd, &f.resolve, resolveAuto)
-	cmd.Flags().BoolVar(&f.slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
+	registerSlackMarkdown(cmd, &f.slackMarkdown, true)
 }
 
 // resolveMode returns the parsed --resolve value; callers validate(f) first so
@@ -112,11 +112,29 @@ func registerMaxBodyChars(cmd *cobra.Command, target *int, def int, noun string)
 // bodies in it; write commands interpret input as it — two verbs, one flag
 // name, and previously ten hand-written help strings that had begun to drift.
 func registerSlackMarkdown(cmd *cobra.Command, target *bool, reading bool) {
-	help := "Send text as Slack mrkdwn instead of standard Markdown"
+	help := "Interpret text as Slack mrkdwn instead of standard Markdown"
 	if reading {
 		help = "Render content as Slack mrkdwn instead of standard Markdown"
 	}
 	cmd.Flags().BoolVar(target, "slack-markdown", false, help)
+}
+
+// registerMessageTS adds the --ts flag naming a specific message. Six commands
+// take it with the same meaning; hand-writing the help is how later's copy came
+// to say "channel ID" when a #name target is rejected just the same.
+func registerMessageTS(cmd *cobra.Command, target *string) {
+	cmd.Flags().StringVar(target, "ts", "", "Message ts (required when the target is a channel name/ID)")
+}
+
+// registerCursor adds the pagination cursor every list command shares. The help
+// names where the value comes from, which is what an agent needs and what only
+// three of the eight hand-written copies said.
+//
+// --limit is deliberately NOT folded in alongside it: its help carries the
+// per-endpoint cap ("capped at 1000", "max 200"), which one shared string
+// would have to drop.
+func registerCursor(cmd *cobra.Command, cursor *string) {
+	cmd.Flags().StringVar(cursor, "cursor", "", "Pagination cursor from a prior page's @pagination.next_cursor")
 }
 
 // resolveTargetClient maps a parsed CLI <target> to a connected client and a
@@ -159,6 +177,18 @@ func resolveTargetClient(ctx context.Context, globals *GlobalFlags, target rende
 func channelIDForTarget(ctx context.Context, cc *clientContext, target render.Target) (string, error) {
 	switch target.Kind {
 	case render.TargetURL:
+		// A permalink names its own workspace. Callers that select the client
+		// from it (resolveTargetClient) always agree; callers that resolve
+		// several targets against one client — message stream — do not, and a
+		// mismatch there silently watches a channel id that belongs to a
+		// different workspace, which simply never produces events.
+		if target.Ref.WorkspaceURL != "" && cc.WorkspaceURL != "" &&
+			!workspaceMatches(target.Ref.WorkspaceURL, cc.WorkspaceURL) {
+			return "", agenterrors.Newf(agenterrors.FixableByAgent,
+				"permalink belongs to %s but this command is using %s",
+				target.Ref.WorkspaceURL, cc.WorkspaceURL).
+				WithHint("pass --workspace for that workspace, or use targets from the one in use")
+		}
 		return target.Ref.ChannelID, nil
 	case render.TargetUser:
 		// target.UserID may be a U… id or an "@handle"; resolve either to an id.

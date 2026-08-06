@@ -53,9 +53,9 @@ func registerMessageEdit(parent *cobra.Command, globals *GlobalFlags) {
 			return printOK(globals)
 		},
 	}
-	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel name/ID)")
+	registerMessageTS(cmd, &ts)
 	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm the edit")
-	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
+	registerSlackMarkdown(cmd, &slackMarkdown, false)
 	cmd.Flags().StringArrayVar(&attach, "attach", nil, "Path to a file to upload and add as an attachment (repeatable)")
 	cmd.Flags().StringArrayVar(&removeAttachment, "remove-attachment", nil, "File ID to remove from the message; see the file ids in 'message get' (repeatable)")
 	parent.AddCommand(cmd)
@@ -192,7 +192,7 @@ func registerMessageDelete(parent *cobra.Command, globals *GlobalFlags) {
 			return printOK(globals)
 		},
 	}
-	cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel name/ID)")
+	registerMessageTS(cmd, &ts)
 	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm the delete")
 	parent.AddCommand(cmd)
 }
@@ -231,7 +231,7 @@ func registerMessageReact(parent *cobra.Command, globals *GlobalFlags) {
 				return printOK(globals)
 			},
 		}
-		cmd.Flags().StringVar(&ts, "ts", "", "Message ts (required when the target is a channel name/ID)")
+		registerMessageTS(cmd, &ts)
 		reactCmd.AddCommand(cmd)
 	}
 }

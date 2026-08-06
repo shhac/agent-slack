@@ -50,7 +50,7 @@ func registerEmojiList(parent *cobra.Command, globals *GlobalFlags) {
 	}
 	cmd.Flags().BoolVar(&full, "full", false, "Include image URLs (omitted by default to keep output lean)")
 	cmd.Flags().IntVar(&limit, "limit", 200, "Max results per page (capped at 1000)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a prior page's @pagination.next_cursor")
+	registerCursor(cmd, &cursor)
 	parent.AddCommand(cmd)
 }
 
@@ -98,7 +98,7 @@ func registerEmojiSearch(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 20, "Max results per page (capped at 100)")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor from a prior page's @pagination.next_cursor")
+	registerCursor(cmd, &cursor)
 	cmd.Flags().BoolVar(&full, "full", false, "Include image URLs in results")
 	parent.AddCommand(cmd)
 }

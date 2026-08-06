@@ -1,6 +1,7 @@
 package render
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -66,6 +67,18 @@ func IsUsergroupID(s string) bool {
 	return usergroupIDRe.MatchString(s)
 }
 
+// isSlackArchiveURL reports whether input looks like a Slack permalink,
+// regardless of whether it parses — the signal that a parse failure is worth
+// surfacing rather than reinterpreting as a channel name.
+func isSlackArchiveURL(input string) bool {
+	u, err := url.Parse(input)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(u.Hostname()), ".slack.com") &&
+		strings.Contains(u.Path, "/archives/")
+}
+
 // ParseTarget interprets a CLI <target> argument. A U… id or an "@handle" is a
 // user (DM) target; a permalink, channel URL, #name, or C…/G…/D… id is a
 // channel; anything else is a bare channel name normalized to "#name".
@@ -76,11 +89,19 @@ func ParseTarget(input string) (Target, error) {
 			WithHint("pass a Slack permalink, #channel, channel ID, @handle, or user ID")
 	}
 
-	if ref, err := ParseMessageURL(trimmed); err == nil {
+	ref, messageErr := ParseMessageURL(trimmed)
+	if messageErr == nil {
 		return Target{Kind: TargetURL, Ref: ref}, nil
 	}
 	if wsURL, channelID, ok := ParseChannelURL(trimmed); ok {
 		return Target{Kind: TargetChannel, Channel: channelID, WorkspaceURL: wsURL}, nil
+	}
+	if isSlackArchiveURL(trimmed) {
+		// A Slack archive URL neither parser accepts. Falling through would
+		// treat the whole URL as a channel *name* and fail later as a lookup,
+		// hiding the real problem — usually a permalink truncated by an
+		// unquoted "&".
+		return Target{}, messageErr
 	}
 
 	if IsUserID(trimmed) {

@@ -42,7 +42,7 @@ func registerUser(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	listCmd.Flags().IntVar(&limit, "limit", 200, "Max users")
-	listCmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
+	registerCursor(listCmd, &cursor)
 	listCmd.Flags().BoolVar(&includeBots, "include-bots", false, "Include bot users")
 	enableTranscript(listCmd, listTflags)
 	userCmd.AddCommand(listCmd)

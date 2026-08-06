@@ -105,6 +105,6 @@ func registerSearchKind(parent *cobra.Command, globals *GlobalFlags, name string
 	cmd.Flags().IntVar(&maxContentChars, "max-content-chars", 4000, "Max message content chars (-1 = unlimited)")
 	cmd.Flags().BoolVar(&download, "download", kind != slack.SearchMessages, "Download matched files and report local paths")
 	registerResolveFlag(cmd, &resolveFlag, resolveAuto)
-	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Render content as Slack mrkdwn instead of standard Markdown")
+	registerSlackMarkdown(cmd, &slackMarkdown, true)
 	parent.AddCommand(cmd)
 }

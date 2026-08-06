@@ -2,8 +2,11 @@ package cli
 
 import (
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 
 	"github.com/shhac/agent-slack/internal/mockslack"
 	"github.com/shhac/agent-slack/internal/render"
@@ -704,4 +707,74 @@ func TestMessageStreamIncludesYourOwnMessagesInYourOwnDM(t *testing.T) {
 	if len(lines) < 2 || lines[0]["content"] != "a note to myself" {
 		t.Fatalf("stream must not exclude your own messages in your own DM: %v", lines)
 	}
+}
+
+// message stream resolves several --channel targets against ONE client, so a
+// permalink from another workspace would resolve to a channel id that does not
+// exist there — a run that watches nothing and reports no error.
+func TestChannelTargetRejectsAnotherWorkspacesPermalink(t *testing.T) {
+	cc := &clientContext{WorkspaceURL: "https://acme.slack.com"}
+	target, err := render.ParseTarget("https://othercorp.slack.com/archives/C0OTHERCHAN/p1700000010000100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := channelIDForTarget(t.Context(), cc, target); err == nil {
+		t.Error("a cross-workspace permalink must be refused, not silently resolved")
+	}
+
+	// Same workspace still resolves without a lookup.
+	same, err := render.ParseTarget("https://acme.slack.com/archives/C0FAKECHAN/p1700000010000100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := channelIDForTarget(t.Context(), cc, same)
+	if err != nil || got != "C0FAKECHAN" {
+		t.Errorf("same-workspace permalink = %q, err = %v", got, err)
+	}
+}
+
+// Flag help is the agent-facing contract for these commands, and hand-written
+// copies drift: later's --ts once said "channel ID" while a #name target was
+// rejected just the same, and five of eight --cursor strings omitted where the
+// value comes from. Registering through one helper is what stops that, so the
+// absence of hand-rolled copies is worth asserting.
+func TestSharedFlagsAreRegisteredThroughTheirHelpers(t *testing.T) {
+	root := newRootCmdWithDeps(rootDeps{version: "test"})
+
+	seen := map[string]map[string]bool{"ts": {}, "cursor": {}, "slack-markdown": {}}
+	var walk func(*cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		for name := range seen {
+			if f := cmd.Flags().Lookup(name); f != nil {
+				seen[name][f.Usage] = true
+			}
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(root)
+
+	// --ts on `channel mark` means something genuinely different ("mark read up
+	// to"), so it is allowed its own wording; everything else shares one.
+	if len(seen["ts"]) > 2 {
+		t.Errorf("--ts has %d distinct help strings: %v", len(seen["ts"]), keysOf(seen["ts"]))
+	}
+	if len(seen["cursor"]) != 1 {
+		t.Errorf("--cursor has %d distinct help strings, want 1: %v", len(seen["cursor"]), keysOf(seen["cursor"]))
+	}
+	// Read-side and write-side wordings are deliberately distinct.
+	if len(seen["slack-markdown"]) != 2 {
+		t.Errorf("--slack-markdown has %d distinct help strings, want 2: %v",
+			len(seen["slack-markdown"]), keysOf(seen["slack-markdown"]))
+	}
+}
+
+func keysOf(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

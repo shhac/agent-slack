@@ -223,3 +223,23 @@ func TestIDPredicatesAgreePerConcept(t *testing.T) {
 		}
 	}
 }
+
+// A Slack archive URL that neither parser accepts must surface its parse
+// error. Falling through treats the whole URL as a channel *name*, so the
+// caller gets a lookup failure for "#https://…" instead of being told their
+// permalink is malformed — usually because an unquoted "&" truncated it.
+func TestMalformedPermalinkReportsItsOwnError(t *testing.T) {
+	for _, input := range []string{
+		"https://acme.slack.com/archives/C0FAKECHAN/pNOTATIMESTAMP",
+		"https://acme.slack.com/archives/",
+	} {
+		target, err := ParseTarget(input)
+		if err == nil {
+			t.Errorf("%q parsed as %+v, want the malformed-permalink error", input, target)
+		}
+	}
+	// A well-formed channel URL still resolves — it shares the /archives/ path.
+	if target, err := ParseTarget("https://acme.slack.com/archives/C0FAKECHAN"); err != nil || target.Kind != TargetChannel {
+		t.Errorf("channel URL = %+v, err = %v; want a channel target", target, err)
+	}
+}

@@ -58,7 +58,7 @@ func registerDraftCreate(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
-	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
+	registerSlackMarkdown(cmd, &slackMarkdown, false)
 	cmd.Flags().StringVar(&forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
 	cmd.Flags().StringArrayVar(&attach, "attach", nil, "Attach a local file to the draft (repeatable)")
 	cmd.Flags().StringVar(&threadTS, "thread-ts", "", "Reply in a thread: the thread root ts (or pass a message permalink as the target)")
@@ -161,7 +161,7 @@ func registerDraftEdit(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cmd.Flags().StringVar(&blocksPath, "blocks", "", "Path to a JSON file with Block Kit blocks ('-' = stdin)")
-	cmd.Flags().BoolVar(&slackMarkdown, "slack-markdown", false, "Interpret text as Slack mrkdwn instead of standard Markdown")
+	registerSlackMarkdown(cmd, &slackMarkdown, false)
 	cmd.Flags().StringVar(&forward, "forward", "", "Forward a message: a Slack permalink whose message is embedded (text becomes an optional comment; same workspace only)")
 	cmd.Flags().StringArrayVar(&attach, "attach", nil, "Attach a local file to the draft (repeatable)")
 	cmd.Flags().StringVar(&threadTS, "thread-ts", "", "Reply in a thread: the thread root ts (defaults to the draft's current thread)")

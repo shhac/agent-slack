@@ -123,7 +123,7 @@ func registerChannelMembers(parent *cobra.Command, globals *GlobalFlags) {
 		},
 	}
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max members per page")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
+	registerCursor(cmd, &cursor)
 	registerResolveFlag(cmd, &resolveFlag, resolveNone)
 	parent.AddCommand(cmd)
 }
@@ -179,7 +179,7 @@ func registerChannelList(parent *cobra.Command, globals *GlobalFlags) {
 	cmd.Flags().StringVar(&user, "user", "", "User id (U…) or @handle whose conversations to list")
 	cmd.Flags().BoolVar(&all, "all", false, "List all workspace conversations (conversations.list)")
 	cmd.Flags().IntVar(&limit, "limit", 100, "Max conversations per page")
-	cmd.Flags().StringVar(&cursor, "cursor", "", "Pagination cursor")
+	registerCursor(cmd, &cursor)
 	enableTranscript(cmd, tflags)
 	parent.AddCommand(cmd)
 }
