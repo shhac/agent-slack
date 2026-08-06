@@ -68,6 +68,12 @@ which is why --poll is opt-in here rather than an automatic fallback.`,
 			if filter.Channels, err = resolveStreamChannels(ctx, cc, channels); err != nil {
 				return err
 			}
+			// Same reasoning as await: in your own DM every message is yours,
+			// so the default self-exclusion would emit nothing — and --poll
+			// advertises that conversation as its headline use case.
+			if len(filter.Channels) == 1 && isOwnDM(ctx, cc, filter.Channels[0]) {
+				filter.IncludeSelf = true
+			}
 			if poll && len(filter.Channels) != 1 {
 				// Polling reads one conversation's history per interval; a
 				// workspace-wide poll would be a request storm.

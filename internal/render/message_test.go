@@ -421,3 +421,53 @@ func TestCodeSpansAreLeftLiteral(t *testing.T) {
 		}
 	}
 }
+
+// actions/context/image renderers had no test at all: replacing any of them
+// with a no-op left the suite green. An app notification's only link is often
+// the action button's URL, so losing it loses the reason the message was sent.
+func TestActionsContextAndImageBlocksRender(t *testing.T) {
+	msg := MessageSummary{ChannelID: "C0FAKE1", TS: "1700000010.000100", Blocks: []any{
+		map[string]any{"type": "actions", "elements": []any{
+			map[string]any{"type": "button",
+				"text": map[string]any{"type": "plain_text", "text": "View run"},
+				"url":  "https://ci.example.invalid/run/42"},
+		}},
+		map[string]any{"type": "context", "elements": []any{
+			map[string]any{"type": "mrkdwn", "text": "triggered by deploy-bot"},
+		}},
+		map[string]any{"type": "image", "alt_text": "error rate", "image_url": "https://example.invalid/chart.png"},
+	}}
+
+	content := ToCompactMessage(msg, CompactOptions{}).Content
+	for _, want := range []string{
+		"View run", "https://ci.example.invalid/run/42", // the button and its URL
+		"triggered by deploy-bot", // context prose
+		"error rate", "https://example.invalid/chart.png",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("content %q is missing %q", content, want)
+		}
+	}
+}
+
+// Slack sends these flags as booleans or as 0/1, which is the entire reason
+// truthy exists — and the non-bool cases were untested, so a coercion that
+// treated every number as set went unnoticed.
+//
+// Note "0" and "false" are TRUE: this is JavaScript truthiness, where only the
+// empty string is falsy. That is deliberate, and the surprising part worth
+// pinning.
+func TestTruthyCoercesSlackFlagShapes(t *testing.T) {
+	truthyCases := []any{true, float64(1), "1", "true", "0", "false"}
+	falsyCases := []any{false, float64(0), "", nil}
+	for _, v := range truthyCases {
+		if !truthy(v) {
+			t.Errorf("truthy(%#v) = false, want true", v)
+		}
+	}
+	for _, v := range falsyCases {
+		if truthy(v) {
+			t.Errorf("truthy(%#v) = true, want false", v)
+		}
+	}
+}

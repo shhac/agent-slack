@@ -26,7 +26,7 @@ func watchCLIFixture(t *testing.T, frames []map[string]any) *cliFixture {
 func TestMessageAwaitReturnsTheNextMessage(t *testing.T) {
 	f := watchCLIFixture(t, mockslack.DefaultEventScript())
 
-	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--timeout", "5s")
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--timeout", "1500ms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestMessageAwaitExcludesYourOwnMessages(t *testing.T) {
 		t.Fatalf("your own message is not a reply to yourself: %v", payload)
 	}
 
-	stdout, _, err = f.run(t, "message", "await", mockslack.WSChannelID, "--include-self", "--timeout", "5s")
+	stdout, _, err = f.run(t, "message", "await", mockslack.WSChannelID, "--include-self", "--timeout", "1500ms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestAwaitEventAndStreamLineAreTheSameRecord(t *testing.T) {
 	}
 
 	f := watchCLIFixture(t, frames)
-	awaitOut, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--timeout", "5s")
+	awaitOut, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--timeout", "1500ms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func TestMessageAwaitReactionFlagImpliesReactionEvents(t *testing.T) {
 		mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser, "eyes", "1700000010.000100", "1700000030.000100"),
 	})
 
-	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--reaction", "eyes", "--timeout", "5s")
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--reaction", "eyes", "--timeout", "1500ms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestMessageAwaitReactionAcceptsUnicodeEmoji(t *testing.T) {
 		mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser, "rocket", "1700000010.000100", "1700000030.000100"),
 	})
 
-	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--reaction", "🚀", "--timeout", "5s")
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--reaction", "🚀", "--timeout", "1500ms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +413,7 @@ func TestMessageAwaitFromAcceptsBotID(t *testing.T) {
 	})
 
 	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
-		"--from", mockslack.WSBotID, "--timeout", "5s")
+		"--from", mockslack.WSBotID, "--timeout", "1500ms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,6 +459,12 @@ func TestStreamLineCarriesEveryCompactMessageField(t *testing.T) {
 	for i := range eventType.NumField() {
 		field := eventType.Field(i)
 		if field.Anonymous {
+			// Requiring the exact type is the point: any embedded struct would
+			// otherwise satisfy this, including a hand-rolled shell that had
+			// quietly dropped a field.
+			if field.Type != compactType {
+				t.Fatalf("embedded %s, want render.CompactMessage — the embed is what keeps the shapes in step", field.Type)
+			}
 			for name := range compactFields {
 				eventFields[name] = true
 			}
@@ -641,5 +647,61 @@ func TestMessageStreamPollDeliversOverHistory(t *testing.T) {
 	}
 	if lines[0]["content"] != "arrived while polling" {
 		t.Errorf("first line = %v", lines[0])
+	}
+}
+
+// The reflection test above checks the type; this checks the wire. A hand-
+// rolled projection that dropped forwarded_threads passed the type test, so
+// the value has to be asserted in the emitted JSON too.
+func TestStreamLineEmitsForwardedThreads(t *testing.T) {
+	forwarded := mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "look at this", "1700000015.000100")
+	forwarded["attachments"] = []any{map[string]any{
+		"is_share":   true,
+		"from_url":   "https://acme.slack.com/archives/C0FAKEOTHER/p1700000001000100?thread_ts=1700000001.000100&cid=C0FAKEOTHER",
+		"text":       "the forwarded body",
+		"ts":         "1700000001.000100",
+		"channel_id": "C0FAKEOTHER",
+	}}
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello(), forwarded})
+
+	stdout, _, err := f.run(t, "message", "stream", "--channel", mockslack.WSChannelID,
+		"--max-events", "1", "--duration", "3s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, stdout)
+	if len(lines) == 0 {
+		t.Fatal("no event emitted")
+	}
+	if lines[0]["forwarded_threads"] == nil {
+		t.Errorf("stream line dropped forwarded_threads, which `message list` emits: %v", lines[0])
+	}
+}
+
+// --poll's help names your own DM as the reason it exists. The exception that
+// makes that work lived only in await, so stream emitted nothing for exactly
+// the case it advertised — and advanced its cursor past the missed messages.
+func TestMessageStreamIncludesYourOwnMessagesInYourOwnDM(t *testing.T) {
+	f := newBrowserCLIFixture(t)
+	f.server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}, KeepOpen: true})
+	f.server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(f.url))
+	f.server.HandleBody("conversations.open", map[string]any{
+		"ok": true, "channel": map[string]any{"id": "D0FAKESELF1"},
+	})
+	f.server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History()},
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000020.000200", fixtureUserID, "a note to myself"),
+		)},
+	)
+
+	stdout, _, err := f.run(t, "message", "stream", "--poll", "--channel", "D0FAKESELF1",
+		"--poll-interval", "10ms", "--max-events", "1", "--duration", "3s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, stdout)
+	if len(lines) < 2 || lines[0]["content"] != "a note to myself" {
+		t.Fatalf("stream must not exclude your own messages in your own DM: %v", lines)
 	}
 }

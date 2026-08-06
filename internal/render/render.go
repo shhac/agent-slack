@@ -67,9 +67,10 @@ func asInt(v any) int {
 	return 0
 }
 
-// truthy mirrors JavaScript truthiness for decoded JSON values, because the
-// TS source gated forwarded-message handling on `Boolean(a.is_share)` and
-// Slack sometimes sends these flags as 0/1 instead of booleans.
+// truthy mirrors JavaScript truthiness for decoded JSON values: Slack sends
+// flags like is_share as booleans or as 0/1, and the field is sometimes absent
+// entirely. Only "" and 0 are falsy — "0" and "false" are set, which is
+// surprising in Go but is what the wire means.
 func truthy(v any) bool {
 	switch x := v.(type) {
 	case nil:

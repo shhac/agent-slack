@@ -11,14 +11,19 @@ import (
 
 	"github.com/shhac/agent-slack/internal/credential"
 	"github.com/shhac/agent-slack/internal/mockslack"
+	"github.com/shhac/agent-slack/internal/render"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
 // Fixtures carry a resolved identity so the common command path keys its cache
 // offline (no bootstrap auth.test). Bootstrap is exercised separately.
+// Slack-shaped on purpose: an id with an underscore is not recognised as an
+// id at all, so a fixture using one silently exercises a name-lookup path the
+// real flow never takes. internal/mockslack pins the same rule for its own
+// fixtures.
 const (
-	fixtureTeamID = "T_ACME"
-	fixtureUserID = "U_ACME"
+	fixtureTeamID = "T0FAKETEAM"
+	fixtureUserID = "U0FAKEPAUL1"
 )
 
 func fixtureCacheKey() string { return slack.IdentityCacheKey(fixtureTeamID, fixtureUserID) }
@@ -140,4 +145,16 @@ func fileHost(t *testing.T, contentType, body string) *httptest.Server {
 	}))
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// The same rule internal/mockslack pins for its fixtures: an id that is not
+// Slack-shaped routes tests through name resolution instead of id handling,
+// so the path under test is not the path production takes.
+func TestFixtureIDsAreSlackShaped(t *testing.T) {
+	if !render.IsUserID(fixtureUserID) {
+		t.Errorf("fixtureUserID %q is not a Slack-shaped user id", fixtureUserID)
+	}
+	if !strings.Contains(fixtureUserID, "FAKE") || !strings.Contains(fixtureTeamID, "FAKE") {
+		t.Error("fixture ids should be self-evidently fabricated")
+	}
 }

@@ -394,3 +394,66 @@ func TestPollIntervalHasAFloor(t *testing.T) {
 		}
 	}
 }
+
+// The other direction of the --idle-timeout guard: non-matching traffic must
+// not hold the timer open. Only the "matching events reset it" half was
+// covered, so resetting on every classified frame passed the suite.
+func TestIdleTimeoutNotHeldOpenByNonMatchingTraffic(t *testing.T) {
+	frames := []map[string]any{mockslack.Hello()}
+	for i := range 12 {
+		frames = append(frames, mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser,
+			"eyes", "1700000010.000100", fmt.Sprintf("17000000%02d.000100", 40+i)))
+	}
+	c, server := watchFixture(t, mockslack.WSScript{Frames: frames, Interval: 15 * time.Millisecond})
+	server.HandleBody("conversations.history", mockslack.History())
+
+	// Filtering for messages: every frame above is classified, none matches.
+	// Timing is the only discriminator — a run that wrongly resets on every
+	// classified frame still ends in "idle", just later, once the finite
+	// script runs out. Reason alone cannot tell the two apart.
+	const idle = 80 * time.Millisecond
+	started := time.Now()
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:      EventFilter{Channels: []string{mockslack.WSChannelID}},
+		IdleTimeout: idle,
+		Duration:    3 * time.Second,
+	})
+	elapsed := time.Since(started)
+	if result.StoppedBy != WatchStoppedIdle {
+		t.Fatalf("stopped_by = %q, want %q", result.StoppedBy, WatchStoppedIdle)
+	}
+	// Frames keep arriving every 15ms for ~180ms. Idle must trip during that
+	// stream, not wait for it to finish.
+	if elapsed > idle*2 {
+		t.Errorf("idle tripped after %s with a %s timeout — unmatched traffic held the countdown open",
+			elapsed, idle)
+	}
+}
+
+// Removing the default silently drops an un-flagged --poll to the 250ms floor,
+// a 60x increase in requests against a rate-limited endpoint.
+func TestPollIntervalDefaultsToTheDocumentedCadence(t *testing.T) {
+	var slept []time.Duration
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}, KeepOpen: true})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "the tip")))
+	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-s", XOXD: "xoxd-s", WorkspaceURL: ts.URL},
+		WithSleep(func(ctx context.Context, d time.Duration) error {
+			slept = append(slept, d)
+			return ctx.Err()
+		}))
+
+	_, _ = Watch(context.Background(), c, WatchOptions{
+		Filter:   EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Poll:     true, // no PollEvery: the default must apply
+		Duration: 300 * time.Millisecond,
+	}, func(Event) error { return nil })
+
+	if len(slept) == 0 || slept[0] != defaultPollEvery {
+		t.Errorf("first poll waited %v, want the documented default %v", slept, defaultPollEvery)
+	}
+}
