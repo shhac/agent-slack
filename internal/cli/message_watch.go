@@ -228,10 +228,12 @@ type compactEvent struct {
 // rather than promised in a comment.
 func projectEvent(event slack.Event, maxBodyChars int, slackMarkdown bool) compactEvent {
 	out := compactEvent{
-		Kind:            string(event.Kind),
-		EventTS:         event.EventTS,
-		Reaction:        event.Reaction,
-		PreviousContent: event.PreviousContent,
+		Kind:     string(event.Kind),
+		EventTS:  event.EventTS,
+		Reaction: event.Reaction,
+		// Capped like the new body: an edit to a very long message would
+		// otherwise emit an unbounded raw one right beside a truncated one.
+		PreviousContent: render.TruncateBody(event.PreviousContent, maxBodyChars),
 	}
 	if out.EventTS == event.TS {
 		out.EventTS = ""

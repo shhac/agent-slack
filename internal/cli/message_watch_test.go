@@ -778,3 +778,23 @@ func keysOf(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// An edit carries the old body alongside the new one. The new body is capped by
+// --max-body-chars; if the old one is not, an edit to a very long message emits
+// an unbounded raw body right beside a truncated one.
+func TestProjectEventCapsPreviousContent(t *testing.T) {
+	long := strings.Repeat("x", 500)
+	out := projectEvent(slack.Event{
+		Kind:            slack.EventMessageChanged,
+		TS:              "1700000010.000100",
+		PreviousContent: long,
+		Message:         &render.MessageSummary{ChannelID: "C0FAKE1", TS: "1700000010.000100", Text: long},
+	}, 50, false)
+
+	if len(out.PreviousContent) >= len(long) {
+		t.Errorf("previous_content len = %d, want capped near 50", len(out.PreviousContent))
+	}
+	if len(out.PreviousContent) > len(out.Content)+8 {
+		t.Errorf("previous_content (%d) not capped like content (%d)", len(out.PreviousContent), len(out.Content))
+	}
+}
