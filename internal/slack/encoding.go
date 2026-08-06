@@ -18,7 +18,8 @@ import (
 type bodyEncoder func(fields map[string]string) (body []byte, contentType string, err error)
 
 // encodeParam stringifies one API param: nil drops, objects and slices
-// JSON-encode, everything else stringifies (matching the TS client).
+// JSON-encode, everything else stringifies: Slack's form-encoded endpoints
+// take structured arguments as JSON strings.
 func encodeParam(v any) (string, bool) {
 	switch x := v.(type) {
 	case nil:

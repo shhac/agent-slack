@@ -1,7 +1,6 @@
-// Code generated from node-emoji 2.2.0 / emojilib 2.4.0 (the dataset the
-// TypeScript agent-slack uses) by dumping emojilib.lib name→char pairs.
-// Regenerate by re-running the dump against the TS repo if it bumps node-emoji.
-// DO NOT EDIT by hand.
+// Code generated from node-emoji 2.2.0 / emojilib 2.4.0 by dumping
+// emojilib.lib name→char pairs. Regenerate against a newer node-emoji by
+// re-running that dump. DO NOT EDIT by hand.
 
 package render
 

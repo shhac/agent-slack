@@ -133,7 +133,8 @@ func New(auth Auth, opts ...Option) *Client {
 
 // API calls a Slack Web API method with form-encoded params and returns the
 // decoded JSON response. nil param values are dropped; objects and slices are
-// JSON-encoded, everything else is stringified (matching the TS client).
+// JSON-encoded, everything else is stringified — Slack's form-encoded
+// endpoints take structured arguments as JSON strings.
 func (c *Client) API(ctx context.Context, method string, params map[string]any) (map[string]any, error) {
 	return c.apiWithRefresh(ctx, method, params, encodeForm)
 }
@@ -308,8 +309,9 @@ func (c *Client) parseResponse(method string, httpResp *http.Response) (map[stri
 		return nil, retryAfterDuration(httpResp.Header.Get("Retry-After")), mapHTTPError(method, httpResp.StatusCode)
 	}
 
-	// Slack returns errors as 200 + {ok:false}; an unparseable body collapses
-	// to an empty object like the TS client.
+	// Slack returns errors as 200 + {ok:false}. A body that will not parse
+	// collapses to an empty object so the ok/error check below still runs —
+	// some failures come back as HTML rather than JSON.
 	var data map[string]any
 	if err := json.Unmarshal(raw, &data); err != nil {
 		data = map[string]any{}

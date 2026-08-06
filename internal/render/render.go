@@ -1,7 +1,6 @@
-// Package render holds the pure conversion layer ported from the TypeScript
-// agent-slack: Slack permalink/target parsing, mrkdwn ↔ Markdown, Block Kit /
-// rich_text rendering, outbound rich_text construction, and compaction of raw
-// message JSON. Everything here is side-effect free — no network, no I/O — so
+// Package render holds the pure conversion layer: Slack permalink/target
+// parsing, mrkdwn ↔ Markdown, Block Kit / rich_text rendering, outbound
+// rich_text construction, and compaction of raw message JSON. Everything here is side-effect free — no network, no I/O — so
 // the Slack client and CLI commands can be tested against it directly.
 package render
 

@@ -97,7 +97,7 @@ ever sends both.
   see `cache-namespacing.md`.
 - **Import-only** to start: no interactive setup; tokens arrive via the
   `import-*` / `parse-curl` commands and env vars.
-- Legacy migration: a TypeScript agent-slack stored credentials at
+- Legacy migration: another Slack CLI stores credentials at
   `~/.config/agent-slack/credentials.json`; that file seeds a missing store once,
   read-only.
 
@@ -220,10 +220,11 @@ through to *channel-name* resolution (`#W01ENTERPRISE`), `ResolveUserID` treated
 it as a handle, and a `W…` reactor was filtered out of `reactions[].users`
 leaving only a count that no longer matched.
 
-This was not a porting slip: the TypeScript `agent-slack` this CLI grew
-alongside carried the same `^U[A-Z0-9]{8,}$` rule, and fixed it independently
-in July 2026 (stablyai/agent-slack#114). Both implementations shared the
-assumption; theirs was found first.
+Worth recording because it is an easy assumption to make: a separate Slack CLI
+(stablyai/agent-slack) carried the same `^U[A-Z0-9]{8,}$` rule and corrected it
+in July 2026. Two implementations arrived at the same wrong shape
+independently, which is a good reason to treat every id predicate here as
+suspect until it has been checked against a real Enterprise Grid id.
 
 ## Referenced-entity resolution / caching
 

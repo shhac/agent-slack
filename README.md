@@ -5,10 +5,6 @@ and (carefully) writing Slack from an LLM agent. It belongs to the `agent-*` CLI
 family (`agent-postmark`, `agent-stripe`, `lin`, …), sharing their conventions,
 output contract, and credential handling.
 
-The TypeScript [`agent-slack`](https://github.com/stablyai/agent-slack) was part
-of the inspiration — it worked out a lot about driving Slack safely from an
-agent — but this is its own tool with its own design.
-
 > **Status:** feature-complete. The full command surface is implemented and
 > tested against a fixture Slack server (`internal/mockslack`). See
 > [`design-docs/`](design-docs/) for design decisions.

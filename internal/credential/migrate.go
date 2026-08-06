@@ -1,6 +1,7 @@
 // One-shot migration of a version-1 (URL-keyed, shared-xoxd) store to the
 // alias-keyed version-2 format, plus the seeding of a missing store from the
-// TypeScript tool's legacy file. See design-docs/workspace-aliases.md.
+// credentials file another Slack CLI owns at the same path. See
+// design-docs/workspace-aliases.md.
 package credential
 
 import (
@@ -109,10 +110,11 @@ func (s *Store) deleteLegacyAccounts(file *credentialsFile) {
 	}
 }
 
-// migrateLegacyFile seeds a missing store from the file the TS agent-slack
-// maintains. Metadata only, best effort: secrets stay __KEYCHAIN__
-// placeholders (the TS Keychain service is different) and refill into our
-// service via auth import or the desktop auto-refresh.
+// migrateLegacyFile seeds a missing store from the credentials file another
+// Slack CLI maintains at ~/.config/agent-slack/credentials.json. Metadata
+// only, best effort: secrets stay __KEYCHAIN__ placeholders (that tool uses a
+// different Keychain service) and refill into ours via auth import or the
+// desktop auto-refresh.
 func migrateLegacyFile(path string) {
 	if _, err := os.Stat(path); err == nil {
 		return

@@ -337,7 +337,7 @@ func TestRenderRichTextElements(t *testing.T) {
 	got := RenderMessageContent(msg)
 	for _, want := range []string{
 		// Bare <#C456> survives: the mrkdwn pass only rewrites labeled
-		// channel tokens, matching the TS behaviour.
+		// channel tokens.
 		"**bold** and `code` for @U123 in <#C456>[site](https://example.com)",
 		"1. first\n2. second",
 		"> quoted",

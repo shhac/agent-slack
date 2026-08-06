@@ -117,8 +117,8 @@ table-tested for behavior coverage:
 - Outbound: text → `rich_text` blocks (list/code/quote detection, inline
   parsing) and mrkdwn escaping/mention promotion (`richtext.go`,
   `outbound.go`). Inline parsing uses lookarounds RE2 lacks, so the scanner is
-  hand-written; it was differentially fuzzed against the original TypeScript
-  implementation.
+  hand-written, and differentially fuzzed against a second implementation of
+  the same grammar to shake out divergences.
 - Raw message JSON → `MessageSummary` / `CompactMessage` shaping
   (`compact.go`). API-dependent pieces (user resolution, file downloads,
   snippet enrichment via `files.info`) stay in the client layer, which fills
@@ -132,10 +132,10 @@ table-tested for behavior coverage:
   `~/Library/Application Support`) holds the non-secret workspace metadata
   (URL, team id, default workspace) alongside `__KEYCHAIN__` placeholders,
   with a `version` field (currently 1). The directory deviates from the
-  family's plain-tool-name convention because the TypeScript agent-slack
-  already owns `~/.config/agent-slack/credentials.json` (same filename,
-  different Keychain service); that legacy file is read once to seed a
-  missing store — metadata only, never written. The cache dir matches:
+  family's plain-tool-name convention because another Slack CLI already owns
+  `~/.config/agent-slack/credentials.json` (same filename, different Keychain
+  service); that file is read once to seed a missing store — metadata only,
+  never written. The cache dir matches:
   `~/.cache/app.paulie.agent-slack` (`$XDG_CACHE_HOME`-aware, via
   lib-agent-cli's `xdg.CacheDir`), scoped per identity under
   `<team_id>/<user_id>/` which holds that identity's category caches,
