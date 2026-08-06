@@ -282,3 +282,31 @@ func TestInlineEmojiSkipsCodeSpans(t *testing.T) {
 		if name == "shipit" {
 			return "IMG"
 		}
+		return ""
+	}
+	cases := map[string]string{
+		"use `:shipit:` to ship":  "use `:shipit:` to ship",
+		"```\n:shipit:\n```":      "```\n:shipit:\n```",
+		"ship it :shipit: now":    "ship it IMG now",
+		"`:shipit:` and :shipit:": "`:shipit:` and IMG",
+	}
+	for input, want := range cases {
+		if got := applyInlineEmoji(input, resolve); got != want {
+			t.Errorf("applyInlineEmoji(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+// Slack sends skin-toned reactions as "+1::skin-tone-5"; rendering that name
+// verbatim finds no emoji and shows a human the raw wire form.
+func TestSkinTonedReactionRendersBaseGlyph(t *testing.T) {
+	line := transcriptReactions([]any{
+		map[string]any{"name": "+1::skin-tone-5", "users": []any{"U0FAKEALEX"}},
+	}, TranscriptOptions{})
+	if !strings.Contains(line, "\U0001f44d") {
+		t.Errorf("transcriptReactions = %q, want the base glyph", line)
+	}
+	if strings.Contains(line, "skin-tone") {
+		t.Errorf("transcriptReactions = %q, leaked the wire modifier", line)
+	}
+}

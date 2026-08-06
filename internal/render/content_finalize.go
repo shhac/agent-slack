@@ -52,10 +52,13 @@ func applyInlineEmoji(text string, resolve func(name string) string) string {
 	if resolve == nil || text == "" {
 		return text
 	}
-	return emojiShortcodeRe.ReplaceAllStringFunc(text, func(m string) string {
+	// Code spans and fences are literal, exactly as in mention resolution: a
+	// `:shipit:` shown as sample syntax must stay text, not become an image.
+	masked, restore := Protect(text, mrkdwnFenceRe, mrkdwnCodeRe)
+	return restore(emojiShortcodeRe.ReplaceAllStringFunc(masked, func(m string) string {
 		if esc := resolve(m[1 : len(m)-1]); esc != "" {
 			return esc
 		}
 		return m
-	})
+	}))
 }

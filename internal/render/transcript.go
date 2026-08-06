@@ -349,7 +349,10 @@ func transcriptReactions(reactions []any, opts TranscriptOptions) string {
 		// desired fallback; applyInlineEmoji then swaps a custom emoji for its
 		// inline image when that mode is on (a no-op otherwise, and on the
 		// unicode glyph a standard emoji already became).
-		glyph := applyInlineEmoji(EmojifyShortcodes(":"+r.Name+":"), opts.InlineEmoji)
+		// Slack sends skin-toned reactions as "+1::skin-tone-5", which matches
+		// no emoji table; strip the modifier so the base glyph shows rather
+		// than the raw wire name.
+		glyph := applyInlineEmoji(EmojifyShortcodes(":"+StripSkinTone(r.Name)+":"), opts.InlineEmoji)
 		var names []string
 		for _, id := range r.Users {
 			names = append(names, resolveName(opts, id))
