@@ -63,6 +63,10 @@ func TestMessageAwaitTimeoutIsNotAnError(t *testing.T) {
 	if payload["cursor"] != "1700000010.000100" {
 		t.Errorf("cursor = %v, want the input echoed back", payload["cursor"])
 	}
+	// Without this the agent cannot tell a clean timeout from a lost socket.
+	if payload["stopped_by"] != "duration" {
+		t.Errorf("stopped_by = %v, want the reason to reach the JSON", payload["stopped_by"])
+	}
 }
 
 // Awaiting a ✅ while someone reacts ❌ must not look like silence.
@@ -528,7 +532,7 @@ func TestMessageAwaitPollForcesHistoryOnBrowserAuth(t *testing.T) {
 	)
 
 	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
-		"--poll", "--poll-interval", "10ms", "--timeout", "5s")
+		"--poll", "--poll-interval", "10ms", "--timeout", "1500ms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -551,8 +555,15 @@ func TestMessageStreamPollNeedsExactlyOneChannel(t *testing.T) {
 	if err == nil {
 		t.Fatal("a workspace-wide poll must be refused")
 	}
-	if payload := errPayload(t, stderr); payload["fixable_by"] != "agent" {
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" {
 		t.Errorf("fixable_by = %v", payload["fixable_by"])
+	}
+	// The hint must identify the CLI's up-front guard: the engine refuses the
+	// same thing much later, and asserting only fixable_by cannot tell them
+	// apart — so deleting the guard would leave this green.
+	if hint, _ := payload["hint"].(string); !strings.Contains(hint, "--channel") {
+		t.Errorf("hint = %q, want the up-front --channel guard", hint)
 	}
 }
 
@@ -571,7 +582,7 @@ func TestMessageAwaitIncludesYourOwnMessagesInYourOwnDM(t *testing.T) {
 	)
 
 	stdout, _, err := f.run(t, "message", "await", "D0FAKESELF1",
-		"--poll", "--poll-interval", "10ms", "--timeout", "5s")
+		"--poll", "--poll-interval", "10ms", "--timeout", "1500ms")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,19 +594,52 @@ func TestMessageAwaitIncludesYourOwnMessagesInYourOwnDM(t *testing.T) {
 
 // Anywhere else the default stands: your own message is not a reply to you.
 func TestMessageAwaitStillExcludesSelfInOtherConversations(t *testing.T) {
+	// A DM with someone ELSE, so the identity comparison in isOwnDM is what
+	// decides: a prefix-only check would wrongly include your own messages in
+	// every DM you have.
+	const otherDM = "D0FAKEOTHER1"
 	f := watchCLIFixture(t, []map[string]any{
 		mockslack.Hello(),
-		mockslack.WSMessage(mockslack.WSChannelID, fixtureUserID, "posted by me", "1700000015.000100"),
+		mockslack.WSMessage(otherDM, fixtureUserID, "posted by me", "1700000015.000100"),
 	})
 	f.server.HandleBody("conversations.open", map[string]any{
 		"ok": true, "channel": map[string]any{"id": "D0FAKESELF1"},
 	})
 
-	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--timeout", "400ms")
+	stdout, _, err := f.run(t, "message", "await", otherDM, "--timeout", "400ms")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if payload := parseJSON(t, stdout); payload["received"] != false {
 		t.Fatalf("self-exclusion should still apply outside your own DM: %v", payload)
+	}
+}
+
+// The documented happy path for --poll on stream: one conversation, on a token
+// that has no socket at all. Only the refusal path was covered, so wiring
+// --poll to nothing would have gone unnoticed.
+func TestMessageStreamPollDeliversOverHistory(t *testing.T) {
+	f := newCLIFixture(t) // standard token: no event socket exists
+	f.resolvableChannel("C0FAKEPOLLED")
+	f.server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000010.000100", "U0FAKESAM", "the tip"),
+		)},
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000020.000200", "U0FAKESAM", "arrived while polling"),
+		)},
+	)
+
+	stdout, _, err := f.run(t, "message", "stream", "--poll", "--channel", "C0FAKEPOLLED",
+		"--poll-interval", "10ms", "--max-events", "1", "--duration", "3s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := parseNDJSON(t, stdout)
+	if len(lines) < 2 {
+		t.Fatalf("want an event plus the summary, got %v", lines)
+	}
+	if lines[0]["content"] != "arrived while polling" {
+		t.Errorf("first line = %v", lines[0])
 	}
 }

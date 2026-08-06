@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,11 +80,20 @@ func TestAwaitSurfacesTheRejectionItFilteredOut(t *testing.T) {
 }
 
 func TestAwaitPollFallbackNeedsAConversation(t *testing.T) {
-	c, _ := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	// Registered so the poll path COULD succeed: without it, deleting the
+	// guard merely swaps this error for the fixture's unknown_method and the
+	// test still passes.
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "anything"),
+	))
 
 	_, err := Await(context.Background(), c, AwaitOptions{Poll: true, Timeout: time.Second})
 	if err == nil {
 		t.Fatal("polling a whole workspace is not viable and must be refused")
+	}
+	if !strings.Contains(err.Error(), "one conversation") {
+		t.Errorf("error = %v, want it to name the real problem", err)
 	}
 }
 
@@ -172,7 +183,12 @@ func TestWatchKeepsReadingPastATruncatedSkippedReport(t *testing.T) {
 // asked for reactions on a bot token would otherwise wait out the whole
 // timeout for something that could never arrive.
 func TestAwaitRefusesUnpollableKinds(t *testing.T) {
-	c, _ := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	// As above: the poll path must be able to succeed, or this passes for the
+	// wrong reason.
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "anything"),
+	))
 
 	_, err := Await(context.Background(), c, AwaitOptions{
 		Filter:  EventFilter{Kinds: []EventKind{EventReactionAdded}, Channels: []string{mockslack.WSChannelID}},
@@ -181,6 +197,9 @@ func TestAwaitRefusesUnpollableKinds(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("polling cannot deliver reactions and must say so")
+	}
+	if !strings.Contains(err.Error(), "reaction") {
+		t.Errorf("error = %v, want it to name the kind it cannot deliver", err)
 	}
 }
 
@@ -219,7 +238,7 @@ func TestPollHonoursTheIdleTimeout(t *testing.T) {
 		Poll:        true,
 		PollEvery:   time.Millisecond,
 		IdleTimeout: 50 * time.Millisecond,
-		Duration:    0, // idle is the ONLY bound
+		Duration:    3 * time.Second, // generous: idle is what must stop this
 	})
 	if result.StoppedBy != WatchStoppedIdle {
 		t.Errorf("stopped_by = %q, want %q — an idle-only poll must still terminate",
@@ -269,8 +288,109 @@ func TestPollEmitFailureIsNotSwallowedAsATimeout(t *testing.T) {
 		Poll:      true,
 		PollEvery: time.Millisecond,
 		Duration:  150 * time.Millisecond,
-	}, func(Event) error { return wantErr })
+	}, func(Event) error {
+		// Fail AFTER the run's deadline, so the write error and the expiry
+		// coincide — the only situation where the swallow could hide it.
+		time.Sleep(250 * time.Millisecond)
+		return wantErr
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want the emit failure surfaced rather than swallowed by the deadline", err)
+	}
+}
+
+// The idle countdown measures the RUN. A timer recreated per connection never
+// trips on a socket that drops more often than --idle-timeout, so a stream
+// bounded only by idle would run to its duration or forever.
+func TestIdleTimerSurvivesReconnects(t *testing.T) {
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	// Keeps dropping for the whole run, faster than the idle interval.
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	server.HandleBody("conversations.history", mockslack.History())
+	// A short but real reconnect pause, so drops are paced rather than instant:
+	// with a no-op sleep the run would exhaust its retry budget before idle.
+	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-s", XOXD: "xoxd-s", WorkspaceURL: ts.URL},
+		WithSleep(func(ctx context.Context, _ time.Duration) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(15 * time.Millisecond):
+				return nil
+			}
+		}))
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:      EventFilter{Since: "1700000010.000100", Channels: []string{mockslack.WSChannelID}},
+		IdleTimeout: 120 * time.Millisecond,
+		Duration:    4 * time.Second,
+	})
+	if result.Reconnects == 0 {
+		t.Fatal("expected the socket to drop repeatedly")
+	}
+	if result.StoppedBy != WatchStoppedIdle {
+		t.Errorf("stopped_by = %q, want %q — the countdown must span reconnects",
+			result.StoppedBy, WatchStoppedIdle)
+	}
+}
+
+// A permalink await with --poll baselines from the THREAD, not the channel: a
+// channel-derived tip is older than the thread's replies, so the first poll
+// would replay them.
+func TestPollBaselineUsesTheWatchedThread(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.replies", mockslack.History(
+		mockslack.ThreadReply("1700000010.000100", mockslack.WSUserID, "the question", "1700000010.000100"),
+		mockslack.ThreadReply("1700000020.000200", mockslack.WSOtherUser, "already answered", "1700000010.000100"),
+	))
+
+	got, _ := collectWatch(t, c, WatchOptions{
+		Filter:    EventFilter{Channels: []string{mockslack.WSChannelID}, ThreadTS: "1700000010.000100"},
+		Poll:      true,
+		PollEvery: time.Millisecond,
+		Duration:  400 * time.Millisecond,
+	})
+	if len(got) != 0 {
+		t.Errorf("baselining off the thread means its existing replies are not new: %+v", got)
+	}
+	if calls := len(server.CallsFor("conversations.history")); calls != 0 {
+		t.Errorf("a thread-scoped poll made %d channel-history calls", calls)
+	}
+}
+
+// --poll-interval is a request rate against a rate-limited endpoint, so an
+// aggressive value is floored rather than honoured verbatim.
+func TestPollIntervalHasAFloor(t *testing.T) {
+	var slept []time.Duration
+	server := mockslack.New()
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	server.EnableWebSocket(mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}, KeepOpen: true})
+	server.HandleBody("client.getWebSocketURL", mockslack.GetWebSocketURL(ts.URL))
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "the tip"),
+	))
+	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-s", XOXD: "xoxd-s", WorkspaceURL: ts.URL},
+		WithSleep(func(ctx context.Context, d time.Duration) error {
+			slept = append(slept, d)
+			return ctx.Err()
+		}))
+
+	_, _ = Watch(context.Background(), c, WatchOptions{
+		Filter:    EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Poll:      true,
+		PollEvery: time.Millisecond, // far below the floor
+		Duration:  300 * time.Millisecond,
+	}, func(Event) error { return nil })
+
+	if len(slept) == 0 {
+		t.Fatal("the poll loop never paced itself")
+	}
+	for _, d := range slept {
+		if d < minPollEvery {
+			t.Fatalf("slept %s, below the %s floor — an aggressive --poll-interval must be clamped", d, minPollEvery)
+		}
 	}
 }
