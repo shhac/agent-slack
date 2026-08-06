@@ -39,7 +39,12 @@ func MrkdwnToMarkdown(text string, slackMarkdown bool) string {
 		return text
 	}
 
-	out := convertEmphasisToMarkdown(text)
+	// Code spans and fences are literal: nothing inside them is Slack syntax.
+	// Masking them for the WHOLE pipeline — not just emphasis — is what stops
+	// `:rocket:`, <@U…>, and &amp; being rewritten inside code.
+	masked, restore := Protect(text, mrkdwnFenceRe, mrkdwnCodeRe)
+
+	out := convertEmphasisToMarkdown(masked)
 	out = mrkdwnLabeledLinkRe.ReplaceAllString(out, "[$3]($1)")
 	out = mrkdwnBareLinkRe.ReplaceAllString(out, "$1")
 	out = mrkdwnChannelRe.ReplaceAllString(out, "#$1")
@@ -47,14 +52,16 @@ func MrkdwnToMarkdown(text string, slackMarkdown bool) string {
 	out = mrkdwnUserRe.ReplaceAllString(out, "@$1")
 	out = mrkdwnSpecialRe.ReplaceAllString(out, "@$1")
 	out = mrkdwnEntityReplacer.Replace(out)
-	return EmojifyShortcodes(out)
+	return restore(EmojifyShortcodes(out))
 }
 
 // convertEmphasisToMarkdown rewrites Slack single-delimiter bold/strike to their
-// doubled Markdown form, masking code/fence/angle spans so their delimiters are
-// preserved verbatim.
+// doubled Markdown form, masking angle spans so a `*` inside <url|label> is not
+// read as emphasis. Its caller has already masked code and fences — nesting a
+// second Protect over those would let this restore resolve the caller's
+// placeholders against the wrong stash.
 func convertEmphasisToMarkdown(text string) string {
-	masked, restore := Protect(text, mrkdwnFenceRe, mrkdwnCodeRe, mrkdwnAngleRe)
+	masked, restore := Protect(text, mrkdwnAngleRe)
 	masked = mrkdwnBoldRe.ReplaceAllString(masked, "**$1**")
 	masked = mrkdwnStrikeRe.ReplaceAllString(masked, "~~$1~~")
 	return restore(masked)

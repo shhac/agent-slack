@@ -62,9 +62,38 @@ func mrkdwnFromBlocks(blocks []any) string {
 			if rich := richTextBlockToMrkdwn(b); strings.TrimSpace(rich) != "" {
 				out = append(out, rich)
 			}
+		case "divider":
+			// Structural only; it carries no prose to lose.
+		default:
+			// header, video, file, input and whatever Slack adds next: scrape
+			// the block's text objects rather than dropping it. A `header` is
+			// the headline of most app notifications, and losing it is not
+			// visible in the output — the message just reads as if it never
+			// had a title.
+			out = append(out, blockFallbackLines(b)...)
 		}
 	}
 	return strings.Join(out, "\n\n")
+}
+
+// blockFallbackLines scrapes the displayable prose from a block this renderer
+// does not model: its own text object, then any nested one field-deep. Keeps
+// unknown block types degrading instead of vanishing.
+func blockFallbackLines(b map[string]any) []string {
+	var out []string
+	if text, ok := mrkdwnTextValue(b["text"]); ok && strings.TrimSpace(text) != "" {
+		out = append(out, text)
+	}
+	for _, key := range []string{"label", "title", "alt_text"} {
+		if text, ok := mrkdwnTextValue(b[key]); ok && strings.TrimSpace(text) != "" {
+			out = append(out, text)
+			continue
+		}
+		if v := strings.TrimSpace(str(b[key])); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // mrkdwnTextValue returns the text of a Block Kit text object when it is a
@@ -128,17 +157,30 @@ func contextLines(b map[string]any) []string {
 	return out
 }
 
-// imageLine renders an image block as `alt: url` (or the bare url), "" when it
-// has no image_url.
+// imageLine renders an image block as `alt: url` (or the bare url). Modern
+// blocks carry a slack_file instead of an image_url, and when neither yields a
+// URL the alt text is still the only prose the block has — emitting nothing
+// would drop it.
 func imageLine(b map[string]any) string {
 	url := str(b["image_url"])
 	if url == "" {
-		return ""
+		if file, ok := asRecord(b["slack_file"]); ok {
+			if u := str(file["url"]); u != "" {
+				url = u
+			} else {
+				url = str(file["id"])
+			}
+		}
 	}
-	if alt := str(b["alt_text"]); alt != "" {
+	alt := strings.TrimSpace(str(b["alt_text"]))
+	switch {
+	case url != "" && alt != "":
 		return alt + ": " + url
+	case url != "":
+		return url
+	default:
+		return alt
 	}
-	return url
 }
 
 func buttonLine(button map[string]any) string {

@@ -118,10 +118,28 @@ func richTextElementToMrkdwn(elAny any) string {
 	case "text":
 		return applyMrkdwnStyle(str(el["text"]), el["style"])
 
-	case "link":
+	case "link", "message_mention":
+		// message_mention is the permalink chip Slack's composer makes — and
+		// the one UpgradeOutboundLinks emits, so without this agent-slack
+		// cannot read back the links it sends.
 		return applyMrkdwnStyle(slackLink(str(el["url"]), str(el["text"])), el["style"])
 	}
 
+	// An unenumerated element must degrade, not vanish. Slack keeps adding
+	// element types, and every one of them carries a human-readable field —
+	// dropping the element silently deletes content the payload was holding.
+	return applyMrkdwnStyle(elementFallbackText(el), el["style"])
+}
+
+// elementFallbackText salvages the readable part of an element this renderer
+// does not model: Slack supplies `fallback` for exactly this purpose, and the
+// rest are the conventional prose-carrying keys.
+func elementFallbackText(el map[string]any) string {
+	for _, key := range []string{"fallback", "text", "name", "url"} {
+		if v := strings.TrimSpace(str(el[key])); v != "" {
+			return v
+		}
+	}
 	return ""
 }
 

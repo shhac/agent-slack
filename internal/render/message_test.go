@@ -357,3 +357,67 @@ func TestRenderEmptyMessage(t *testing.T) {
 		t.Errorf("nil: got %q, want empty", got)
 	}
 }
+
+// The layer's dominant failure mode was silent deletion: an element or block
+// type this renderer does not enumerate produced nothing at all, and because
+// some *other* block rendered, the raw `text` fallback did not fire either.
+// Content simply disappeared, with no error and nothing in the output to show
+// something had been there.
+func TestUnknownBlocksAndElementsDegradeRatherThanVanish(t *testing.T) {
+	cases := []struct {
+		name   string
+		blocks []any
+		want   string
+	}{{
+		name: "header carries the headline of most app notifications",
+		blocks: []any{
+			map[string]any{"type": "header", "text": map[string]any{"type": "plain_text", "text": "Deploy failed"}},
+			map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": "service: api"}},
+		},
+		want: "Deploy failed\n\nservice: api",
+	}, {
+		name: "message_mention is the chip we ourselves send",
+		blocks: []any{map[string]any{"type": "rich_text", "elements": []any{
+			map[string]any{"type": "rich_text_section", "elements": []any{
+				map[string]any{"type": "text", "text": "see "},
+				map[string]any{"type": "message_mention", "url": "https://acme.slack.com/archives/C0FAKE1/p1700000010000100"},
+			}}}}},
+		want: "see https://acme.slack.com/archives/C0FAKE1/p1700000010000100",
+	}, {
+		name: "an unmodelled element uses the fallback Slack supplies",
+		blocks: []any{map[string]any{"type": "rich_text", "elements": []any{
+			map[string]any{"type": "rich_text_section", "elements": []any{
+				map[string]any{"type": "text", "text": "due "},
+				map[string]any{"type": "date", "timestamp": float64(1700000000), "fallback": "Nov 14, 2023"},
+			}}}}},
+		want: "due Nov 14, 2023",
+	}, {
+		name: "an image with no url still has its alt text",
+		blocks: []any{map[string]any{"type": "image", "alt_text": "chart of errors",
+			"slack_file": map[string]any{"id": "F0FAKEFILE"}}},
+		want: "chart of errors: F0FAKEFILE",
+	}}
+
+	for _, c := range cases {
+		msg := MessageSummary{ChannelID: "C0FAKE1", TS: "1700000010.000100", Blocks: c.blocks}
+		if got := ToCompactMessage(msg, CompactOptions{}).Content; got != c.want {
+			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+}
+
+// Code spans are literal. Slack does not emojify inside them, and rewriting a
+// Ruby symbol or a :param: placeholder corrupts content an agent may act on.
+func TestCodeSpansAreLeftLiteral(t *testing.T) {
+	cases := map[string]string{
+		"use `:wave:` here":         "use `:wave:` here",
+		":wave: outside":            "👋 outside",
+		"```\nsymbol = :wave:\n```": "```\nsymbol = :wave:\n```",
+		"`<@U12345ABCDE>` in code":  "`<@U12345ABCDE>` in code",
+	}
+	for input, want := range cases {
+		if got := MrkdwnToMarkdown(input, false); got != want {
+			t.Errorf("MrkdwnToMarkdown(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
