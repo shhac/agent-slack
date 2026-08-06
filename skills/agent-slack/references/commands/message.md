@@ -94,7 +94,9 @@ NDJSON plus an `@summary` meta line whose `cursors` are **per channel**.
 **Your own DM is the one conversation the socket never reports on.** Nothing
 published there produces an event — not client sends, not API sends, not
 reactions or edits. Use `--poll` (history reads on an interval, `--poll-interval`
-to tune) for that conversation; everything else works over the socket.
+to tune, minimum 250ms) for that conversation; everything else works over the
+socket. Awaiting your own DM turns off self-exclusion automatically — every
+message there is yours, so excluding them would report silence forever.
 
 `stream` needs browser auth (the socket is a client API), or `--poll` with
 exactly one `--channel`. `await` falls back to

@@ -113,6 +113,13 @@ func Watch(ctx context.Context, c *Client, opts WatchOptions, emit func(Event) e
 
 	if opts.Poll {
 		err := session.runPoll(runCtx)
+		if runCtx.Err() != nil && !session.emitFailed {
+			// The run's own deadline expired, possibly mid-request. That is a
+			// clean timeout, not a failure — every read in the loop can land on
+			// it, so the contract is applied once here rather than at each
+			// call site, where it covered some and not others.
+			err = nil
+		}
 		return session.finish(ctx, runCtx), err
 	}
 	err := session.runSocket(runCtx)
@@ -127,6 +134,10 @@ type watchSession struct {
 	result WatchResult
 
 	skippedCount int
+	// emitFailed marks a failure to hand an event to the caller — a broken
+	// stdout pipe, say. It must never be reported as a clean timeout, however
+	// the run's clock happened to fall.
+	emitFailed bool
 	// watermark is the engine's read position — advanced over every examined
 	// event, and used to drive polling and gap-fill. It is deliberately
 	// separate from result.Cursors, which is the caller's resume point and
@@ -176,16 +187,18 @@ func (s *watchSession) runSocket(ctx context.Context) error {
 	defer func() { conn.Close() }()
 
 	frames := s.readFrames(ctx, conn)
+	if err := s.backfill(ctx); err != nil {
+		return err
+	}
+
 	// The idle countdown measures the run, not one connection: creating it per
 	// socket lets a stream that reconnects more often than --idle-timeout
-	// never trip it, even with no matching event at all.
+	// never trip it, even with no matching event at all. It starts after the
+	// backfill, so a catch-up that delivered events cannot be counted as idle
+	// time the moment the socket loop begins.
 	idle, idleC := s.newIdleTimer()
 	if idle != nil {
 		defer idle.Stop()
-	}
-
-	if err := s.backfill(ctx); err != nil {
-		return err
 	}
 	// The answer may already have been in the backfill. Without this an await
 	// whose event cap is already met still sits out its whole timeout.
@@ -400,6 +413,7 @@ func (s *watchSession) offer(event Event) (matched bool, err error) {
 	}
 
 	if err := s.emit(event); err != nil {
+		s.emitFailed = true
 		return false, err
 	}
 	// Both counted and cursored only after a successful emit: an event the

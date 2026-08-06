@@ -12,47 +12,76 @@ import (
 	"github.com/shhac/agent-slack/internal/render"
 )
 
-const defaultPollEvery = 15 * time.Second
+const (
+	defaultPollEvery = 15 * time.Second
+	// minPollEvery keeps an aggressive --poll-interval from becoming a request
+	// storm against a rate-limited endpoint.
+	minPollEvery = 250 * time.Millisecond
+)
 
 // runPoll is the standard-token fallback: no socket, just history reads after
 // the cursor. Only usable with a single named conversation.
 func (s *watchSession) runPoll(ctx context.Context) error {
 	if kind, ok := s.unpollableKind(); ok {
-		return agenterrors.Newf(agenterrors.FixableByHuman,
-			"%s events are only delivered over the event socket, which needs browser auth", kind).
-			WithHint("import browser credentials with 'agent-slack auth import-desktop', or await messages only")
+		return agenterrors.Newf(agenterrors.FixableByAgent,
+			"%s events are only delivered over the event socket, and polling reads message history", kind).
+			WithHint("drop --poll to use the socket (browser auth), or await messages only")
 	}
 	channel := s.opts.targetChannel()
 	if channel == "" {
 		return agenterrors.New(
-			"polling requires a single conversation; the event socket is the only way to watch a whole workspace",
-			agenterrors.FixableByHuman).
-			WithHint("import browser credentials with 'agent-slack auth import-desktop'")
+			"polling reads one conversation at a time; watching a whole workspace needs the event socket",
+			agenterrors.FixableByAgent).
+			WithHint("name exactly one conversation, or use the event socket (browser auth)")
 	}
 	every := s.opts.PollEvery
 	if every <= 0 {
 		every = defaultPollEvery
 	}
+	// A floor, because the cadence is a request rate: nothing stops a caller
+	// asking for 1ms, and conversations.history is rate-limited.
+	every = max(every, minPollEvery)
 	cursor, err := s.pollBaseline(ctx)
 	if err != nil {
 		return err
 	}
+
+	// The baseline is a real resume point even when nothing matches: without
+	// recording it, a timed-out await returns no cursor and the next run
+	// re-baselines at the tip, silently skipping whatever arrived in between.
+	// "0" is synthetic (an empty conversation) and anchors nothing.
+	if cursor != "" && cursor != "0" {
+		s.result.Cursors[channel] = maxTS(s.result.Cursors[channel], cursor)
+		s.watermark[channel] = maxTS(s.watermark[channel], cursor)
+	}
+
+	lastEvent := time.Now()
 	for {
+		delivered := s.result.Events
 		if err := s.backfillChannel(ctx, channel, s.opts.Filter.ThreadTS, cursor); err != nil {
-			if ctx.Err() != nil {
-				// The run's own deadline expired mid-request. That is a clean
-				// timeout, not a failure — surfacing it as an error would make
-				// every --poll await that finds nothing return non-zero.
-				return nil
-			}
 			return err
 		}
 		if s.stopped() {
 			return nil
 		}
 		cursor = maxTS(cursor, s.watermark[channel])
-		if err := s.client.sleep(ctx, every); err != nil {
+
+		// --idle-timeout is a documented bound, and `message stream` accepts it
+		// as the *only* bound. Without honouring it here a polled run would
+		// loop forever against a rate limit — the exact thing the bound check
+		// exists to prevent.
+		if s.result.Events > delivered {
+			lastEvent = time.Now()
+		}
+		if s.opts.IdleTimeout > 0 && time.Since(lastEvent) >= s.opts.IdleTimeout {
+			s.stop(WatchStoppedIdle)
 			return nil
+		}
+		if err := s.client.sleep(ctx, every); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
 		}
 	}
 }

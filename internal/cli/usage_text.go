@@ -241,7 +241,8 @@ AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
        --poll reads history on an interval instead of the socket. Needed for
        YOUR OWN DM, which publishes no socket events at all (verified: neither
        client nor API sends produce a frame there), and useful for debugging.
-       --poll-interval tunes the cadence (default 15s).
+       --poll-interval tunes the cadence (default 15s, floor 250ms). Awaiting
+       your own DM implies --include-self, since every message there is yours.
        Browser auth streams live; a bot/user token falls back to polling
        conversations.history (slower, rate-limited) with a stderr notice —
        messages only, since history carries no reactions/edits/deletes, so

@@ -47,6 +47,13 @@ mistaken for silence.`,
 			}
 			filter.Channels = []string{channelID}
 			filter.ThreadTS = thread
+			// In your own DM every message is yours, so the default
+			// self-exclusion would drop all of them and the await would report
+			// silence forever. Watching it is only ever a request to see your
+			// own writing.
+			if isOwnDM(ctx, cc, channelID) {
+				filter.IncludeSelf = true
+			}
 			if thread == "" {
 				// Watching a conversation: a human answering the message named
 				// by --since may reply in-channel or thread on it, so both count.

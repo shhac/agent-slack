@@ -48,7 +48,7 @@ func (w *watchFlags) bind(cmd *cobra.Command, defaultEvents string) {
 		"For a channel target, also match replies inside existing threads")
 	registerMaxBodyChars(cmd, &w.maxBodyChars, render.DefaultMaxBodyChars, "message")
 	cmd.Flags().BoolVar(&w.poll, "poll", false,
-		"Read history on an interval instead of the event socket — needed for your own DM, which publishes no socket events")
+		"Read history on an interval instead of the event socket — required for your own DM, which publishes no socket events")
 	cmd.Flags().DurationVar(&w.pollInterval, "poll-interval", 0, "How often --poll re-reads history (default 15s)")
 	registerSlackMarkdown(cmd, &w.slackMarkdown, true)
 	// cached by default: a live stream must not spend an API call per event to
@@ -149,6 +149,18 @@ func resolveAuthorIDs(ctx context.Context, cc *clientContext, values []string) (
 		ids = append(ids, id)
 	}
 	return ids, nil
+}
+
+// isOwnDM reports whether a conversation is the authenticated user's note-to-
+// self DM. Best-effort: an unresolved identity or a failed lookup just means
+// the default self-exclusion stands.
+func isOwnDM(ctx context.Context, cc *clientContext, channelID string) bool {
+	self := selfUserID(cc)
+	if self == "" || !strings.HasPrefix(channelID, "D") {
+		return false
+	}
+	own, err := slack.OpenDMChannel(ctx, cc.Client, self)
+	return err == nil && own == channelID
 }
 
 // selfUserID is the authenticated user, so their own messages don't satisfy an

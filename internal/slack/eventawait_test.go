@@ -2,6 +2,7 @@ package slack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -201,5 +202,75 @@ func TestAwaitReportsWhyItStopped(t *testing.T) {
 	}
 	if result.StoppedBy != WatchStoppedReconnectFailed {
 		t.Errorf("stopped_by = %q, want the lost socket reported rather than a bare timeout", result.StoppedBy)
+	}
+}
+
+// --idle-timeout is a documented bound and `message stream` accepts it as the
+// only one. A poll loop that ignored it would run forever against a rate limit
+// — the exact failure the bound check exists to prevent.
+func TestPollHonoursTheIdleTimeout(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "the tip"),
+	))
+
+	_, result := collectWatch(t, c, WatchOptions{
+		Filter:      EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Poll:        true,
+		PollEvery:   time.Millisecond,
+		IdleTimeout: 50 * time.Millisecond,
+		Duration:    0, // idle is the ONLY bound
+	})
+	if result.StoppedBy != WatchStoppedIdle {
+		t.Errorf("stopped_by = %q, want %q — an idle-only poll must still terminate",
+			result.StoppedBy, WatchStoppedIdle)
+	}
+}
+
+// A poll run that matched nothing still established a floor. Losing it makes
+// the next run re-baseline at the tip and skip whatever arrived between them.
+func TestPollTimeoutReturnsTheBaselineAsItsCursor(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.Message("1700000010.000100", mockslack.WSOtherUser, "the tip"),
+	))
+
+	result, err := Await(context.Background(), c, AwaitOptions{
+		Filter:    EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Poll:      true,
+		PollEvery: time.Millisecond,
+		Timeout:   120 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("a poll timeout is not an error: %v", err)
+	}
+	if result.Received {
+		t.Fatal("nothing new arrived")
+	}
+	if result.Cursor != "1700000010.000100" {
+		t.Errorf("cursor = %q, want the established baseline so the next run resumes from it", result.Cursor)
+	}
+}
+
+// A broken writer must never be reported as a clean timeout, however the run's
+// clock happened to fall.
+func TestPollEmitFailureIsNotSwallowedAsATimeout(t *testing.T) {
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History()},
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000020.000200", mockslack.WSOtherUser, "delivered"),
+		)},
+	)
+
+	wantErr := errors.New("stdout closed")
+	_, err := Watch(context.Background(), c, WatchOptions{
+		Filter:    EventFilter{Channels: []string{mockslack.WSChannelID}},
+		Poll:      true,
+		PollEvery: time.Millisecond,
+		Duration:  150 * time.Millisecond,
+	}, func(Event) error { return wantErr })
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("err = %v, want the emit failure surfaced rather than swallowed by the deadline", err)
 	}
 }

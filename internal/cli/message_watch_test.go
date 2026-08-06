@@ -555,3 +555,47 @@ func TestMessageStreamPollNeedsExactlyOneChannel(t *testing.T) {
 		t.Errorf("fixable_by = %v", payload["fixable_by"])
 	}
 }
+
+// Every message in your own DM is yours, so the default self-exclusion would
+// drop all of them and the documented command would report silence forever.
+func TestMessageAwaitIncludesYourOwnMessagesInYourOwnDM(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+	f.server.HandleBody("conversations.open", map[string]any{
+		"ok": true, "channel": map[string]any{"id": "D0FAKESELF1"},
+	})
+	f.server.Handle("conversations.history",
+		mockslack.Response{Body: mockslack.History()},
+		mockslack.Response{Body: mockslack.History(
+			mockslack.Message("1700000020.000200", fixtureUserID, "a note to myself"),
+		)},
+	)
+
+	stdout, _, err := f.run(t, "message", "await", "D0FAKESELF1",
+		"--poll", "--poll-interval", "10ms", "--timeout", "5s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, stdout)
+	if payload["received"] != true {
+		t.Fatalf("your own DM must not exclude your own messages: %v", payload)
+	}
+}
+
+// Anywhere else the default stands: your own message is not a reply to you.
+func TestMessageAwaitStillExcludesSelfInOtherConversations(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{
+		mockslack.Hello(),
+		mockslack.WSMessage(mockslack.WSChannelID, fixtureUserID, "posted by me", "1700000015.000100"),
+	})
+	f.server.HandleBody("conversations.open", map[string]any{
+		"ok": true, "channel": map[string]any{"id": "D0FAKESELF1"},
+	})
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID, "--timeout", "400ms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := parseJSON(t, stdout); payload["received"] != false {
+		t.Fatalf("self-exclusion should still apply outside your own DM: %v", payload)
+	}
+}

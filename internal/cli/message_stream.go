@@ -31,8 +31,12 @@ func registerMessageStream(parent *cobra.Command, globals *GlobalFlags) {
 carrying per-channel cursors.
 
 Without --channel every conversation you can see is streamed. The run is always
-bounded: --duration, --max-events, or --idle-timeout. Requires browser auth —
-polling every conversation in a workspace is not viable.`,
+bounded: --duration, --max-events, or --idle-timeout.
+
+Needs browser auth, because the event socket is a client API — unless you pass
+--poll with exactly one --channel, which reads that conversation's history on
+an interval instead. Polling every conversation in a workspace is not viable,
+which is why --poll is opt-in here rather than an automatic fallback.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
