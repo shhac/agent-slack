@@ -209,6 +209,31 @@ The broader behavior and output decisions (NDJSON lists, compact channel/user
 projections, download policy, no first-run browser auto-extraction, `--yes`
 scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
 
+## Emphasis has two dialects, and they disagree
+
+Outbound we read **CommonMark**: `*` may open mid-word (`foo**bar**baz` bolds
+`bar`), `_` may not (so `snake_case_word` survives). Inbound we read **Slack
+mrkdwn**, whose parser will not open a delimiter that follows a word character
+— so `2*3 and 4*5`, `src/*.go`, and `a~b` are literal text on screen.
+
+Applying the outbound rule inbound invented emphasis Slack never displayed,
+across arithmetic, globs, paths, and tilde-bearing identifiers; it also turned
+`**hi**` into `***hi***`. RE2 has no lookaround, so the inbound patterns capture
+both boundaries and the replacement repeats until the text settles — a match
+consumes the trailing boundary that the next adjacent run needs as its leading
+one.
+
+Two consequences worth stating:
+
+- **An escaped marker forces the rich_text path.** Stripping the backslash is
+  only half the job: the result travels in the `text` field, which Slack parses
+  as mrkdwn, so a bare `*literal*` arrives **bold**. The escape is honoured
+  here and undone on arrival unless the characters ride as inert rich_text.
+- **A styled run crossing a newline is wrapped per line.** Slack emits one
+  element for a bold run spanning a line break; wrapping it whole yields
+  `*a\nb*`, which the inbound converter refuses (delimiters do not span lines)
+  — losing the emphasis and injecting two literal asterisks.
+
 ## User IDs on Enterprise Grid
 
 Slack issues both `U…` and `W…` user IDs; `W…` belongs to Enterprise Grid and

@@ -151,6 +151,19 @@ func applyMrkdwnStyle(text string, styleAny any) string {
 	if !ok || text == "" {
 		return text
 	}
+	// Slack emits one element for a styled run that crosses a line break.
+	// mrkdwn delimiters do not span lines, so wrap each line separately —
+	// wrapping the whole run produces "*a\nb*", which converts back to
+	// literal asterisks with the emphasis lost.
+	if strings.Contains(text, "\n") {
+		lines := strings.Split(text, "\n")
+		for i, line := range lines {
+			if strings.TrimSpace(line) != "" {
+				lines[i] = applyMrkdwnStyle(line, styleAny)
+			}
+		}
+		return strings.Join(lines, "\n")
+	}
 	if truthy(style["code"]) {
 		text = "`" + text + "`"
 	}

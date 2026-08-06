@@ -1,5 +1,7 @@
 package render
 
+import "regexp"
+
 import "strings"
 
 // Standard-Markdown inline parser — the default outbound dialect. Unlike
@@ -16,6 +18,11 @@ import "strings"
 // nest: inner runs inherit the outer style. Mentions, channels, usergroups,
 // broadcasts, emoji and <…> angle tokens reuse the shared scanners, so the two
 // dialects agree on everything that isn't emphasis/links/code.
+// markdownEscapeRe matches a backslash escape of a Markdown marker. Its
+// presence means the text depends on the rich_text path: the plain text field
+// would have the escape stripped and the bare marker re-parsed by Slack.
+var markdownEscapeRe = regexp.MustCompile("\\\\[*_~`\\[\\]()>#+.!-]")
+
 func ParseMarkdownInline(text string) []InlineElement {
 	return parseMarkdownInto(text, InlineStyle{})
 }

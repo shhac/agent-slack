@@ -107,6 +107,15 @@ func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
 	// hasFormatting, which is ignored when IncludeInlineFormatting is off — that
 	// combination only arises in the Slack-mrkdwn dialect, where the plain text
 	// field already renders them natively, so falling back to it loses nothing.
+	// An escaped marker carries no style, so nothing above marks it as
+	// formatted — but the plain text field cannot express it either. Stripping
+	// the backslash and falling back sends Slack a bare "*literal*", which its
+	// own parser then renders as bold: the escape is honoured here and undone
+	// on arrival. Only the rich_text path keeps the characters inert.
+	if opts.IncludeInlineFormatting && markdownEscapeRe.MatchString(text) {
+		hasFormatting = true
+	}
+
 	if !hasLists && (!opts.IncludeInlineFormatting || !hasFormatting) {
 		return nil
 	}

@@ -17,11 +17,16 @@ var (
 	// Italic _x_ and underline __x__ are already valid Markdown, so only bold and
 	// strike are rewritten. Code spans, fenced blocks and <…> tokens are masked
 	// first so their * and ~ are never touched.
-	mrkdwnFenceRe  = regexp.MustCompile("(?s)```.*?```")
-	mrkdwnCodeRe   = regexp.MustCompile("`[^`\n]+`")
-	mrkdwnAngleRe  = regexp.MustCompile(`<[^>\n]+>`)
-	mrkdwnBoldRe   = regexp.MustCompile(`\*([^*\n]+)\*`)
-	mrkdwnStrikeRe = regexp.MustCompile(`~([^~\n]+)~`)
+	mrkdwnFenceRe = regexp.MustCompile("(?s)```.*?```")
+	mrkdwnCodeRe  = regexp.MustCompile("`[^`\n]+`")
+	mrkdwnAngleRe = regexp.MustCompile(`<[^>\n]+>`)
+	// Slack does not open a delimiter that follows a word character, so
+	// "2*3 and 4*5", "src/*.go", and "a~b" are literal text on screen.
+	// Matching without that rule invents emphasis Slack never displayed —
+	// across arithmetic, globs, paths, and tilde-bearing identifiers. RE2 has
+	// no lookaround, so both boundaries are captured and put back.
+	mrkdwnBoldRe   = regexp.MustCompile(`(^|[\s(\[{"'])\*([^*\n]+)\*($|[\s).,!?;:\]}"'])`)
+	mrkdwnStrikeRe = regexp.MustCompile(`(^|[\s(\[{"'])~([^~\n]+)~($|[\s).,!?;:\]}"'])`)
 
 	mrkdwnEntityReplacer = strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&")
 )
@@ -62,7 +67,24 @@ func MrkdwnToMarkdown(text string, slackMarkdown bool) string {
 // placeholders against the wrong stash.
 func convertEmphasisToMarkdown(text string) string {
 	masked, restore := Protect(text, mrkdwnAngleRe)
-	masked = mrkdwnBoldRe.ReplaceAllString(masked, "**$1**")
-	masked = mrkdwnStrikeRe.ReplaceAllString(masked, "~~$1~~")
+	// Each replacement consumes its trailing boundary, which is also the
+	// leading boundary of any adjacent run ("*a* *b*"), so repeat until the
+	// text settles rather than leaving the neighbour unconverted.
+	masked = replaceUntilStable(masked, mrkdwnBoldRe, "$1**$2**$3")
+	masked = replaceUntilStable(masked, mrkdwnStrikeRe, "$1~~$2~~$3")
 	return restore(masked)
+}
+
+// replaceUntilStable applies a boundary-consuming replacement repeatedly until
+// it stops changing the text. Bounded because each pass either converts a run
+// or terminates.
+func replaceUntilStable(text string, re *regexp.Regexp, repl string) string {
+	for range 8 {
+		next := re.ReplaceAllString(text, repl)
+		if next == text {
+			return text
+		}
+		text = next
+	}
+	return text
 }
