@@ -218,8 +218,12 @@ They diverged once, and the failures were silent rather than loud: mention
 rendering accepted `W…` while target parsing did not, so a `W…` target fell
 through to *channel-name* resolution (`#W01ENTERPRISE`), `ResolveUserID` treated
 it as a handle, and a `W…` reactor was filtered out of `reactions[].users`
-leaving only a count that no longer matched. The upstream TypeScript
-implementation had already unified on `[UW]` for this reason.
+leaving only a count that no longer matched.
+
+This was not a porting slip: the TypeScript `agent-slack` this CLI grew
+alongside carried the same `^U[A-Z0-9]{8,}$` rule, and fixed it independently
+in July 2026 (stablyai/agent-slack#114). Both implementations shared the
+assumption; theirs was found first.
 
 ## Referenced-entity resolution / caching
 
