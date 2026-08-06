@@ -6,8 +6,11 @@ import (
 )
 
 var (
-	mrkdwnLabeledLinkRe = regexp.MustCompile(`<((https?://)[^>|]+)\|([^>]+)>`)
-	mrkdwnBareLinkRe    = regexp.MustCompile(`<((https?://)[^>]+)>`)
+	// mailto: is included because Slack's composer produces it and this CLI
+	// sends it; without it an email link reads back as a raw <mailto:…|label>
+	// token that no reader can use.
+	mrkdwnLabeledLinkRe = regexp.MustCompile(`<((https?://|mailto:)[^>|]+)\|([^>]+)>`)
+	mrkdwnBareLinkRe    = regexp.MustCompile(`<((https?://|mailto:)[^>]+)>`)
 	mrkdwnChannelRe     = regexp.MustCompile(`<#[A-Z0-9]+\|([^>]+)>`)
 	mrkdwnUserLabelRe   = regexp.MustCompile(`<@([A-Z0-9]+)\|([^>]+)>`)
 	mrkdwnUserRe        = regexp.MustCompile(`<@([A-Z0-9]+)>`)

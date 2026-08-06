@@ -236,3 +236,22 @@ func TestKitchenSinkRoundTrip(t *testing.T) {
 		t.Errorf("escaped marker lost\n--- got ---\n%s", got)
 	}
 }
+	cases := map[string]string{
+		"<mailto:a@b.invalid|email me>": "[email me](mailto:a@b.invalid)",
+		"<mailto:a@b.invalid>":          "mailto:a@b.invalid",
+		"<https://x.invalid|site>":      "[site](https://x.invalid)",
+	}
+	for input, want := range cases {
+		if got := MrkdwnToMarkdown(input, false); got != want {
+			t.Errorf("MrkdwnToMarkdown(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+// Additive fields a reader needs: a thread root that says how big the thread
+// is, and a file that carries a human label even when it has no filename.
+func TestCompactCarriesReplyCountAndFileTitle(t *testing.T) {
+	msg := MessageSummary{
+		ChannelID:  "C0FAKE1",
+		TS:         "1700000010.000100",
+		Text:       "the question",
