@@ -51,7 +51,7 @@ for the raw Slack API payload.
 - **channel**: `id, name, is_private, is_im, is_mpim, is_archived, is_member, member_count, topic`
 - **user**: `id, name, real_name, display_name, is_bot, deleted, tz, email`
 - **usergroup**: `id, handle, name, description, user_count, channels, groups` — `channels`/`groups` are the group's *default* channels/subteams (members are auto-added); the CLI lists them all and takes no view on which is "best" to post in
-- **message**: `channel_id, ts, thread_ts?, author{user_id}, content, files?, reactions?` — each `files[]` entry has `id` (the `F…` to pass to `message edit --remove-attachment`), `name`, `mimetype`, and `path` once downloaded
+- **message**: `channel_id, ts, thread_ts?, author{user_id}, content, reply_count?, files?, reactions?` — `reply_count` appears on a thread root, so you can tell a two-reply aside from a long decision without opening it. Each `files[]` entry has `id` (the `F…` to pass to `message edit --remove-attachment`), `name` (the filename), `title` (the display label, when it differs), `mimetype`, and `path` once downloaded
 
 The body field is `content`, **not** `text`: one rendered-Markdown string
 merging Slack's raw `text`, blocks, and attachment/app-card unfurls (it is

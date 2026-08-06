@@ -90,12 +90,15 @@ func TestToCompactMessageFailedDownloadKeepsMetadata(t *testing.T) {
 	}
 }
 
+// name is the filename and title the display label; they are not
+// interchangeable, so title never masquerades as a name. It is emitted as
+// itself instead, which is what gives a title-only file a readable label.
 func TestToCompactMessageNameDoesNotFallBackToTitle(t *testing.T) {
 	msg := makeMessage(FileSummary{ID: "F2", Title: "My Document", Mimetype: "text/plain"})
 	compact := ToCompactMessage(msg, CompactOptions{
 		DownloadedPaths: map[string]DownloadResult{"F2": {OK: true, Path: "/tmp/F2/doc.txt"}},
 	})
-	want := []CompactFile{{ID: "F2", Mimetype: "text/plain", Path: "/tmp/F2/doc.txt"}}
+	want := []CompactFile{{ID: "F2", Title: "My Document", Mimetype: "text/plain", Path: "/tmp/F2/doc.txt"}}
 	if !reflect.DeepEqual(compact.Files, want) {
 		t.Errorf("Files = %+v, want %+v", compact.Files, want)
 	}

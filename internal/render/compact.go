@@ -90,11 +90,15 @@ type DownloadResult struct {
 // ChannelID is omitempty because thread listings blank it (the channel is in
 // the list's meta line instead).
 type CompactMessage struct {
-	ChannelID        string            `json:"channel_id,omitempty"`
-	TS               string            `json:"ts"`
-	ThreadTS         string            `json:"thread_ts,omitempty"`
-	Author           *CompactAuthor    `json:"author,omitempty"`
-	Content          string            `json:"content,omitempty"`
+	ChannelID string         `json:"channel_id,omitempty"`
+	TS        string         `json:"ts"`
+	ThreadTS  string         `json:"thread_ts,omitempty"`
+	Author    *CompactAuthor `json:"author,omitempty"`
+	Content   string         `json:"content,omitempty"`
+	// ReplyCount is set on a thread root. Without it a reader knows a thread
+	// exists but not whether it is worth opening — ForwardedThread has carried
+	// the same field all along.
+	ReplyCount       int               `json:"reply_count,omitempty"`
 	Files            []CompactFile     `json:"files,omitempty"`
 	Reactions        []CompactReaction `json:"reactions,omitempty"`
 	ForwardedThreads []ForwardedThread `json:"forwarded_threads,omitempty"`
@@ -114,8 +118,10 @@ func AuthorRef(userID, botID string) *CompactAuthor {
 }
 
 type CompactFile struct {
-	ID       string `json:"id,omitempty"`
-	Name     string `json:"name,omitempty"`
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Title is Slack's display label, distinct from Name (the filename).
+	Title    string `json:"title,omitempty"`
 	Mimetype string `json:"mimetype,omitempty"`
 	Mode     string `json:"mode,omitempty"`
 	Path     string `json:"path,omitempty"`
@@ -179,6 +185,14 @@ func ToCompactMessage(msg MessageSummary, opts CompactOptions) CompactMessage {
 	var files []CompactFile
 	for _, f := range msg.Files {
 		cf := CompactFile{ID: f.ID, Name: f.Name, Mimetype: f.Mimetype, Mode: f.Mode}
+		// name is Slack's FILENAME and title its display label — folding one
+		// into the other hands a caller a "filename" with no extension. They
+		// stay separate; title is emitted when it adds something, so a file
+		// carrying only a title still has a human-readable label instead of
+		// just an id and a mimetype.
+		if f.Title != "" && f.Title != f.Name {
+			cf.Title = f.Title
+		}
 		if entry, ok := opts.DownloadedPaths[f.ID]; ok {
 			cf.Path = entry.Path
 			if !entry.OK {
@@ -206,6 +220,7 @@ func ToCompactMessage(msg MessageSummary, opts CompactOptions) CompactMessage {
 		ThreadTS:         threadTS,
 		Author:           author,
 		Content:          content,
+		ReplyCount:       msg.ReplyCount,
 		Files:            files,
 		Reactions:        reactions,
 		ForwardedThreads: ExtractForwardedThreads(msg.Attachments),

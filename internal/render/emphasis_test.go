@@ -236,6 +236,11 @@ func TestKitchenSinkRoundTrip(t *testing.T) {
 		t.Errorf("escaped marker lost\n--- got ---\n%s", got)
 	}
 }
+
+// Slack's composer produces mailto: links and this CLI sends them, so reading
+// one back as a raw <mailto:…|label> token leaves the caller with something no
+// reader can use.
+func TestMailtoLinksConvertInbound(t *testing.T) {
 	cases := map[string]string{
 		"<mailto:a@b.invalid|email me>": "[email me](mailto:a@b.invalid)",
 		"<mailto:a@b.invalid>":          "mailto:a@b.invalid",
@@ -255,3 +260,25 @@ func TestCompactCarriesReplyCountAndFileTitle(t *testing.T) {
 		ChannelID:  "C0FAKE1",
 		TS:         "1700000010.000100",
 		Text:       "the question",
+		ReplyCount: 12,
+		Files:      []FileSummary{{ID: "F0FAKEFILE", Title: "Q3 Report", Mimetype: "application/pdf"}},
+	}
+	compact := ToCompactMessage(msg, CompactOptions{})
+	if compact.ReplyCount != 12 {
+		t.Errorf("reply_count = %d, want 12 — a reader cannot tell a two-reply aside from a long decision without it", compact.ReplyCount)
+	}
+	if len(compact.Files) != 1 || compact.Files[0].Title != "Q3 Report" {
+		t.Errorf("files = %+v, want the title surfaced", compact.Files)
+	}
+	if compact.Files[0].Name != "" {
+		t.Error("title must not masquerade as a filename")
+	}
+}
+
+// A shortcode shown as sample syntax inside code must stay text — the same rule
+// mention resolution already follows.
+func TestInlineEmojiSkipsCodeSpans(t *testing.T) {
+	resolve := func(name string) string {
+		if name == "shipit" {
+			return "IMG"
+		}
