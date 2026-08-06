@@ -8,7 +8,6 @@ import (
 
 var (
 	// Enterprise-grid W IDs count as users here, unlike target parsing.
-	referencedUserIDRe      = regexp.MustCompile(`^[UW][A-Z0-9]{8,}$`)
 	referencedChannelIDRe   = regexp.MustCompile(`^[CG][A-Z0-9]{8,}$`)
 	referencedUsergroupIDRe = regexp.MustCompile(`^S[A-Z0-9]{8,}$`)
 
@@ -18,9 +17,10 @@ var (
 )
 
 // IsReferencedUserID reports whether s is a user ID as referenced in message
-// payloads — including enterprise-grid "W…" IDs, unlike target parsing's
-// IsUserID (which accepts only "U…").
-func IsReferencedUserID(s string) bool { return referencedUserIDRe.MatchString(s) }
+// payloads. One rule serves both this and target parsing: when they diverged,
+// a W-prefixed user rendered correctly inside a mention but could not be used
+// as a target.
+func IsReferencedUserID(s string) bool { return IsUserID(s) }
 
 // IsReferencedChannelID reports whether s is a channel/group ID (C…/G…).
 func IsReferencedChannelID(s string) bool { return referencedChannelIDRe.MatchString(s) }

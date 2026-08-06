@@ -109,8 +109,26 @@ func TestIsChannelIDIsUserID(t *testing.T) {
 	if !IsUserID("U12345ABCDE") {
 		t.Error("expected user ID match")
 	}
-	if IsUserID("U1234") || IsUserID("W12345ABCDE") {
-		t.Error("unexpected user ID match")
+	// W-prefixed ids belong to Enterprise Grid and Slack Connect users. This
+	// deliberately changed: rejecting them did not fail loudly — a W-prefixed
+	// target fell through to channel-name resolution, and a W-prefixed reactor
+	// was dropped from output — while mention rendering accepted them all
+	// along, so one user was two different things depending on the code path.
+	if !IsUserID("W12345ABCDE") {
+		t.Error("expected an Enterprise Grid / Connect user ID to be a user ID")
+	}
+	if IsUserID("U1234") || IsUserID("W1234") {
+		t.Error("unexpected user ID match: too short")
+	}
+	if IsUserID("Wendy") || IsUserID("WORKFLOW") {
+		t.Error("a handle is not an id: the shape rule (9+ uppercase alphanumerics) is what separates them")
+	}
+	// One rule for one concept: target parsing and mention rendering must not
+	// disagree about what a user id is.
+	for _, id := range []string{"U12345ABCDE", "W12345ABCDE", "Wendy", "U1234"} {
+		if IsUserID(id) != IsReferencedUserID(id) {
+			t.Errorf("IsUserID(%q)=%v but IsReferencedUserID=%v", id, IsUserID(id), IsReferencedUserID(id))
+		}
 	}
 }
 
@@ -124,5 +142,44 @@ func TestIsBotIDRequiresTheIDShape(t *testing.T) {
 		if IsBotID(notABot) {
 			t.Errorf("IsBotID(%q) should be false", notABot)
 		}
+	}
+}
+
+// The three places the U-only rule failed silently, pinned end to end.
+func TestEnterpriseUserIDsWorkAsTargetsAndReactors(t *testing.T) {
+	const enterpriseUser = "W01ENTERPRISE"
+
+	// 1. As a target it must be a user, not a channel name. Before, it fell
+	//    through to channel resolution and looked up "#W01ENTERPRISE".
+	target, err := ParseTarget(enterpriseUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Kind != TargetUser || target.UserID != enterpriseUser {
+		t.Errorf("target = %+v, want a user target", target)
+	}
+
+	// 2. As a reactor it must survive into output. Before, it was filtered out
+	//    of reactions[].users and only the count hinted anything was missing.
+	msg := MessageSummary{
+		ChannelID: "C0123ABCD",
+		TS:        "1700000010.000100",
+		Reactions: []any{map[string]any{
+			"name":  "eyes",
+			"users": []any{"U12345ABCDE", enterpriseUser},
+			"count": float64(2),
+		}},
+	}
+	compact := ToCompactMessage(msg, CompactOptions{IncludeReactions: true})
+	if len(compact.Reactions) != 1 {
+		t.Fatalf("reactions = %+v", compact.Reactions)
+	}
+	if len(compact.Reactions[0].Users) != 2 {
+		t.Errorf("reactors = %v, want the Enterprise Grid user kept", compact.Reactions[0].Users)
+	}
+
+	// 3. Inside a mention it resolves, as it always did.
+	if !IsReferencedUserID(enterpriseUser) {
+		t.Error("mention rendering should still accept it")
 	}
 }

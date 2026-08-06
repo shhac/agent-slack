@@ -209,6 +209,18 @@ The broader behavior and output decisions (NDJSON lists, compact channel/user
 projections, download policy, no first-run browser auto-extraction, `--yes`
 scope, `file download` / `api call` additions) are recorded in `cli-design.md`.
 
+## User IDs on Enterprise Grid
+
+Slack issues both `U…` and `W…` user IDs; `W…` belongs to Enterprise Grid and
+Slack Connect users. One rule (`render.IsUserID`) covers both, everywhere.
+
+They diverged once, and the failures were silent rather than loud: mention
+rendering accepted `W…` while target parsing did not, so a `W…` target fell
+through to *channel-name* resolution (`#W01ENTERPRISE`), `ResolveUserID` treated
+it as a handle, and a `W…` reactor was filtered out of `reactions[].users`
+leaving only a count that no longer matched. The upstream TypeScript
+implementation had already unified on `[UW]` for this reason.
+
 ## Referenced-entity resolution / caching
 
 - A rich_text mention carries only the bare id (`{user_id}`/`{channel_id}`/

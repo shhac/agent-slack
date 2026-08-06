@@ -31,8 +31,13 @@ type Target struct {
 }
 
 var (
-	channelIDRe   = regexp.MustCompile(`^[CDG][A-Z0-9]{8,}$`)
-	userIDRe      = regexp.MustCompile(`^U[A-Z0-9]{8,}$`)
+	channelIDRe = regexp.MustCompile(`^[CDG][A-Z0-9]{8,}$`)
+	// Slack issues both U- and W-prefixed user IDs; W belongs to Enterprise
+	// Grid and Slack Connect users. They are the same thing everywhere it
+	// matters, and treating W as "not a user" does not fail loudly — a
+	// W-prefixed target falls through to channel-name resolution, and a
+	// W-prefixed reactor is silently dropped from output.
+	userIDRe      = regexp.MustCompile(`^[UW][A-Z0-9]{8,}$`)
 	botIDRe       = regexp.MustCompile(`^B[A-Z0-9]{8,}$`)
 	usergroupIDRe = regexp.MustCompile(`^S[A-Z0-9]{8,}$`)
 )
