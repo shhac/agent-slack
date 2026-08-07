@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 
 	"github.com/shhac/lib-agent-cli/xdg"
+
+	"github.com/shhac/agent-slack/internal/fslock"
 )
 
 // migrateLocked rewrites a version-1 store as version 2, assuming the caller
@@ -123,8 +125,18 @@ func migrateLegacyFile(path string) {
 	if err != nil {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return
-	}
-	_ = os.WriteFile(path, raw, 0o600)
+	// The Stat above is only a fast path keeping the common case (store already
+	// present) off the lock; the decision to seed has to be re-made under it.
+	// Otherwise a concurrent invocation can create and populate the store in the
+	// window between the two, and the seed — metadata-only, secrets left as
+	// placeholders — overwrites it, stranding secrets the Keychain still holds
+	// but nothing references any more. WriteFile also replaces atomically, so
+	// the lock-free readers in readFile never observe a half-written seed (which
+	// they would silently degrade to "empty store", and the next Save persist).
+	_ = fslock.WithLock(path, func() error {
+		if _, serr := os.Stat(path); serr == nil {
+			return nil
+		}
+		return fslock.WriteFile(path, raw, 0o600)
+	})
 }

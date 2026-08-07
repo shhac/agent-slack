@@ -408,7 +408,7 @@ func TestConcurrentLoadsMigrateV1Once(t *testing.T) {
 	kc := NewMemoryKeychain()
 	path := v1MigrationFixture(t, kc)
 
-	const workers = 16
+	const workers = 20
 	var wg sync.WaitGroup
 	errs := make([]error, workers)
 	for i := range workers {
@@ -446,6 +446,68 @@ func TestConcurrentLoadsMigrateV1Once(t *testing.T) {
 	for _, want := range []string{"xoxc:acme", "xoxd:acme", "token:beta"} {
 		if _, ok := entries[want]; !ok {
 			t.Errorf("missing re-homed account %s after concurrent migration", want)
+		}
+	}
+}
+
+// The seed from the TS tool's file races the store it seeds into. Its
+// existence check is only a fast path; between it and the write, another
+// invocation can create and populate the store. A seed landing on top of that
+// would erase a workspace whose secrets the Keychain already holds — stranded,
+// because nothing references them any more. Re-deciding under the lock makes
+// both orderings safe, so the upserted workspace survives either way (alone if
+// it won, alongside the seeded entries if it lost).
+func TestLegacySeedNeverClobbersAConcurrentUpsert(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	legacyDir := filepath.Join(os.Getenv("XDG_CONFIG_HOME"), legacyConfigDirName)
+	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Metadata only, secrets left as placeholders — what the TS tool leaves
+	// behind, since it keys its Keychain entries off a different service.
+	legacy := `{"version":1,"workspaces":[{"workspace_url":"https://legacy.slack.com",` +
+		`"auth":{"auth_type":"standard","token":"__KEYCHAIN__"}}]}`
+	if err := os.WriteFile(filepath.Join(legacyDir, "credentials.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Repeated because the two orderings are scheduler-dependent: one round
+	// proves nothing, and the unlocked version only loses on the rounds where
+	// the seed lands last.
+	for round := range 50 {
+		path := filepath.Join(t.TempDir(), "credentials.json")
+		kc := NewMemoryKeychain()
+
+		var wg sync.WaitGroup
+		var upsertErr error
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			migrateLegacyFile(path)
+		}()
+		go func() {
+			defer wg.Done()
+			_, upsertErr = NewWithStore(path, kc).Upsert(Workspace{
+				Alias: "fresh",
+				URL:   "https://fresh.slack.com",
+				Auth:  Auth{Type: AuthStandard, Token: "xoxb-fresh"},
+			})
+		}()
+		wg.Wait()
+		if upsertErr != nil {
+			t.Fatalf("round %d: upsert: %v", round, upsertErr)
+		}
+
+		creds, err := NewWithStore(path, kc).Load()
+		if err != nil {
+			t.Fatalf("round %d: load: %v", round, err)
+		}
+		idx := findAliasIndex(creds.Workspaces, "fresh")
+		if idx == -1 {
+			t.Fatalf("round %d: the seed clobbered the concurrently stored workspace", round)
+		}
+		if got := creds.Workspaces[idx].Auth.Token; got != "xoxb-fresh" {
+			t.Fatalf("round %d: fresh token = %q, want xoxb-fresh", round, got)
 		}
 	}
 }

@@ -3,6 +3,12 @@
 // and an atomic write so lock-free readers never observe a torn file. The
 // lock lives on a sidecar "<path>.lock" file (never the data file itself) so
 // writers can atomically rename over the data file while holding the lock.
+//
+// This is deliberately interoperable with lib-agent-cli's creds.Store: same
+// sidecar name, same flock(LOCK_EX). A store guarded here and one guarded there
+// still serialize against each other, so the two can coexist on one path — what
+// this package adds over creds.Store is the permissive ReadJSON contract below,
+// which agent-slack's state files depend on.
 package fslock
 
 import (

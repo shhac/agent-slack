@@ -464,7 +464,7 @@ func TestSecretStatusesFileFallback(t *testing.T) {
 func TestConcurrentUpsertsDoNotLoseWorkspaces(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "credentials.json")
 
-	const workers = 16
+	const workers = 20
 	var wg sync.WaitGroup
 	errs := make([]error, workers)
 	for i := range workers {
@@ -491,6 +491,22 @@ func TestConcurrentUpsertsDoNotLoseWorkspaces(t *testing.T) {
 	}
 	if len(creds.Workspaces) != workers {
 		t.Errorf("workspaces after %d concurrent upserts = %d (lost updates)", workers, len(creds.Workspaces))
+	}
+	// Not just the count: each writer's own token has to be the one that came
+	// back, or two upserts merged onto one entry instead of surviving separately.
+	byURL := map[string]Workspace{}
+	for _, w := range creds.Workspaces {
+		byURL[w.URL] = w
+	}
+	for i := range workers {
+		w, ok := byURL[fmt.Sprintf("https://ws-%02d.slack.com", i)]
+		if !ok {
+			t.Errorf("workspace %02d was lost", i)
+			continue
+		}
+		if want := fmt.Sprintf("xoxp-%02d", i); w.Auth.Token != want {
+			t.Errorf("workspace %02d token = %q, want %q", i, w.Auth.Token, want)
+		}
 	}
 }
 

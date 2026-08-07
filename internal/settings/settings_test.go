@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -97,6 +98,46 @@ func TestConcurrentSetsDoNotLoseKeys(t *testing.T) {
 	for _, cat := range CacheTTLCategories {
 		if got := cfg.Get("cache.ttl." + cat); got != "30m" {
 			t.Errorf("cache.ttl.%s = %q after concurrent sets (lost update)", cat, got)
+		}
+	}
+}
+
+// The same fan-out at 20 writers, against the primitive Set and Unset share.
+// It goes at mutate rather than Set because Set only accepts KnownKeys, and
+// there are fewer of those than writers — distinct keys are what makes a lost
+// update visible at all.
+func TestConcurrentMutatesDoNotLoseKeys(t *testing.T) {
+	isolate(t)
+
+	const writers = 20
+	var wg sync.WaitGroup
+	errs := make([]error, writers)
+	for i := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			key := fmt.Sprintf("cache.ttl.category-%02d", i)
+			errs[i] = mutate(func(cfg *Config) { cfg.Settings[key] = "30m" })
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("mutate %d: %v", i, err)
+		}
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Settings) != writers {
+		t.Errorf("%d of %d concurrent writes survived", len(cfg.Settings), writers)
+	}
+	for i := range writers {
+		key := fmt.Sprintf("cache.ttl.category-%02d", i)
+		if got := cfg.Get(key); got != "30m" {
+			t.Errorf("%s = %q after concurrent mutates (lost update)", key, got)
 		}
 	}
 }
