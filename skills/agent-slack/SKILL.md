@@ -1,13 +1,13 @@
 ---
 name: agent-slack
 description: |
-  Slack CLI for AI agents: read permalinks, threads, history, unreads,
-  saved-for-later, canvases, and workflows, search messages and files,
-  download attachments, look up users, list or create channels, open DMs,
-  send, edit, and delete messages, react, schedule sends, and call raw Slack
-  APIs. Use when asked to fetch a Slack message URL, read a thread or
-  channel, check unreads, search Slack, post or edit a message, react,
-  invite someone to a channel, run a workflow, or fetch a canvas.
+  Read and act on Slack from the terminal: permalinks, threads, history,
+  unreads, saved-for-later, canvases, and workflows; message and file
+  search; attachment downloads; user lookup; channel listing and creation;
+  DMs; sending, editing, deleting, scheduling, and reacting; and raw Slack
+  API calls. Use when asked to fetch a Slack message URL, read a thread or
+  channel, check unreads, search Slack, post or edit a message, invite
+  someone to a channel, or run a workflow.
 allowed-tools: Bash(agent-slack *) Read
 ---
 
