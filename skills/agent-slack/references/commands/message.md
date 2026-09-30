@@ -80,9 +80,10 @@ target excludes replies in existing threads, matching what `message list
 is most of what an agent waits on. `--exclude-bots` to drop them.
 
 **Scope details.** A permalink or `--thread-ts` target awaits inside that
-thread. A channel target matches channel-level messages plus replies to the
-conversation root (`--conversation`, else the `--since` message); *other*
-threads stay out unless `--include-thread-replies`.
+thread. A channel target matches channel-level messages plus replies in the
+conversation root's thread (`--conversation`, else the `--since` message) and
+in threads started on any later message; threads started *before* the root
+stay out unless `--include-thread-replies`.
 
 ## Holding a conversation (`--conversation`)
 
@@ -98,10 +99,14 @@ agent-slack message await "#team" --conversation "$root" --since "$cursor" \
   thread (resolved to its root). Same value every turn. Refused with a
   permalink target or `--thread-ts` — it watches the channel as well.
 - `--since` is the previous result's `cursor`, never your own reply's ts.
+- **Threads.** The root's thread and any thread started on a later message
+  are in scope — so threading on *their* answer keeps the conversation. The
+  catch-up reads history from the root and each such thread whose newest
+  reply is after `--since` (up to 20; beyond that `gaps` counts it).
 - **Reactions** count when they are on the root, or on one of *your* messages
-  in the conversation: a reply in its thread, or anything you posted after
-  `--since`. A reaction on someone else's message, or on yours in another
-  thread, is not an answer. On a channel await *without* `--since`, and on a
+  in the conversation: a reply in one of its threads, or anything you posted
+  after `--since`. A reaction on someone else's message, or on yours in a
+  thread from before the root, is not an answer. On a channel await *without* `--since`, and on a
   plain `stream`, every reaction in scope still matches.
 - **Caught-up reactions.** Reactions on messages at or after `--since` that
   landed before the run was listening are read back from history:

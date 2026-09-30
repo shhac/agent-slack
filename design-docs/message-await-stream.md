@@ -203,10 +203,21 @@ then uniform: `--conversation` is fixed for the whole conversation, `--since`
 is always the previous result's `cursor`. Not the caller's own reply: anything
 that arrived between the last cursor and that reply would be skipped.
 
+**Threads on later messages.** The first cut followed only the root's own
+thread. In a live DM test the person answered at the top level; replying by
+threading on *their* answer — the natural way to answer someone — would have
+started a thread nothing watched. So a thread belongs to the conversation when
+it is the root's or was started on any message posted after the root
+(`inConversationThread`); a thread started before the root stays out. The
+catch-up follows suit: history is read from the root rather than the cursor
+(a new reply can land on a thread hung off a message older than the cursor),
+and each such thread is read only when its `latest_reply` is after the cursor,
+up to 20 per catch-up — more counts as a gap rather than fanning out.
+
 **Reaction scope.** A channel await used to match any reaction in the channel.
 With `RepliesTo` set, a reaction counts only on the root, or on one of the
-caller's own messages *in this conversation* — a reply in the root's thread, or
-anything posted after `--since`. "Own" comes from the frame's `item_user`. Under
+caller's own messages *in this conversation* — a reply in one of its threads,
+or anything posted after `--since`. "Own" comes from the frame's `item_user`. Under
 browser auth "self" is a person who also posts elsewhere in the channel, so
 "any reaction on my messages" would count a 😂 on an unrelated post. Reaction
 frames carry no `thread_ts`, so the watch session indexes the thread of every

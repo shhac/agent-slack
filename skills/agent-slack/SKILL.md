@@ -171,9 +171,10 @@ Ask → answer → reply in the thread → wait → … is a loop over one threa
 Two rules keep it from losing answers:
 
 - **`--conversation <root ts>`** names the message that started it, the same
-  value every turn. Replies in its thread, messages in the channel, and
-  reactions on the root or on any of your messages in it all count. Without
-  it, from the second turn on an in-thread answer is missed.
+  value every turn. Replies in its thread, messages in the channel, replies
+  in a thread on any later message, and reactions on the root or on any of
+  your messages in it all count. Without it, from the second turn on an
+  in-thread answer is missed.
 - **`--since` is always the previous result's `cursor`** — never your own
   reply's ts, which would skip whatever arrived while you were writing it.
 
@@ -222,17 +223,17 @@ such gap.
 message:
 
 - They replied **in the thread** → reply in the thread.
-- They replied **at the top level** → reply at the top level. Never thread
-  under your own message after they have left it: to them it reads as you
-  talking to yourself. People do this constantly, especially while the thread
+- They replied **at the top level** → reply at the top level, or thread on
+  *their* message. Never thread under your own message after they have left
+  it: to them it reads as you talking to yourself. People do this constantly, especially while the thread
   is near the bottom (fewer than ~5 messages since the root) — to them it is
   one conversation.
 - **In a DM, top level is the default**; threads there are rare.
 - In a busy channel that has moved on, reply at the top level and `@mention`
   them so it reaches them.
 
-Keep `--conversation` unchanged for all of these: the root's thread and the
-top level are both already in scope.
+Keep `--conversation` unchanged for all of these: the top level, the root's
+thread, and threads on later messages are all already in scope.
 
 ## Watching a channel
 
