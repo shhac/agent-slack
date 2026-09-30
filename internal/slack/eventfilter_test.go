@@ -336,3 +336,25 @@ func TestJustAfterCarriesIntoSeconds(t *testing.T) {
 		}
 	}
 }
+
+// Replying by threading on the person's answer keeps the conversation going;
+// a thread on something from before the conversation started is not it.
+func TestFilterFollowsThreadsStartedAfterTheRoot(t *testing.T) {
+	const root = "1700000010.000100"
+	f := EventFilter{
+		Kinds:    []EventKind{EventMessage, EventReactionAdded},
+		Channels: []string{"C1"}, RepliesTo: root, Since: "1700000050.000100",
+		SelfUserID: "U_ME",
+	}
+	if !f.Matches(messageEvent("C1", "U2", "1700000060.000100", "1700000020.000100")) {
+		t.Error("a reply in a thread on a later message is part of the conversation")
+	}
+	if f.Matches(messageEvent("C1", "U2", "1700000060.000100", "1700000005.000100")) {
+		t.Error("a thread started before the root is not")
+	}
+	onMine := reactionEvent("C1", "U2", "+1", "1700000030.000100", "1700000070.000100")
+	onMine.ThreadTS, onMine.TargetAuthor = "1700000020.000100", "U_ME"
+	if !f.Matches(onMine) {
+		t.Error("a reaction on my reply in that thread is an answer")
+	}
+}

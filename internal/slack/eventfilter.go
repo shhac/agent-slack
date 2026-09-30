@@ -138,15 +138,23 @@ func (f EventFilter) inChannelScope(e Event) bool {
 	if !isThreadReply {
 		return true
 	}
-	return f.IncludeThreadReplies || e.ThreadTS == f.RepliesTo
+	return f.IncludeThreadReplies || f.inConversationThread(e.ThreadTS)
+}
+
+// inConversationThread reports a thread that belongs to the conversation: the
+// root's own, or one started on a message posted after the root. Answering
+// someone by threading on *their* reply is still the same conversation, and a
+// thread on a message from before the root is not.
+func (f EventFilter) inConversationThread(threadTS string) bool {
+	return f.RepliesTo != "" && compareTS(threadTS, f.RepliesTo) >= 0
 }
 
 // reactsWithinConversation decides whether a reaction answers the caller.
 // Anyone reacting to someone else's message is not talking to the caller, and
 // under browser auth "self" is a person who also posts elsewhere in the
 // channel — so a reaction on the caller's message counts only when that
-// message is part of this conversation: the root, a reply in its thread, or
-// something the caller posted after --since. A reaction's thread is known
+// message is part of this conversation: the root, a reply in one of its
+// threads, or something the caller posted after --since. A reaction's thread is known
 // only when the watch has seen the message it targets; an unknown one falls
 // back to the --since bound.
 func (f EventFilter) reactsWithinConversation(e Event) bool {
@@ -157,7 +165,7 @@ func (f EventFilter) reactsWithinConversation(e Event) bool {
 		return false
 	}
 	if e.ThreadTS != "" {
-		return e.ThreadTS == f.RepliesTo
+		return f.inConversationThread(e.ThreadTS)
 	}
 	return compareTS(e.TS, f.RepliesTo) >= 0 && compareTS(e.TS, f.Since) >= 0
 }

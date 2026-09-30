@@ -59,10 +59,13 @@ func ToFileSummary(value any) *FileSummary {
 // Blocks, Attachments, and Reactions stay as decoded JSON because rendering
 // walks their loosely-specified shapes.
 type MessageSummary struct {
-	ChannelID   string        `json:"channel_id"`
-	TS          string        `json:"ts"`
-	ThreadTS    string        `json:"thread_ts,omitempty"`
-	ReplyCount  int           `json:"reply_count,omitempty"`
+	ChannelID  string `json:"channel_id"`
+	TS         string `json:"ts"`
+	ThreadTS   string `json:"thread_ts,omitempty"`
+	ReplyCount int    `json:"reply_count,omitempty"`
+	// LatestReply is the ts of a thread root's newest reply. Engine-only: a
+	// catch-up uses it to skip threads with nothing new.
+	LatestReply string        `json:"-"`
 	User        string        `json:"user,omitempty"`
 	BotID       string        `json:"bot_id,omitempty"`
 	Text        string        `json:"text,omitempty"`

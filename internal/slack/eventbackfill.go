@@ -53,9 +53,9 @@ func (s *watchSession) backfillChannel(ctx context.Context, channelID, threadTS,
 
 // catchUpEvents turns a catch-up read into events in cursor order: every
 // message after the cursor, plus the reactions on every message at or after
-// it (the filter drops them when reactions were not asked for). History does not date a
-// reaction, but one on a message posted at or after --since cannot predate
-// --since, so it is new. Reactions on older messages cannot be told apart
+// it (the filter drops them when reactions were not asked for). History does
+// not date a reaction, but one on a message posted at or after --since cannot
+// predate --since, so it is new. Reactions on older messages cannot be told apart
 // from ones that were already there, and are left to the live socket.
 func catchUpEvents(channelID string, messages []render.MessageSummary, since string) []Event {
 	var events []Event
@@ -107,29 +107,66 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 	if threadTS != "" {
 		return FetchThread(ctx, s.client, channelID, threadTS, false)
 	}
-	messages, err := s.historySince(ctx, channelID, since)
+	repliesTo := s.opts.Filter.RepliesTo
+	if repliesTo == "" {
+		return s.historySince(ctx, channelID, since)
+	}
+	// A conversation's answers can sit in threads on any of its messages, and
+	// a thread reply is absent from channel history unless broadcast. So read
+	// from the root rather than the cursor — a new reply can land in a thread
+	// on a message from well before it — and then each thread with news.
+	messages, err := s.historySince(ctx, channelID, earlierTS(repliesTo, since))
 	if err != nil {
 		return nil, err
 	}
+	for _, root := range s.threadsWithNews(messages, repliesTo, since) {
+		// Best-effort, unlike the channel read: --since may be a cursor from
+		// an earlier run rather than a message that started a thread. Failing
+		// the whole await over a speculative fetch would be worse than losing
+		// in-thread replies from before it started — the live socket still
+		// delivers them from here on.
+		replies, err := FetchThread(ctx, s.client, channelID, root, false)
+		if err != nil {
+			s.client.debugf("replies backfill for %s skipped: %v", root, err)
+			continue
+		}
+		messages = append(messages, replies...)
+	}
+	return messages, nil
+}
 
-	// A reply threaded on the awaited message is not in channel history unless
-	// it was broadcast, so it needs its own read — otherwise the backfill
-	// misses the very answer RepliesTo exists to catch.
-	repliesTo := s.opts.Filter.RepliesTo
-	if repliesTo == "" {
-		return messages, nil
+// maxCatchUpThreads bounds the thread reads one catch-up makes, so a long
+// conversation in a busy channel cannot fan out into a request per thread.
+const maxCatchUpThreads = 20
+
+// threadsWithNews picks the conversation's threads worth reading: always the
+// root's, plus every thread started on a later message whose newest reply is
+// after the cursor. Past the bound the rest are dropped and counted as a gap.
+func (s *watchSession) threadsWithNews(messages []render.MessageSummary, repliesTo, since string) []string {
+	roots := []string{repliesTo}
+	for _, msg := range messages {
+		startsThread := msg.ReplyCount > 0 && (msg.ThreadTS == "" || msg.ThreadTS == msg.TS)
+		if !startsThread || !tsAfter(msg.TS, repliesTo) {
+			continue
+		}
+		if msg.LatestReply != "" && !tsAfter(msg.LatestReply, since) {
+			continue
+		}
+		roots = append(roots, msg.TS)
 	}
-	// Best-effort, unlike the channel read: --since may be a cursor from an
-	// earlier run rather than a message the caller posted, in which case there
-	// is no thread to read. Failing the whole await over a speculative fetch
-	// would be worse than losing in-thread replies from before it started —
-	// the live socket still delivers them from here on.
-	replies, err := FetchThread(ctx, s.client, channelID, repliesTo, false)
-	if err != nil {
-		s.client.debugf("replies backfill for %s skipped: %v", repliesTo, err)
-		return messages, nil
+	if len(roots) > maxCatchUpThreads {
+		s.result.Gaps++
+		roots = roots[:maxCatchUpThreads]
 	}
-	return append(messages, replies...), nil
+	return roots
+}
+
+// earlierTS returns whichever timestamp is earlier.
+func earlierTS(a, b string) string {
+	if compareTS(a, b) <= 0 {
+		return a
+	}
+	return b
 }
 
 // historySince reads every message after a cursor, following pages rather than

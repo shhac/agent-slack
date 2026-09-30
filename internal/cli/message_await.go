@@ -88,7 +88,7 @@ mistaken for silence.`,
 	cmd.Flags().StringVar(&threadTS, "thread-ts", "", "Await inside this thread")
 	cmd.Flags().StringVar(&since, "since", "", "Only events strictly after this ts (the ts a send returned, or a previous cursor)")
 	cmd.Flags().StringVar(&conversation, "conversation", "",
-		"Ts or permalink of the message that started the conversation; replies in its thread and in the channel both count (default: --since)")
+		"Ts or permalink of the message that started the conversation; replies in the channel and in its threads count (default: --since)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "How long to wait before giving up")
 	parent.AddCommand(cmd)
 }

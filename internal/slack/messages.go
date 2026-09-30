@@ -105,6 +105,7 @@ func SummaryFromRaw(channelID string, m map[string]any) render.MessageSummary {
 		TS:          getStr(m, "ts"),
 		ThreadTS:    getStr(m, "thread_ts"),
 		ReplyCount:  int(getNum(m, "reply_count")),
+		LatestReply: getStr(m, "latest_reply"),
 		User:        getStr(m, "user"),
 		BotID:       getStr(m, "bot_id"),
 		Text:        getStr(m, "text"),

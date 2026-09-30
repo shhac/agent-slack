@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -601,5 +602,59 @@ func TestAwaitCountsALiveReactionOnAnEarlierReplyInTheThread(t *testing.T) {
 	}
 	if !result.Received || result.Event.ThreadTS != root {
 		t.Fatalf("want the ✅ on my earlier reply, scoped to the thread; got %+v", result)
+	}
+}
+
+// The person answered at the top level, the caller threaded on that answer,
+// and the reply to it landed before the next await began. The catch-up has to
+// find that thread from the root, since it hangs off a message older than the
+// cursor — and skip threads with nothing new.
+func TestAwaitCatchesUpAReplyInAThreadOnTheirAnswer(t *testing.T) {
+	const (
+		root    = "1700000010.000100"
+		answer  = "1700000020.000100"
+		stale   = "1700000025.000100"
+		cursor  = "1700000040.000100"
+		newTurn = "1700000050.000100"
+	)
+	threadRoot := func(ts, text, latest string) map[string]any {
+		msg := mockslack.Message(ts, mockslack.WSOtherUser, text)
+		msg["reply_count"], msg["latest_reply"] = float64(1), latest
+		return msg
+	}
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.Message(root, mockslack.WSUserID, "how's the dog?"),
+		threadRoot(answer, "great, just went out", newTurn),
+		threadRoot(stale, "old side chat", "1700000030.000100"),
+	))
+	server.HandleWhen("conversations.replies", func(p url.Values) bool { return p.Get("ts") == answer },
+		mockslack.Response{Body: mockslack.History(
+			threadRoot(answer, "great, just went out", newTurn),
+			mockslack.ThreadReply(cursor, mockslack.WSUserID, "did he like it?", answer),
+			mockslack.ThreadReply(newTurn, mockslack.WSOtherUser, "loved it", answer),
+		)})
+	server.HandleBody("conversations.replies", mockslack.History())
+
+	result, err := Await(context.Background(), c, AwaitOptions{
+		Filter: EventFilter{
+			Channels: []string{mockslack.WSChannelID}, RepliesTo: root, Since: cursor,
+			SelfUserID: mockslack.WSUserID,
+		},
+		Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Received || result.Event.Content() != "loved it" {
+		t.Fatalf("want the reply in the thread on their answer, got %+v", result)
+	}
+	if calls := server.CallsFor("conversations.history"); len(calls) == 0 || calls[0].Params.Get("oldest") != root {
+		t.Errorf("the catch-up must read history from the root, got %v", calls)
+	}
+	for _, call := range server.CallsFor("conversations.replies") {
+		if call.Params.Get("ts") == stale {
+			t.Error("a thread whose latest reply predates the cursor should not be read")
+		}
 	}
 }

@@ -37,8 +37,9 @@ Without --channel every conversation you can see is streamed. The run is always
 bounded: --duration, --max-events, or --idle-timeout.
 
 --conversation <ts|permalink> with exactly one --channel follows one
-conversation for as long as it runs: replies in its thread, channel-level
-messages, and reactions on it or on your own messages in it. It takes --since
+conversation for as long as it runs: replies in its thread or a thread on any
+later message, channel-level messages, and reactions on it or on your own
+messages in it. It takes --since
 (the ts you sent, or an earlier cursor) and catches up from there first. This
 is the gapless way to hold a conversation: one socket, no gaps between turns.
 

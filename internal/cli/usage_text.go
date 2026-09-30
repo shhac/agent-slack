@@ -228,13 +228,14 @@ AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
          agent-slack message await "#team" --since "$ts" \
            --events message,reaction --timeout 30m
        A permalink/--thread-ts target awaits inside that thread instead. A
-       channel target excludes OTHER threads' replies (--include-thread-replies
-       opts in); replies to the conversation root always count.
+       channel target excludes threads started before the conversation root
+       (--include-thread-replies opts in); replies in the root's thread, or in
+       a thread on any later message, always count.
        CONVERSATION (multi-turn): --conversation <root ts|permalink> names the
        message that started it — same value every turn — and --since is the
        previous result's cursor (never your own reply's ts). Replies in the
-       root's thread, channel messages, and reactions on the root or on YOUR
-       messages in the conversation all count; without --conversation the
+       root's thread or a thread on any later message, channel messages, and
+       reactions on the root or on YOUR messages in the conversation all count; without --conversation the
        root is the --since message, which is only right on the first turn:
          agent-slack message await "#team" --conversation "$root" \
            --since "$cursor" --events message,reaction --timeout 2h
