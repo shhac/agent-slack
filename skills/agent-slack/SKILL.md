@@ -156,39 +156,84 @@ agent-slack message await "#team" --since "$ts" --events message,reaction --time
 **That is the pattern for asking a human something.** A person answers in one
 of three ways — a message in the channel, a reply threaded on your message, or
 just an emoji reaction on it — and you cannot predict which. The call above
-catches all three. Verified live: the human threaded her first answer and
-reacted with a custom `:letsdothis:` emoji.
-
-Two things make it correct rather than lucky:
-
-- **`--since` is what stops you missing the answer.** Pass the `ts` your send
-  returned. It is exclusive, and it makes the command check what already
-  arrived before it started listening — otherwise a fast reply lands in the gap
-  between sending and waiting and is never seen. Replies threaded on that
-  message count too, not just channel-level ones.
-- **`--events message,reaction`** — reactions are opt-in. Leave the reaction
-  *name* unfiltered and judge it yourself: ✅ ✔️ ☑️ 👍 🎉, a workspace's custom
-  `:approved:`, or a plain "yes" all mean approval. If you do narrow with
-  `--reaction`, read `skipped` — it carries the ❌ that would otherwise look
-  like silence, and "rejected" must never be read as "no answer yet".
+catches all three, including an answer that landed before `await` started:
+`--since` is exclusive and catches up from there. Reactions are opt-in via
+`--events`; leave the name unfiltered and judge it yourself (✅ ✔️ ☑️ 👍 🎉,
+a custom `:approved:`, or a plain "yes"). If you narrow with `--reaction`, read
+`skipped` — it carries the ❌ that would otherwise look like silence.
 
 A timeout is **not an error**: exit 0, `{"received": false}`, and a `cursor` to
 pass as the next `--since`, so looping loses nothing.
+
+## Holding a conversation
+
+Ask → answer → reply in the thread → wait → … is a loop over one thread root.
+Two rules keep it from losing answers:
+
+- **`--conversation <root ts>`** names the message that started it, the same
+  value every turn. Replies in its thread, messages in the channel, and
+  reactions on the root or on any of your messages in it all count. Without
+  it, from the second turn on an in-thread answer is missed.
+- **`--since` is always the previous result's `cursor`** — never your own
+  reply's ts, which would skip whatever arrived while you were writing it.
+
+**Listen in the background when you can.** You cannot know whether the answer
+comes in a minute or in three hours, so don't block your session on it:
+
+1. **Best — one stream for the whole conversation.** If your harness can run a
+   command in the background and wake you as it prints lines, run one
+   `stream` and keep it alive across turns. It never stops listening, so
+   nothing lands between turns:
+
+   ```bash
+   root=$(agent-slack message send "#team" "deploy blocked — proceed or hold?" | jq -r .ts)
+   agent-slack message stream --channel "#team" --conversation "$root" --since "$root" \
+     --events message,reaction --duration 4h --idle-timeout 1h     # in the background
+   agent-slack message send "#team" "holding — will retry at 3" --thread-ts "$root"
+   ```
+
+2. **Otherwise — `await` in the background**, with a long `--timeout`, and
+   start the next one as soon as you have handled the result:
+
+   ```bash
+   agent-slack message await "#team" --conversation "$root" --since "$cursor" \
+     --events message,reaction --timeout 2h
+   ```
+
+3. Block in the foreground only if you have no background option, with a
+   shorter `--timeout` looped on `cursor`.
+
+**Judge every event.** A channel message may be unrelated chatter, and 👀 means
+"seen", not "yes". When it is not an answer, wait again from its `cursor`. A
+reaction that landed before the wait began comes back with `caught_up: true`
+and the message's full `reactions` list — read them all, as the others are
+not delivered separately. Between two `await`s, a reaction on one of your
+*older* messages can be missed (history cannot date it); the stream has no
+such gap.
+
+**Where to reply.** In the thread (`--thread-ts "$root"`) by default. People
+often answer in the channel instead, especially while the thread is still near
+the bottom (fewer than ~5 channel messages since the root) — to them it is one
+conversation, and they may not be following the thread. Then reply in the
+channel too. If the channel has moved on, reply in the thread and `@mention`
+them so it reaches them. Either way keep `--conversation` unchanged: the
+channel is already in scope.
+
+## Watching a channel
 
 ```bash
 agent-slack message stream --channel "#alerts" --duration 30m --idle-timeout 10m
 ```
 
-**That is the pattern for watching a channel** — deploys, alerts, an incident
-room. NDJSON, one event per line, `@summary` with per-channel cursors at the
-end. Always bounded, so it returns.
+Deploys, alerts, an incident room: NDJSON, one event per line, `@summary` with
+per-channel cursors at the end. Always bounded, so it returns.
 
 App posts count as messages and carry `author.bot_id` with **no**
 `author.user_id` — most alert traffic is apps, so never key on `user_id` alone.
 Both commands drop the socket's bookkeeping noise (typing, read marks, badges)
 and never re-emit a thread's parent when a reply arrives. Neither polls or
 spends rate-limit budget. `stream` needs browser auth; `await` falls back to
-polling on a bot token. Full flags: [references/commands/message.md](references/commands/message.md).
+polling on a bot token (messages only). Full flags: [references/commands/message.md](references/commands/message.md).
 
 ## Finding people & channels
 
