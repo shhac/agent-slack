@@ -138,8 +138,11 @@ WAIT   message await <target> [--since <ts>] [--timeout 5m] — block for the
        {received,cursor,waited_ms,event,skipped?} as JSON. Pass --since with
        the ts a send returned so a reply that already arrived is still found;
        it is exclusive. A timeout exits 0 with received:false plus a cursor.
+       Multi-turn: --conversation <root ts> every turn, --since <last cursor>.
        message stream [--channel …] [--duration 10m] streams the same records
-       as NDJSON with a per-channel-cursor @summary. See 'message usage'.
+       as NDJSON with a per-channel-cursor @summary; with --conversation it
+       follows one conversation gaplessly (run it in the background). See
+       'message usage'.
 TEXT   --format transcript is the human-readable rendering (plain text on
        stdout, errors still JSON). Conversations (message get/list) read as a
        chronological transcript: a "──── <date> (<zone>) ────" divider opens
@@ -226,7 +229,22 @@ AWAIT  message await <target> [--since <ts>] [--timeout 5m] [--thread-ts <ts>]
            --events message,reaction --timeout 30m
        A permalink/--thread-ts target awaits inside that thread instead. A
        channel target excludes OTHER threads' replies (--include-thread-replies
-       opts in); replies to the --since message always count.
+       opts in); replies to the conversation root always count.
+       CONVERSATION (multi-turn): --conversation <root ts|permalink> names the
+       message that started it — same value every turn — and --since is the
+       previous result's cursor (never your own reply's ts). Replies in the
+       root's thread, channel messages, and reactions on the root or on YOUR
+       messages in the conversation all count; without --conversation the
+       root is the --since message, which is only right on the first turn:
+         agent-slack message await "#team" --conversation "$root" \
+           --since "$cursor" --events message,reaction --timeout 2h
+       A reaction that landed before the await began is read back from
+       history: "caught_up":true, no event_ts, and the message's full
+       "reactions" list (several share one cursor; the first is returned).
+       Only reactions on messages at/after --since can be caught up — use a
+       background 'message stream --conversation' for a gapless loop.
+       Your own messages are out of scope (never in skipped) unless
+       --include-self.
        --since <ts> is EXCLUSIVE and closes the send→wait gap: pass the ts
        'message send' returned, or a previous call's cursor, and a reply that
        arrived before this command started is still found.
@@ -262,8 +280,14 @@ STREAM message stream [--channel <…>] [--duration 10m] [--max-events N]
        could not be caught up and events may be missing.
        Cursors are PER CHANNEL — gap-fill is per conversation. Without
        --channel, every conversation you can see is streamed. Always bounded.
-       Browser auth only. No --since: resuming N conversations from one scalar
-       would fan out unboundedly; start live and resume per channel.
+       Browser auth only. --since only with --conversation: resuming N
+       conversations from one scalar would fan out unboundedly.
+       FOLLOW-A-CONVERSATION: --channel <c> --conversation <root>
+       --since <root|cursor> catches up, then streams the same answers await
+       would match (thread replies, channel messages, reactions on the root or
+       your messages in it) for the whole run — one socket, no gap between
+       turns. Run it in the background with a long --duration and an
+       --idle-timeout, and reply with 'message send --thread-ts <root>'.
        Both commands drop the socket's bookkeeping traffic (typing, read
        marks, badges, presence) and never re-emit a thread's parent when a
        reply arrives. Bot posts count as messages and carry author.bot_id

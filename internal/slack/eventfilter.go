@@ -6,6 +6,8 @@ package slack
 // "no" from "no answer".
 
 import (
+	"cmp"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,11 +30,12 @@ type EventFilter struct {
 	// channel. Off by default so a channel target means what `message list`
 	// shows for that channel.
 	IncludeThreadReplies bool
-	// RepliesTo is the message the caller is awaiting answers to. Replies
+	// RepliesTo is the root of the conversation the caller is holding. Replies
 	// threaded on it match even when watching a channel, because a human
 	// answering a question picks in-thread or in-channel unpredictably and
 	// both are the answer. Without this an await on a channel misses exactly
-	// the reply it was posted to collect.
+	// the reply it was posted to collect. It also scopes reactions: see
+	// reactsWithinConversation.
 	RepliesTo string
 	// From, when non-empty, restricts to these author ids (user or bot).
 	From []string
@@ -84,7 +87,17 @@ func (f EventFilter) InScope(e Event) bool {
 	if f.Since != "" && !tsAfter(e.Cursor(), f.Since) {
 		return false
 	}
+	// Your own activity is never an answer, so it is out of scope rather
+	// than "skipped": the skipped report exists to surface a "no" that would
+	// read as silence, and a conversation's own replies would bury it.
+	if f.isSelf(e) {
+		return false
+	}
 	return f.matchesThread(e)
+}
+
+func (f EventFilter) isSelf(e Event) bool {
+	return !f.IncludeSelf && f.SelfUserID != "" && e.Author != nil && e.Author.UserID == f.SelfUserID
 }
 
 // narrows applies the filters that decide which in-scope events are answers.
@@ -101,13 +114,14 @@ func (f EventFilter) matchesThread(e Event) bool {
 	return f.inChannelScope(e)
 }
 
-// inWatchedThread scopes a run pinned to one thread. A reaction carries no
-// thread_ts, so it is scoped by the message it targets — including the thread
-// root, since approving the message that started the thread is the common case.
-// The root message itself never matches: awaiting in a thread means replies.
+// inWatchedThread scopes a run pinned to one thread. A reaction is scoped by
+// the message it targets: the thread root, since approving the message that
+// started the thread is the common case, or one of the caller's own replies
+// in it. The root message itself never matches: awaiting in a thread means
+// replies.
 func (f EventFilter) inWatchedThread(e Event) bool {
 	if isReactionKind(e.Kind) {
-		return e.TS == f.ThreadTS
+		return e.TS == f.ThreadTS || (f.onOwnMessage(e) && e.ThreadTS == f.ThreadTS)
 	}
 	return e.ThreadTS == f.ThreadTS && e.TS != f.ThreadTS
 }
@@ -117,6 +131,9 @@ func (f EventFilter) inWatchedThread(e Event) bool {
 // replies to the message the caller is awaiting answers to, which are exactly
 // what they asked for.
 func (f EventFilter) inChannelScope(e Event) bool {
+	if isReactionKind(e.Kind) {
+		return f.RepliesTo == "" || f.reactsWithinConversation(e)
+	}
 	isThreadReply := e.Kind == EventMessage && e.ThreadTS != "" && e.ThreadTS != e.TS
 	if !isThreadReply {
 		return true
@@ -124,10 +141,33 @@ func (f EventFilter) inChannelScope(e Event) bool {
 	return f.IncludeThreadReplies || e.ThreadTS == f.RepliesTo
 }
 
-func (f EventFilter) matchesAuthor(e Event) bool {
-	if !f.IncludeSelf && f.SelfUserID != "" && e.Author != nil && e.Author.UserID == f.SelfUserID {
+// reactsWithinConversation decides whether a reaction answers the caller.
+// Anyone reacting to someone else's message is not talking to the caller, and
+// under browser auth "self" is a person who also posts elsewhere in the
+// channel — so a reaction on the caller's message counts only when that
+// message is part of this conversation: the root, a reply in its thread, or
+// something the caller posted after --since. A reaction's thread is known
+// only when the watch has seen the message it targets; an unknown one falls
+// back to the --since bound.
+func (f EventFilter) reactsWithinConversation(e Event) bool {
+	if e.TS == f.RepliesTo {
+		return true
+	}
+	if !f.onOwnMessage(e) {
 		return false
 	}
+	if e.ThreadTS != "" {
+		return e.ThreadTS == f.RepliesTo
+	}
+	return compareTS(e.TS, f.RepliesTo) >= 0 && compareTS(e.TS, f.Since) >= 0
+}
+
+// onOwnMessage reports a reaction on a message the caller wrote.
+func (f EventFilter) onOwnMessage(e Event) bool {
+	return f.SelfUserID != "" && e.TargetAuthor == f.SelfUserID
+}
+
+func (f EventFilter) matchesAuthor(e Event) bool {
 	if f.ExcludeBots && e.IsBot() {
 		return false
 	}
@@ -165,12 +205,17 @@ func isReactionKind(kind EventKind) bool {
 // differ, which silently makes a filter match everything or nothing. Parse and
 // compare numerically instead.
 func tsAfter(candidate, cursor string) bool {
-	candSec, candMicro := splitTS(candidate)
-	curSec, curMicro := splitTS(cursor)
-	if candSec != curSec {
-		return candSec > curSec
+	return compareTS(candidate, cursor) > 0
+}
+
+// compareTS orders two timestamps numerically: -1, 0, or +1.
+func compareTS(a, b string) int {
+	aSec, aMicro := splitTS(a)
+	bSec, bMicro := splitTS(b)
+	if c := cmp.Compare(aSec, bSec); c != 0 {
+		return c
 	}
-	return candMicro > curMicro
+	return cmp.Compare(aMicro, bMicro)
 }
 
 // splitTS parses "<seconds>.<micros>" into its two integer parts. Micros are
@@ -188,6 +233,16 @@ func splitTS(ts string) (seconds, micros int64) {
 	}
 	micros, _ = strconv.ParseInt(microPart+strings.Repeat("0", 6-len(microPart)), 10, 64)
 	return seconds, micros
+}
+
+// justAfter is the smallest timestamp strictly later than ts.
+func justAfter(ts string) string {
+	seconds, micros := splitTS(ts)
+	micros++
+	if micros == 1_000_000 {
+		seconds, micros = seconds+1, 0
+	}
+	return fmt.Sprintf("%d.%06d", seconds, micros)
 }
 
 // maxTS returns whichever timestamp is later, treating empty as "unset". It is

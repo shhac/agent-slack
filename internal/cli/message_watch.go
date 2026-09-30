@@ -215,6 +215,10 @@ type compactEvent struct {
 	EventTS         string `json:"event_ts,omitempty"`
 	Reaction        string `json:"reaction,omitempty"`
 	PreviousContent string `json:"previous_content,omitempty"`
+	// CaughtUp marks a reaction read back from history because it landed
+	// before the run was listening; it then carries the message's full
+	// reaction list, since history cannot say which came first.
+	CaughtUp bool `json:"caught_up,omitempty"`
 	// The referenced-entity maps read commands attach, so every streamed line
 	// is self-contained: a consumer cannot go back for context it did not get.
 	ReferencedUsers      map[string]any `json:"referenced_users,omitempty"`
@@ -245,6 +249,10 @@ func projectEvent(event slack.Event, maxBodyChars int, slackMarkdown bool) compa
 			TS:        event.TS,
 			ThreadTS:  event.ThreadTS,
 			Author:    event.Author,
+		}
+		if event.CaughtUp {
+			out.CaughtUp = true
+			out.Reactions = render.CompactReactions(event.TargetReactions)
 		}
 		return out
 	}
@@ -311,4 +319,30 @@ func resolveWatchTarget(ctx context.Context, globals *GlobalFlags, targetInput, 
 		thread = slack.FirstNonEmpty(target.Ref.ThreadTSHint, target.Ref.MessageTS)
 	}
 	return cc, channelID, thread, nil
+}
+
+// resolveConversationRoot maps --conversation to the thread root of the
+// conversation being held. A permalink may name any message in it, so a reply
+// is looked up for its thread_ts rather than trusted to be the root: a reply's
+// permalink does not always carry one.
+func resolveConversationRoot(ctx context.Context, cc *clientContext, channelID, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if render.IsMessageTS(value) {
+		return value, nil
+	}
+	target, err := render.ParseTarget(value)
+	if err != nil || target.Kind != render.TargetURL {
+		return "", agenterrors.Newf(agenterrors.FixableByAgent,
+			"--conversation %q is neither a message ts nor a permalink", value).
+			WithHint("pass the ts of the message that started the conversation (as 'message send' returned it), or its permalink")
+	}
+	if target.Ref.ChannelID != channelID {
+		return "", agenterrors.New("--conversation names a message in a different conversation than the target",
+			agenterrors.FixableByAgent).
+			WithHint("the target and --conversation must be the same channel or DM")
+	}
+	if target.Ref.ThreadTSHint != "" {
+		return target.Ref.ThreadTSHint, nil
+	}
+	return threadRootTS(ctx, cc, target.Ref, false)
 }

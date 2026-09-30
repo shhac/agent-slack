@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -782,5 +783,87 @@ func TestWatchStopsAndReportsAnEmitFailure(t *testing.T) {
 	}
 	if result.Events != 1 {
 		t.Errorf("events = %d, want 1 — the failed emit was never delivered", result.Events)
+	}
+}
+
+// The socket is attached before the catch-up read, so a reaction can arrive
+// both ways. It must be delivered once.
+func TestWatchDeliversACaughtUpReactionOnlyOnce(t *testing.T) {
+	const (
+		root  = "1700000010.000100"
+		reply = "1700000030.000100"
+	)
+	live := mockslack.WSReactionAddedTo(mockslack.WSChannelID, mockslack.WSOtherUser,
+		"+1", reply, mockslack.WSUserID, "1700000035.000100")
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello(), live}})
+	server.HandleBody("conversations.history", mockslack.History())
+	server.HandleBody("conversations.replies", mockslack.History(
+		mockslack.Message(root, mockslack.WSUserID, "proceed?"),
+		mockslack.WithReactions(mockslack.ThreadReply(reply, mockslack.WSUserID, "retry?", root),
+			"+1", mockslack.WSOtherUser),
+	))
+
+	got, _ := collectWatch(t, c, WatchOptions{Filter: EventFilter{
+		Kinds:    []EventKind{EventReactionAdded},
+		Channels: []string{mockslack.WSChannelID}, RepliesTo: root, Since: reply,
+		SelfUserID: mockslack.WSUserID,
+	}})
+	if len(got) != 1 {
+		t.Fatalf("want one reaction, got %d: %+v", len(got), got)
+	}
+}
+
+// A reaction frame names only its message; the watch scopes it by the thread
+// it saw that message in. My reply in some other thread is not this
+// conversation, even though it is mine and recent.
+func TestWatchScopesALiveReactionByTheThreadItSaw(t *testing.T) {
+	const root = "1700000010.000100"
+	elsewhere := mockslack.WSThreadReply(mockslack.WSChannelID, mockslack.WSUserID,
+		"unrelated", "1700000030.000100", "1700000005.000100")
+	reaction := mockslack.WSReactionAddedTo(mockslack.WSChannelID, mockslack.WSOtherUser,
+		"joy", "1700000030.000100", mockslack.WSUserID, "1700000035.000100")
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello(), elsewhere, reaction}})
+	server.HandleBody("conversations.history", mockslack.History())
+	server.HandleBody("conversations.replies", mockslack.History())
+
+	got, _ := collectWatch(t, c, WatchOptions{Filter: EventFilter{
+		Kinds:    []EventKind{EventMessage, EventReactionAdded},
+		Channels: []string{mockslack.WSChannelID}, RepliesTo: root, Since: "1700000020.000100",
+		SelfUserID: mockslack.WSUserID,
+	}})
+	if len(got) != 0 {
+		t.Fatalf("a reaction on my message in another thread is not an answer: %+v", got)
+	}
+}
+
+// A caught-up reaction with no live twin must not linger as "already seen":
+// once it is removed, adding it back is new activity.
+func TestWatchDeliversAReAddAfterACaughtUpReactionIsRemoved(t *testing.T) {
+	const (
+		root  = "1700000010.000100"
+		reply = "1700000030.000100"
+	)
+	removed := mockslack.WSReactionRemoved(mockslack.WSChannelID, mockslack.WSOtherUser, "+1", reply, "1700000040.000100")
+	readded := mockslack.WSReactionAdded(mockslack.WSChannelID, mockslack.WSOtherUser, "+1", reply, "1700000050.000100")
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello(), removed, readded}})
+	server.HandleBody("conversations.history", mockslack.History())
+	server.HandleBody("conversations.replies", mockslack.History(
+		mockslack.Message(root, mockslack.WSUserID, "proceed?"),
+		mockslack.WithReactions(mockslack.ThreadReply(reply, mockslack.WSUserID, "retry?", root),
+			"+1", mockslack.WSOtherUser),
+	))
+
+	got, _ := collectWatch(t, c, WatchOptions{Filter: EventFilter{
+		Kinds:    []EventKind{EventReactionAdded, EventReactionRemoved},
+		Channels: []string{mockslack.WSChannelID}, RepliesTo: root, Since: reply,
+		SelfUserID: mockslack.WSUserID,
+	}})
+	kinds := make([]EventKind, len(got))
+	for i, e := range got {
+		kinds[i] = e.Kind
+	}
+	want := []EventKind{EventReactionAdded, EventReactionRemoved, EventReactionAdded}
+	if !slices.Equal(kinds, want) {
+		t.Fatalf("kinds = %v, want caught-up add, remove, re-add %v", kinds, want)
 	}
 }

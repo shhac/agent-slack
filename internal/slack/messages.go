@@ -167,9 +167,12 @@ func fillIfEmpty(dst *string, value string) {
 
 // HistoryOptions controls FetchChannelHistory.
 type HistoryOptions struct {
-	ChannelID        string
-	Limit            int // default 25, clamped to [1, 200]
-	Latest, Oldest   string
+	ChannelID      string
+	Limit          int // default 25, clamped to [1, 200]
+	Latest, Oldest string
+	// Inclusive keeps a message exactly at Oldest/Latest; Slack excludes it
+	// by default.
+	Inclusive        bool
 	IncludeReactions bool
 	// Reaction-name filters force include_all_metadata and page through
 	// history (newest-first via latest) until Limit matches accumulate.
@@ -192,6 +195,9 @@ func FetchChannelHistory(ctx context.Context, c *Client, opts HistoryOptions) ([
 
 	params := map[string]any{"channel": opts.ChannelID, "limit": pageLimit}
 	setStr(params, "oldest", opts.Oldest)
+	if opts.Inclusive {
+		params["inclusive"] = true
+	}
 	setIncludeMetadata(params, opts.IncludeReactions || hasReactionFilters)
 	var out []render.MessageSummary
 	err := eachHistoryPage(ctx, c, params, opts.Latest, func(messages []map[string]any, resp map[string]any) (bool, error) {

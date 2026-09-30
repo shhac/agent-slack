@@ -457,3 +457,149 @@ func TestPollIntervalDefaultsToTheDocumentedCadence(t *testing.T) {
 		t.Errorf("first poll waited %v, want the documented default %v", slept, defaultPollEvery)
 	}
 }
+
+// The second turn of a conversation: the caller replied in the thread, so
+// --since is a cursor and the root must be named for in-thread answers to
+// count — including ones that landed before the await started.
+func TestAwaitConversationCatchesUpAThreadReplyAfterTheCursor(t *testing.T) {
+	const (
+		root   = "1700000010.000100"
+		cursor = "1700000030.000100"
+	)
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History())
+	server.HandleBody("conversations.replies", mockslack.History(
+		mockslack.Message(root, mockslack.WSUserID, "proceed or hold?"),
+		mockslack.ThreadReply("1700000020.000100", mockslack.WSOtherUser, "hold", root),
+		mockslack.ThreadReply("1700000040.000100", mockslack.WSOtherUser, "ok, go", root),
+	))
+
+	result, err := Await(context.Background(), c, AwaitOptions{
+		Filter: EventFilter{
+			Channels: []string{mockslack.WSChannelID}, RepliesTo: root, Since: cursor,
+			SelfUserID: mockslack.WSUserID,
+		},
+		Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Received || result.Event.Content() != "ok, go" {
+		t.Fatalf("want the in-thread reply after the cursor, got %+v", result)
+	}
+}
+
+// A 👍 on the caller's message that landed between sending and awaiting is
+// read back from history, and resuming from its cursor does not return it
+// again — an agent re-awaiting past a 👀 would otherwise loop on it forever.
+func TestAwaitCatchesUpAReactionOnTheSinceMessage(t *testing.T) {
+	const (
+		root  = "1700000010.000100"
+		reply = "1700000030.000100"
+	)
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History())
+	server.HandleBody("conversations.replies", mockslack.History(
+		mockslack.Message(root, mockslack.WSUserID, "proceed or hold?"),
+		mockslack.WithReactions(
+			mockslack.WithReactions(mockslack.ThreadReply(reply, mockslack.WSUserID, "held; retry?", root),
+				"eyes", mockslack.WSOtherUser),
+			"white_check_mark", mockslack.WSOtherUser),
+	))
+	filter := EventFilter{
+		Kinds:    []EventKind{EventMessage, EventReactionAdded, EventReactionRemoved},
+		Channels: []string{mockslack.WSChannelID}, RepliesTo: root, Since: reply,
+		SelfUserID: mockslack.WSUserID,
+	}
+
+	result, err := Await(context.Background(), c, AwaitOptions{Filter: filter, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Received || !result.Event.CaughtUp || result.Event.TS != reply {
+		t.Fatalf("want a caught-up reaction on the reply, got %+v", result)
+	}
+	if result.Event.EventTS != "" {
+		t.Errorf("event_ts = %q; a caught-up reaction has no real time and must not claim one", result.Event.EventTS)
+	}
+	if len(result.Event.TargetReactions) != 2 {
+		t.Errorf("the event must carry every reaction on the message, got %v", result.Event.TargetReactions)
+	}
+	if result.Cursor != justAfter(reply) {
+		t.Errorf("cursor = %q, want just after the reacted message", result.Cursor)
+	}
+
+	filter.Since = result.Cursor
+	again, err := Await(context.Background(), c, AwaitOptions{Filter: filter, Timeout: 300 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Received {
+		t.Fatalf("resuming from the cursor re-delivered %+v", again.Event)
+	}
+}
+
+// The --since message is usually the caller's own channel-level post, and the
+// reactions on it are the answer. Slack's `oldest` excludes it unless asked,
+// so the catch-up must read inclusively — and still not replay the message.
+func TestAwaitCatchesUpReactionsOnTheSinceMessageInChannelHistory(t *testing.T) {
+	const posted = "1700000030.000100"
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello()}})
+	server.HandleBody("conversations.history", mockslack.History(
+		mockslack.WithReactions(mockslack.Message(posted, mockslack.WSUserID, "proceed?"), "+1", mockslack.WSOtherUser),
+	))
+	server.HandleBody("conversations.replies", mockslack.History())
+
+	result, err := Await(context.Background(), c, AwaitOptions{
+		Filter: EventFilter{
+			Kinds:    []EventKind{EventMessage, EventReactionAdded},
+			Channels: []string{mockslack.WSChannelID}, RepliesTo: posted, Since: posted,
+			SelfUserID: mockslack.WSUserID,
+		},
+		Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Received || !result.Event.CaughtUp || result.Event.Reaction != "+1" {
+		t.Fatalf("want the caught-up 👍 on the --since message, got %+v", result)
+	}
+	calls := server.CallsFor("conversations.history")
+	if len(calls) == 0 || calls[0].Params.Get("inclusive") != "true" {
+		t.Errorf("the catch-up read must be inclusive, got %v", calls)
+	}
+}
+
+// A ✅ on the caller's earlier reply in the thread is an answer even after the
+// cursor has moved past that reply: the catch-up read taught the watch which
+// thread the reply is in.
+func TestAwaitCountsALiveReactionOnAnEarlierReplyInTheThread(t *testing.T) {
+	const (
+		root    = "1700000010.000100"
+		earlier = "1700000020.000100"
+		cursor  = "1700000030.000100"
+	)
+	reaction := mockslack.WSReactionAddedTo(mockslack.WSChannelID, mockslack.WSOtherUser,
+		"white_check_mark", earlier, mockslack.WSUserID, "1700000040.000100")
+	c, server := watchFixture(t, mockslack.WSScript{Frames: []map[string]any{mockslack.Hello(), reaction}})
+	server.HandleBody("conversations.history", mockslack.History())
+	server.HandleBody("conversations.replies", mockslack.History(
+		mockslack.Message(root, mockslack.WSOtherUser, "can you retry the deploy?"),
+		mockslack.ThreadReply(earlier, mockslack.WSUserID, "retried — green?", root),
+	))
+
+	result, err := Await(context.Background(), c, AwaitOptions{
+		Filter: EventFilter{
+			Kinds:    []EventKind{EventReactionAdded},
+			Channels: []string{mockslack.WSChannelID}, RepliesTo: root, Since: cursor,
+			SelfUserID: mockslack.WSUserID,
+		},
+		Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Received || result.Event.ThreadTS != root {
+		t.Fatalf("want the ✅ on my earlier reply, scoped to the thread; got %+v", result)
+	}
+}

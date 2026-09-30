@@ -7,19 +7,22 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	agenterrors "github.com/shhac/agent-slack/internal/errors"
 	"github.com/shhac/agent-slack/internal/slack"
 )
 
 func registerMessageAwait(parent *cobra.Command, globals *GlobalFlags) {
 	flags := &watchFlags{}
 	var (
-		threadTS string
-		since    string
-		timeout  time.Duration
+		threadTS     string
+		since        string
+		conversation string
+		timeout      time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "await <target>",
@@ -29,6 +32,11 @@ one JSON object. A permalink target awaits inside that message's thread.
 
 Pass --since with the ts of the message you sent, so a reply that arrived
 before this command started is still found. --since is exclusive.
+
+Holding a conversation over several turns, pass --conversation with the ts of
+the message that started it and --since with the previous result's cursor.
+Replies threaded on it, channel-level messages, and reactions on it or on your
+own messages in it all count.
 
 A timeout is not an error: it returns {"received": false} with a cursor to
 resume from, plus any in-scope events the filters excluded, so a "no" is never
@@ -47,17 +55,15 @@ mistaken for silence.`,
 			}
 			filter.Channels = []string{channelID}
 			filter.ThreadTS = thread
+			if filter.RepliesTo, err = awaitRepliesTo(ctx, cc, channelID, thread, conversation, filter.Since); err != nil {
+				return err
+			}
 			// In your own DM every message is yours, so the default
 			// self-exclusion would drop all of them and the await would report
 			// silence forever. Watching it is only ever a request to see your
 			// own writing.
 			if isOwnDM(ctx, cc, channelID) {
 				filter.IncludeSelf = true
-			}
-			if thread == "" {
-				// Watching a conversation: a human answering the message named
-				// by --since may reply in-channel or thread on it, so both count.
-				filter.RepliesTo = filter.Since
 			}
 			renderer, err := newEventRenderer(globals, cc, flags)
 			if err != nil {
@@ -81,8 +87,30 @@ mistaken for silence.`,
 	flags.bind(cmd, "message")
 	cmd.Flags().StringVar(&threadTS, "thread-ts", "", "Await inside this thread")
 	cmd.Flags().StringVar(&since, "since", "", "Only events strictly after this ts (the ts a send returned, or a previous cursor)")
+	cmd.Flags().StringVar(&conversation, "conversation", "",
+		"Ts or permalink of the message that started the conversation; replies in its thread and in the channel both count (default: --since)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 5*time.Minute, "How long to wait before giving up")
 	parent.AddCommand(cmd)
+}
+
+// awaitRepliesTo picks the conversation root a channel await collects answers
+// to. A human answering may reply in-channel or thread on it, so both count.
+// Without --conversation it is the --since message: the first turn, where the
+// question just sent is the root. From the second turn --since is a cursor, so
+// the root has to be named or in-thread replies stop matching.
+func awaitRepliesTo(ctx context.Context, cc *clientContext, channelID, thread, conversation, since string) (string, error) {
+	if strings.TrimSpace(conversation) == "" {
+		if thread != "" {
+			return "", nil
+		}
+		return since, nil
+	}
+	if thread != "" {
+		return "", agenterrors.New("--conversation watches the channel as well as the thread, so it needs a channel target",
+			agenterrors.FixableByAgent).
+			WithHint("target the channel (e.g. \"#team\" or C…) instead of a permalink, and drop --thread-ts")
+	}
+	return resolveConversationRoot(ctx, cc, channelID, conversation)
 }
 
 // awaitOutput is the single JSON resource `message await` prints. Event is the

@@ -257,3 +257,82 @@ func TestMatchesImpliesInScope(t *testing.T) {
 			matched, len(filters), len(events))
 	}
 }
+
+// A reaction answers the caller only when it is on the conversation: the root,
+// or one of the caller's own messages in it. Under browser auth "self" also
+// posts elsewhere in the channel, and a 😂 there is not an answer.
+func TestFilterScopesReactionsToTheConversation(t *testing.T) {
+	const (
+		root  = "1700000010.000100"
+		since = "1700000050.000100"
+	)
+	f := EventFilter{
+		Kinds:      []EventKind{EventReactionAdded},
+		Channels:   []string{"C1"},
+		RepliesTo:  root,
+		Since:      since,
+		SelfUserID: "U_ME",
+	}
+	on := func(ts, threadTS, targetAuthor string) Event {
+		e := reactionEvent("C1", "U2", "white_check_mark", ts, "1700000090.000100")
+		e.ThreadTS, e.TargetAuthor = threadTS, targetAuthor
+		return e
+	}
+	cases := []struct {
+		name  string
+		event Event
+		want  bool
+	}{
+		{"on the root, whoever wrote it", on(root, "", "U2"), true},
+		{"on my earlier reply in the thread", on("1700000020.000100", root, "U_ME"), true},
+		{"on my message after --since", on("1700000060.000100", "", "U_ME"), true},
+		{"on the --since message itself", on(since, "", "U_ME"), true},
+		{"on my reply in another thread", on("1700000060.000100", "1700000005.000100", "U_ME"), false},
+		{"on my unrelated message before --since", on("1700000030.000100", "", "U_ME"), false},
+		{"on someone else's reply in the thread", on("1700000060.000100", root, "U2"), false},
+	}
+	for _, tc := range cases {
+		if got := f.Matches(tc.event); got != tc.want {
+			t.Errorf("%s: Matches = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+
+	// A stream with no conversation keeps seeing every reaction.
+	if !(EventFilter{Kinds: f.Kinds}).Matches(on("1700000030.000100", "", "U2")) {
+		t.Error("without RepliesTo every reaction stays in scope")
+	}
+}
+
+func TestFilterThreadTargetCountsReactionsOnOwnReplies(t *testing.T) {
+	const root = "1700000010.000100"
+	f := EventFilter{Kinds: []EventKind{EventReactionAdded}, ThreadTS: root, SelfUserID: "U_ME"}
+	e := reactionEvent("C1", "U2", "+1", "1700000020.000100", "1700000030.000100")
+	e.ThreadTS, e.TargetAuthor = root, "U_ME"
+	if !f.Matches(e) {
+		t.Error("a reaction on my reply in the watched thread is an answer")
+	}
+}
+
+// Your own reply is not a "no" that looks like silence; reporting it in
+// skipped would bury the ones that are.
+func TestFilterSelfIsOutOfScopeNotSkipped(t *testing.T) {
+	f := EventFilter{SelfUserID: "U_ME"}
+	if f.InScope(messageEvent("C1", "U_ME", "1700000010.000100", "")) {
+		t.Error("your own message should be out of scope, not skipped")
+	}
+}
+
+func TestJustAfterCarriesIntoSeconds(t *testing.T) {
+	for in, want := range map[string]string{
+		"1700000000.000100": "1700000000.000101",
+		"1700000000.999999": "1700000001.000000",
+		"1700000000.1":      "1700000000.100001",
+	} {
+		if got := justAfter(in); got != want {
+			t.Errorf("justAfter(%q) = %q, want %q", in, got, want)
+		}
+		if !tsAfter(justAfter(in), in) {
+			t.Errorf("justAfter(%q) must sort after it", in)
+		}
+	}
+}

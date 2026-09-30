@@ -212,13 +212,20 @@ func WSUserTyping(channel, user, threadTS string) map[string]any {
 	return frame
 }
 
-// WSReactionAdded is an emoji reaction on a message.
+// WSReactionAdded is an emoji reaction on a message WSUserID wrote.
 func WSReactionAdded(channel, user, reaction, itemTS, eventTS string) map[string]any {
+	return WSReactionAddedTo(channel, user, reaction, itemTS, WSUserID, eventTS)
+}
+
+// WSReactionAddedTo is an emoji reaction on a message itemUser wrote. item_user
+// is on the live frame (captured 2026-09) and is what scopes a reaction to the
+// caller's own messages, so tests of that scoping need to vary it.
+func WSReactionAddedTo(channel, user, reaction, itemTS, itemUser, eventTS string) map[string]any {
 	return map[string]any{
 		"type":      "reaction_added",
 		"user":      user,
 		"reaction":  reaction,
-		"item_user": WSUserID,
+		"item_user": itemUser,
 		"item":      map[string]any{"type": "message", "channel": channel, "ts": itemTS},
 		"ts":        eventTS,
 		"event_ts":  eventTS,

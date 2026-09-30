@@ -33,8 +33,9 @@ type Event struct {
 	// TS is the message this event concerns: for a reaction, the message
 	// reacted to; for an edit or delete, the message changed.
 	TS string
-	// ThreadTS is the parent of a threaded message. Reactions do not carry it —
-	// they are scoped by the message they target.
+	// ThreadTS is the parent of a threaded message. Reactions do not carry it
+	// on the wire; a conversation watch fills it in from the messages it has
+	// seen, so a reaction can be scoped by the thread of the message it targets.
 	ThreadTS string
 	// EventTS is when the event happened, which differs from TS for anything
 	// that acts on an existing message.
@@ -43,6 +44,16 @@ type Event struct {
 	// PreviousContent is the pre-edit body on message_changed.
 	PreviousContent string
 	Reaction        string
+	// TargetAuthor is who wrote the message a reaction is on (the wire's
+	// item_user). It is what lets an await count a reaction on the caller's
+	// own reply without knowing every ts the caller has posted.
+	TargetAuthor string
+	// CaughtUp marks a reaction read back from history rather than seen live.
+	// History does not date reactions, so it carries the target message's
+	// whole reaction list instead: several caught up at once share one
+	// cursor, and an await that returns the first must still show the rest.
+	CaughtUp        bool
+	TargetReactions []any
 	// Message is the full summary for message-kind events, and the single
 	// source of the body: a separate Content field would duplicate Message.Text
 	// and drift from it.
@@ -59,7 +70,16 @@ func (e Event) Content() string {
 
 // Cursor is the timestamp a resumed run should continue strictly after: when
 // an event happened, which is not always the ts it points at.
+//
+// A caught-up reaction has no time of its own, so it sits one microsecond
+// after the message it is on: past the message, or resuming from it would
+// catch the same reaction up again forever, and before anything later, or
+// resuming would skip it. It is computed here rather than stored as EventTS,
+// which would print a synthetic time as the moment someone reacted.
 func (e Event) Cursor() string {
+	if e.CaughtUp {
+		return justAfter(e.TS)
+	}
 	if e.EventTS != "" {
 		return e.EventTS
 	}
@@ -170,12 +190,13 @@ func classifyReactionFrame(frame map[string]any, kind EventKind) (Event, bool) {
 		return Event{}, false
 	}
 	return Event{
-		Kind:      kind,
-		ChannelID: getStr(item, "channel"),
-		TS:        getStr(item, "ts"),
-		EventTS:   FirstNonEmpty(getStr(frame, "event_ts"), getStr(frame, "ts")),
-		Author:    render.AuthorRef(getStr(frame, "user"), ""),
-		Reaction:  getStr(frame, "reaction"),
+		Kind:         kind,
+		ChannelID:    getStr(item, "channel"),
+		TS:           getStr(item, "ts"),
+		EventTS:      FirstNonEmpty(getStr(frame, "event_ts"), getStr(frame, "ts")),
+		Author:       render.AuthorRef(getStr(frame, "user"), ""),
+		Reaction:     getStr(frame, "reaction"),
+		TargetAuthor: getStr(frame, "item_user"),
 	}, true
 }
 

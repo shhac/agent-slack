@@ -7,6 +7,7 @@ package slack
 
 import (
 	"context"
+	"slices"
 
 	"github.com/shhac/agent-slack/internal/render"
 )
@@ -38,8 +39,9 @@ func (s *watchSession) backfillChannel(ctx context.Context, channelID, threadTS,
 	if err != nil {
 		return err
 	}
-	for _, msg := range messages {
-		if _, emitErr := s.offer(EventFromMessage(channelID, msg)); emitErr != nil {
+	s.rememberThreads(channelID, messages...)
+	for _, event := range catchUpEvents(channelID, messages, since) {
+		if _, emitErr := s.offer(event); emitErr != nil {
 			return emitErr
 		}
 		if s.stopped() {
@@ -49,29 +51,73 @@ func (s *watchSession) backfillChannel(ctx context.Context, channelID, threadTS,
 	return nil
 }
 
-// fetchSince reads a thread's replies or a channel's history after a cursor.
-// A thread's replies never appear in channel history unless broadcast, so the
-// two cases genuinely need different calls.
+// catchUpEvents turns a catch-up read into events in cursor order: every
+// message after the cursor, plus the reactions on every message at or after
+// it (the filter drops them when reactions were not asked for). History does not date a
+// reaction, but one on a message posted at or after --since cannot predate
+// --since, so it is new. Reactions on older messages cannot be told apart
+// from ones that were already there, and are left to the live socket.
+func catchUpEvents(channelID string, messages []render.MessageSummary, since string) []Event {
+	var events []Event
+	for _, msg := range messages {
+		if tsAfter(msg.TS, since) {
+			events = append(events, EventFromMessage(channelID, msg))
+		}
+		if compareTS(msg.TS, since) >= 0 {
+			events = append(events, caughtUpReactions(channelID, msg)...)
+		}
+	}
+	// Pages are fetched newest-window-first and the thread read is appended
+	// after the channel read, so the slice is only chronological within each
+	// block — and an await capped at one event would answer with whichever
+	// block came first rather than the earliest reply.
+	slices.SortStableFunc(events, func(a, b Event) int { return compareTS(a.Cursor(), b.Cursor()) })
+	return events
+}
+
+// caughtUpReactions reads a message's reactions back as events (see
+// Event.Cursor for where they sit).
+func caughtUpReactions(channelID string, msg render.MessageSummary) []Event {
+	var events []Event
+	for _, reaction := range render.CompactReactions(msg.Reactions) {
+		for _, user := range reaction.Users {
+			events = append(events, Event{
+				Kind:            EventReactionAdded,
+				ChannelID:       channelID,
+				TS:              msg.TS,
+				ThreadTS:        msg.ThreadTS,
+				Author:          render.AuthorRef(user, ""),
+				Reaction:        reaction.Name,
+				TargetAuthor:    msg.User,
+				CaughtUp:        true,
+				TargetReactions: msg.Reactions,
+			})
+		}
+	}
+	return events
+}
+
+// fetchSince reads a thread's replies, or a channel's history from the cursor
+// on, including the message at the cursor itself: it is usually the caller's
+// own, and the reactions on it are what an await is waiting for. A thread's
+// replies never appear in channel history unless broadcast, so the two cases
+// genuinely need different calls. The result is unfiltered; catchUpEvents
+// applies the cursor.
 func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, since string) ([]render.MessageSummary, error) {
 	if threadTS != "" {
-		replies, err := FetchThread(ctx, s.client, channelID, threadTS, false)
-		if err != nil {
-			return nil, err
-		}
-		return orderedBackfill(afterCursor(replies, since)), nil
+		return FetchThread(ctx, s.client, channelID, threadTS, false)
 	}
 	messages, err := s.historySince(ctx, channelID, since)
 	if err != nil {
 		return nil, err
 	}
-	out := afterCursor(messages, since)
 
 	// A reply threaded on the awaited message is not in channel history unless
 	// it was broadcast, so it needs its own read — otherwise the backfill
 	// misses the very answer RepliesTo exists to catch.
 	repliesTo := s.opts.Filter.RepliesTo
 	if repliesTo == "" {
-		return orderedBackfill(out), nil
+		return messages, nil
 	}
 	// Best-effort, unlike the channel read: --since may be a cursor from an
 	// earlier run rather than a message the caller posted, in which case there
@@ -81,9 +127,9 @@ func (s *watchSession) fetchSince(ctx context.Context, channelID, threadTS, sinc
 	replies, err := FetchThread(ctx, s.client, channelID, repliesTo, false)
 	if err != nil {
 		s.client.debugf("replies backfill for %s skipped: %v", repliesTo, err)
-		return orderedBackfill(out), nil
+		return messages, nil
 	}
-	return orderedBackfill(append(out, afterCursor(replies, since)...)), nil
+	return append(messages, replies...), nil
 }
 
 // historySince reads every message after a cursor, following pages rather than
@@ -98,6 +144,7 @@ func (s *watchSession) historySince(ctx context.Context, channelID, since string
 			Limit:     backfillPageLimit,
 			Oldest:    since,
 			Latest:    latest,
+			Inclusive: true,
 		})
 		if err != nil {
 			return nil, err
@@ -117,26 +164,4 @@ func (s *watchSession) historySince(ctx context.Context, channelID, since string
 	// exactly what Gaps reports: events may be missing.
 	s.result.Gaps++
 	return all, nil
-}
-
-// orderedBackfill puts a multi-source catch-up into wire order. Pages are
-// fetched newest-window-first and the thread read is appended after the
-// channel read, so the raw slice is only chronological *within* each block —
-// and an await capped at one event would answer with whichever block came
-// first rather than the earliest reply.
-func orderedBackfill(messages []render.MessageSummary) []render.MessageSummary {
-	sortChronological(messages)
-	return messages
-}
-
-// afterCursor enforces the exclusive semantics of --since: Slack's `oldest` is
-// inclusive, and the cursor is usually the caller's own message.
-func afterCursor(messages []render.MessageSummary, since string) []render.MessageSummary {
-	out := make([]render.MessageSummary, 0, len(messages))
-	for _, msg := range messages {
-		if tsAfter(msg.TS, since) {
-			out = append(out, msg)
-		}
-	}
-	return out
 }

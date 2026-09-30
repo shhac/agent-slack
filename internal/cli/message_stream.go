@@ -7,6 +7,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,10 +20,12 @@ import (
 func registerMessageStream(parent *cobra.Command, globals *GlobalFlags) {
 	flags := &watchFlags{}
 	var (
-		channels    []string
-		duration    time.Duration
-		idleTimeout time.Duration
-		maxEvents   int
+		channels     []string
+		conversation string
+		since        string
+		duration     time.Duration
+		idleTimeout  time.Duration
+		maxEvents    int
 	)
 	cmd := &cobra.Command{
 		Use:   "stream",
@@ -32,6 +35,12 @@ carrying per-channel cursors.
 
 Without --channel every conversation you can see is streamed. The run is always
 bounded: --duration, --max-events, or --idle-timeout.
+
+--conversation <ts|permalink> with exactly one --channel follows one
+conversation for as long as it runs: replies in its thread, channel-level
+messages, and reactions on it or on your own messages in it. It takes --since
+(the ts you sent, or an earlier cursor) and catches up from there first. This
+is the gapless way to hold a conversation: one socket, no gaps between turns.
 
 Needs browser auth, because the event socket is a client API — unless you pass
 --poll with exactly one --channel, which reads that conversation's history on
@@ -61,11 +70,14 @@ which is why --poll is opt-in here rather than an automatic fallback.`,
 				return agenterrors.New("message stream needs a bound", agenterrors.FixableByAgent).
 					WithHint("set --duration, --max-events, or --idle-timeout (--duration defaults to 10m)")
 			}
-			filter, err := flags.buildFilter(ctx, cc, "")
+			filter, err := flags.buildFilter(ctx, cc, since)
 			if err != nil {
 				return err
 			}
 			if filter.Channels, err = resolveStreamChannels(ctx, cc, channels); err != nil {
+				return err
+			}
+			if filter.RepliesTo, err = streamConversation(ctx, cc, filter.Channels, conversation, since); err != nil {
 				return err
 			}
 			// Same reasoning as await: in your own DM every message is yours,
@@ -109,11 +121,34 @@ which is why --poll is opt-in here rather than an automatic fallback.`,
 	}
 	flags.bind(cmd, "message")
 	cmd.Flags().StringSliceVar(&channels, "channel", nil, "Only these conversations (#name, C…, @handle); repeatable")
+	cmd.Flags().StringVar(&conversation, "conversation", "",
+		"Follow one conversation: ts or permalink of the message that started it (needs exactly one --channel)")
+	cmd.Flags().StringVar(&since, "since", "", "With --conversation: catch up on events strictly after this ts first")
 	cmd.Flags().DurationVar(&duration, "duration", 10*time.Minute, "Stop after this long (0 = until another bound trips)")
 	cmd.Flags().IntVar(&maxEvents, "max-events", 0, "Stop after this many events (0 = no cap)")
 	cmd.Flags().DurationVar(&idleTimeout, "idle-timeout", 0, "Stop after this long with no matching event")
 	_ = cmd.RegisterFlagCompletionFunc("channel", channelArgCompletion(globals))
 	parent.AddCommand(cmd)
+}
+
+// streamConversation validates --conversation and --since for a stream. A
+// cursor only resumes one conversation — across N channels it would fan out
+// into an unbounded catch-up — so both need exactly one --channel.
+func streamConversation(ctx context.Context, cc *clientContext, channels []string, conversation, since string) (string, error) {
+	conversation = strings.TrimSpace(conversation)
+	if conversation == "" {
+		if strings.TrimSpace(since) != "" {
+			return "", agenterrors.New("--since on a stream needs --conversation", agenterrors.FixableByAgent).
+				WithHint("pass --conversation <ts> with one --channel, or drop --since to start live")
+		}
+		return "", nil
+	}
+	if len(channels) != 1 {
+		return "", agenterrors.New("--conversation follows one conversation, so it needs exactly one --channel",
+			agenterrors.FixableByAgent).
+			WithHint("pass the channel or DM the conversation is in as the only --channel")
+	}
+	return resolveConversationRoot(ctx, cc, channels[0], conversation)
 }
 
 // resolveStreamChannels maps every --channel value to a conversation id

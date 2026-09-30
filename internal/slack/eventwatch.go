@@ -95,12 +95,14 @@ func (o WatchOptions) targetChannel() string {
 // called synchronously and in order; returning an error from it stops the run.
 func Watch(ctx context.Context, c *Client, opts WatchOptions, emit func(Event) error) (WatchResult, error) {
 	session := &watchSession{
-		client:    c,
-		opts:      opts,
-		emit:      emit,
-		seen:      map[string]bool{},
-		watermark: map[string]string{},
-		result:    WatchResult{Cursors: map[string]string{}},
+		client:          c,
+		opts:            opts,
+		emit:            emit,
+		seen:            map[string]bool{},
+		watermark:       map[string]string{},
+		threadOf:        map[string]string{},
+		pendingReaction: map[string]bool{},
+		result:          WatchResult{Cursors: map[string]string{}},
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -152,6 +154,14 @@ type watchSession struct {
 	// reconnectURL is the pre-authorized URL Slack pushes; preferred over a
 	// fresh client.getWebSocketURL on reconnect.
 	reconnectURL string
+	// threadOf maps channel|ts to the thread a message belongs to, for every
+	// message a conversation watch has seen. A reaction frame names only the
+	// message it is on, and this is how it is scoped to a thread.
+	threadOf map[string]string
+	// pendingReaction pairs a reaction read back from history with its live
+	// frame: keyed by reactionKey, valued by whether the copy waiting for its
+	// twin was the caught-up one.
+	pendingReaction map[string]bool
 }
 
 // finish fills in the stop reason for the deadline cases, which are the only
@@ -404,6 +414,10 @@ func (s *watchSession) offer(event Event) (matched bool, err error) {
 		return false, nil
 	}
 	s.seen[eventKey(event)] = true
+	if s.isDuplicateReaction(event) {
+		return false, nil
+	}
+	event = s.withThread(event)
 
 	if !s.opts.Filter.Matches(event) {
 		if s.opts.Filter.InScope(event) {

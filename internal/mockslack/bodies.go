@@ -17,6 +17,18 @@ func ThreadReply(ts, user, text, threadTS string) map[string]any {
 	return msg
 }
 
+// WithReactions adds a reactions array to a history/replies message, in the
+// shape Slack returns by default: name, the reactors, and a count.
+func WithReactions(msg map[string]any, name string, users ...string) map[string]any {
+	reactors := make([]any, len(users))
+	for i, u := range users {
+		reactors[i] = u
+	}
+	existing, _ := msg["reactions"].([]any)
+	msg["reactions"] = append(existing, map[string]any{"name": name, "users": reactors, "count": float64(len(users))})
+	return msg
+}
+
 // History is a conversations.history (or conversations.replies) body.
 func History(messages ...map[string]any) map[string]any {
 	items := make([]any, len(messages))

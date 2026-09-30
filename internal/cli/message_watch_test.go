@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"net/url"
 	"reflect"
 	"sort"
 	"strings"
@@ -796,5 +797,160 @@ func TestProjectEventCapsPreviousContent(t *testing.T) {
 	}
 	if len(out.PreviousContent) > len(out.Content)+8 {
 		t.Errorf("previous_content (%d) not capped like content (%d)", len(out.PreviousContent), len(out.Content))
+	}
+}
+
+// Turn two of a conversation: --since is the previous cursor, so without
+// --conversation an in-thread answer would not match. With it, it does — and
+// a permalink to any message in the thread names the same conversation.
+func TestMessageAwaitConversationMatchesInThreadReplyAfterTheCursor(t *testing.T) {
+	const root = "1700000010.000100"
+	reply := mockslack.WSThreadReply(mockslack.WSChannelID, mockslack.WSOtherUser,
+		"second answer", "1700000040.000100", root)
+	permalink := "https://acme.slack.com/archives/" + mockslack.WSChannelID +
+		"/p1700000030000100?thread_ts=" + root + "&cid=" + mockslack.WSChannelID
+
+	for _, conversation := range []string{root, permalink} {
+		f := watchCLIFixture(t, []map[string]any{mockslack.Hello(), reply})
+		stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
+			"--conversation", conversation, "--since", "1700000030.000100", "--timeout", "2s")
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload := parseJSON(t, stdout)
+		event, _ := payload["event"].(map[string]any)
+		if payload["received"] != true || event["content"] != "second answer" {
+			t.Fatalf("--conversation %s: want the in-thread reply, got %v", conversation, payload)
+		}
+	}
+}
+
+// --conversation adds the channel to a thread watch; on a thread target that
+// is a contradiction, so it is refused rather than silently ignored.
+func TestMessageAwaitConversationNeedsAChannelTarget(t *testing.T) {
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+	_, stderr, err := f.run(t, "message", "await", mockslack.WSChannelID,
+		"--thread-ts", "1700000010.000100", "--conversation", "1700000010.000100", "--timeout", "1s")
+	if err == nil {
+		t.Fatal("want an error for --conversation with --thread-ts")
+	}
+	if payload := errPayload(t, stderr); payload["fixable_by"] != "agent" {
+		t.Errorf("fixable_by = %v", payload["fixable_by"])
+	}
+}
+
+// A reaction that landed before the await began is read back from history,
+// marked caught_up, and shows every reaction on the message — with no
+// event_ts, since history cannot say when it happened.
+func TestMessageAwaitReportsACaughtUpReaction(t *testing.T) {
+	const (
+		root  = "1700000010.000100"
+		reply = "1700000030.000100"
+	)
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+	f.server.HandleWhen("conversations.replies", func(url.Values) bool { return true }, mockslack.Response{
+		Body: mockslack.History(
+			mockslack.Message(root, fixtureUserID, "proceed?"),
+			mockslack.WithReactions(mockslack.ThreadReply(reply, fixtureUserID, "retry?", root),
+				"white_check_mark", mockslack.WSOtherUser),
+		),
+	})
+
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
+		"--conversation", root, "--since", reply, "--events", "message,reaction", "--timeout", "2s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, stdout)
+	event, _ := payload["event"].(map[string]any)
+	if payload["received"] != true || event["caught_up"] != true || event["reaction"] != "white_check_mark" {
+		t.Fatalf("want a caught-up ✅, got %v", payload)
+	}
+	if _, has := event["event_ts"]; has {
+		t.Errorf("a caught-up reaction must not claim an event_ts: %v", event)
+	}
+	if reactions, _ := event["reactions"].([]any); len(reactions) != 1 {
+		t.Errorf("reactions = %v, want the message's full list", event["reactions"])
+	}
+}
+
+func TestMessageStreamConversationFlagsNeedOneChannel(t *testing.T) {
+	cases := [][]string{
+		{"--since", "1700000010.000100"},
+		{"--conversation", "1700000010.000100"},
+		{"--conversation", "1700000010.000100", "--channel", mockslack.WSChannelID, "--channel", "C0FAKEOTHER"},
+	}
+	for _, extra := range cases {
+		f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+		args := append([]string{"message", "stream", "--duration", "1s"}, extra...)
+		_, stderr, err := f.run(t, args...)
+		if err == nil {
+			t.Fatalf("%v: want an error", extra)
+		}
+		if payload := errPayload(t, stderr); payload["fixable_by"] != "agent" {
+			t.Errorf("%v: fixable_by = %v", extra, payload["fixable_by"])
+		}
+	}
+}
+
+// The gapless path: one stream follows the conversation across turns,
+// catching up from --since first and then delivering both kinds of answer.
+func TestMessageStreamFollowsAConversation(t *testing.T) {
+	const root = "1700000010.000100"
+	frames := []map[string]any{
+		mockslack.Hello(),
+		mockslack.WSThreadReply(mockslack.WSChannelID, mockslack.WSOtherUser, "in thread", "1700000020.000100", root),
+		mockslack.WSMessage(mockslack.WSChannelID, mockslack.WSOtherUser, "in channel", "1700000030.000100"),
+		mockslack.WSThreadReply(mockslack.WSChannelID, mockslack.WSOtherUser, "other thread", "1700000040.000100", "1700000005.000100"),
+	}
+	f := watchCLIFixture(t, frames)
+	stdout, _, err := f.run(t, "message", "stream", "--channel", mockslack.WSChannelID,
+		"--conversation", root, "--since", root, "--max-events", "2", "--duration", "2s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "in thread") || !strings.Contains(stdout, "in channel") || strings.Contains(stdout, "other thread") {
+		t.Fatalf("stream = %s", stdout)
+	}
+}
+
+func TestMessageAwaitConversationRejectsAnUnusableValue(t *testing.T) {
+	for _, value := range []string{
+		"not-a-ts",
+		"https://acme.slack.com/archives/C0FAKEOTHER/p1700000010000100",
+	} {
+		f := watchCLIFixture(t, []map[string]any{mockslack.Hello()})
+		_, stderr, err := f.run(t, "message", "await", mockslack.WSChannelID,
+			"--conversation", value, "--timeout", "1s")
+		if err == nil {
+			t.Fatalf("--conversation %s: want an error", value)
+		}
+		if payload := errPayload(t, stderr); payload["fixable_by"] != "agent" {
+			t.Errorf("--conversation %s: fixable_by = %v", value, payload["fixable_by"])
+		}
+	}
+}
+
+// A reply's permalink need not carry thread_ts; the message is looked up so
+// the conversation is its thread, not the reply on its own.
+func TestMessageAwaitConversationResolvesAReplyPermalinkToItsRoot(t *testing.T) {
+	const (
+		root  = "1700000010.000100"
+		reply = "1700000020.000100"
+	)
+	answer := mockslack.WSThreadReply(mockslack.WSChannelID, mockslack.WSOtherUser,
+		"answered in the thread", "1700000040.000100", root)
+	f := watchCLIFixture(t, []map[string]any{mockslack.Hello(), answer})
+	f.server.HandleWhen("conversations.history", func(p url.Values) bool { return p.Get("latest") == reply },
+		mockslack.Response{Body: mockslack.History(mockslack.ThreadReply(reply, fixtureUserID, "retry?", root))})
+
+	permalink := "https://acme.slack.com/archives/" + mockslack.WSChannelID + "/p1700000020000100"
+	stdout, _, err := f.run(t, "message", "await", mockslack.WSChannelID,
+		"--conversation", permalink, "--since", "1700000030.000100", "--timeout", "2s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := parseJSON(t, stdout); payload["received"] != true {
+		t.Fatalf("want the in-thread answer, got %v", payload)
 	}
 }
