@@ -142,10 +142,14 @@ channel-level one, and a human picks either unpredictably.
 
 So when a channel target is given with `--since <ts>`, replies threaded on
 *that* message match too (`EventFilter.RepliesTo`). Other threads stay
-excluded — this is not `--include-thread-replies`. The cost is that `--since`
-carries two meanings in this mode: the resume cursor, and the message being
-answered. They are the same value in the flow that matters, and an explicit
-`--replies-to` would make callers pass the same ts twice.
+excluded — this is not `--include-thread-replies`.
+
+That default is right for exactly one turn. `--since` carries two meanings —
+the resume cursor and the message being answered — and they coincide only for
+the question just sent. The first version rejected a separate flag because
+callers would pass the same ts twice; it then failed the second turn of every
+conversation (see *Holding a conversation* below), so `--conversation` now names
+the root explicitly and `--since` defaults it.
 
 Two consequences fall out:
 
@@ -175,6 +179,78 @@ as messages by default and arrive with `author.bot_id`:
 ```bash
 agent-slack message stream --channel "#alerts" --duration 30m --idle-timeout 10m
 ```
+
+## Holding a conversation
+
+A conversation is a loop: ask, get an answer, reply in the thread, wait again.
+From the second turn the anchor is the caller's own thread reply `R`, and every
+invocation that existed dropped one answer channel:
+
+| Call | In-thread reply | Channel reply | Reaction on `R` |
+|---|---|---|---|
+| `await #c --since R` | dropped — `thread_ts` is the root, not `R` | ✓ | ✓, but so was any reaction in the channel |
+| `await <root permalink> --since R` | ✓ | dropped | dropped — only the root's counted |
+| `await #c --since R --include-thread-replies` | ✓ plus every other thread | ✓ | ✓ plus every other reaction |
+
+Resuming the *first* turn after a timeout (`--since <cursor>`) had the same
+hole. People answering in the channel instead of the thread is common,
+especially while the thread is still near the bottom, so both have to count.
+
+**`--conversation <root>`** (ts, or a permalink to any message in the thread —
+resolved to the root by looking the message up, since a reply's permalink does
+not always carry `thread_ts`) sets `RepliesTo` explicitly. The loop contract is
+then uniform: `--conversation` is fixed for the whole conversation, `--since`
+is always the previous result's `cursor`. Not the caller's own reply: anything
+that arrived between the last cursor and that reply would be skipped.
+
+**Reaction scope.** A channel await used to match any reaction in the channel.
+With `RepliesTo` set, a reaction counts only on the root, or on one of the
+caller's own messages *in this conversation* — a reply in the root's thread, or
+anything posted after `--since`. "Own" comes from the frame's `item_user`. Under
+browser auth "self" is a person who also posts elsewhere in the channel, so
+"any reaction on my messages" would count a 😂 on an unrelated post. Reaction
+frames carry no `thread_ts`, so the watch session indexes the thread of every
+message it sees (catch-up reads and live frames) and fills it in; an unknown
+thread falls back to the `--since` bound. `stream` without `--conversation`,
+and a channel await without `--since`, keep matching every reaction.
+
+**Reaction catch-up.** History never produced reaction events, so a 👍 between
+sending and awaiting — or while the agent composed its next reply — was lost.
+History does include each message's reactions, undated. A reaction on a message
+posted at or after the cursor cannot predate the cursor, so the catch-up emits
+those (read with `inclusive=true`, since the `--since` message is usually the
+caller's own and the one being reacted to). Choices:
+
+- **Cursor = message ts + 1µs**, computed by `Event.Cursor()` from the
+  caught-up flag, never stored as `event_ts`. Equal to the message ts, resuming from it would catch the same
+  reaction up again forever — an agent re-awaiting past a 👀 would loop. Later
+  than that, resuming would skip messages that arrived in between. Output marks
+  the event `caught_up: true` and omits `event_ts` rather than print a
+  synthetic time as though someone reacted then.
+- **The event carries the message's full `reactions` list.** Several reactions
+  caught up on one message share a cursor, so `await` returns the first and the
+  rest would otherwise vanish on resume.
+- **Deduped against the live frame by (channel, ts, reaction, reactor)**
+  (`reactionKey`): the socket is attached before the catch-up read, so one
+  reaction can arrive both ways. A match is consumed, and a `reaction_removed`
+  forgets the key, so a later re-add still counts — otherwise a caught-up
+  reaction with no live twin would suppress every re-add for the whole run.
+  `eventKey` is unchanged for live-to-live. The thread index and this pairing
+  live in `eventconversation.go`.
+- **Reactions on older messages are not caught up.** They cannot be told apart
+  from ones that were already there. A chain of `await`s can therefore miss a
+  reaction added between runs on one of the caller's earlier messages; a
+  background `stream --conversation` holds one socket for the whole
+  conversation and has no such gap, which is why the skill prefers it.
+
+**`stream --conversation`** needs exactly one `--channel` and is the only case
+where `stream` takes `--since`: one conversation, one scalar cursor, no fan-out.
+
+**Own messages are out of scope, not skipped.** With `--since` a cursor, the
+caller's own replies fall after it; as a narrowing filter self-exclusion
+reported each one in `skipped`, which exists to surface a "no" that reads as
+silence. Self-exclusion is now a primary selector. The cost: the account
+owner's own "stop" typed from another device no longer shows in `skipped`.
 
 ## Reconnection
 
@@ -222,6 +298,7 @@ cursor; only auth, target, and transport failures exit non-zero.
 conversation — a single scalar cursor across channels is not a valid resume
 point. `await` never has this problem: it is always scoped to one conversation.
 
-For that reason `stream` has no `--since`: resuming N conversations from one
-scalar would fan out into an unbounded backfill at startup. It starts live and
-reports where it got to.
+For that reason `stream` takes `--since` only with `--conversation` (one
+conversation): resuming N conversations from one scalar would fan out into an
+unbounded backfill at startup. Otherwise it starts live and reports where it
+got to.

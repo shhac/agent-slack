@@ -29,7 +29,10 @@ family so conventions, output contract, and credential handling are shared.
 - **Live delivery**: `message await` blocks until the next reply (or reaction)
   and `message stream` emits events as NDJSON — over the same WebSocket the
   Slack client uses, so neither polls or spends rate-limit budget. Browser auth
-  streams; a bot token falls back to polling for `await`.
+  streams; a bot token falls back to polling for `await`. `--conversation`
+  holds a multi-turn exchange: replies in the thread or the channel, and
+  reactions on your messages, all count.
+
 - **Multi-workspace**: disambiguate with `--workspace <url-or-substring>`.
 - **MCP server** (`agent-slack mcp`): exposes the command tree to MCP clients.
   With OAuth, named principals (`agent-slack mcp pair add <name> --bind

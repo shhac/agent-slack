@@ -378,6 +378,18 @@ messages roughly 15:1, so a stream must filter rather than forward.
 - The `client.getWebSocketURL` response carries a **fallback gateway** as well
   as the primary. It is dialed when the primary refuses, so one gateway's
   outage does not end a run.
+- **`reaction_added` frames carry `item_user`** — the author of the message
+  reacted to — alongside `user` (the reactor), `item.{channel,ts}` and
+  `event_ts`, but **no `thread_ts`**. Verified live (2026-09-30). This is what
+  lets a conversation await count a reaction on the caller's own message; the
+  thread has to come from having seen that message.
+- **History does not date reactions.** `conversations.history` and
+  `conversations.replies` include `reactions: [{name, users, count}]` by default
+  (no `include_all_metadata` needed), with no per-reaction timestamp. A reaction
+  on a message posted at or after a cursor is provably newer than the cursor;
+  one on an older message cannot be distinguished from one that was already
+  there.
+- `conversations.history`'s `oldest` is **exclusive** unless `inclusive=true`.
 - Reaction names arrive with the reactor's skin tone attached
   (`+1::skin-tone-3`). One normalizer (`render.NormalizeReactionName`) serves
   every command that takes an emoji, so `message react` and
