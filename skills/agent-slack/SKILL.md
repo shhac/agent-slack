@@ -188,9 +188,16 @@ comes in a minute or in three hours, so don't block your session on it:
    ```bash
    root=$(agent-slack message send "#team" "deploy blocked — proceed or hold?" | jq -r .ts)
    agent-slack message stream --channel "#team" --conversation "$root" --since "$root" \
-     --events message,reaction --duration 4h --idle-timeout 1h     # in the background
+     --events message,reaction --duration 4h --idle-timeout 1h \
+     > conv.ndjson 2>&1                                            # in the background
+   tail -n +1 -F conv.ndjson             # what wakes you: one line per event
    agent-slack message send "#team" "holding — will retry at 3" --thread-ts "$root"
    ```
+
+   Send stderr into the same file (`2>&1`) and follow that **one** file: a
+   stream error then wakes you too, and macOS/BSD `tail -F` over several files
+   holds lines back, so the reply sits unseen. Re-arming the watcher never
+   touches the stream, so nothing is lost across re-arms.
 
 2. **Otherwise — `await` in the background**, with a long `--timeout`, and
    start the next one as soon as you have handled the result:
@@ -211,13 +218,21 @@ not delivered separately. Between two `await`s, a reaction on one of your
 *older* messages can be missed (history cannot date it); the stream has no
 such gap.
 
-**Where to reply.** In the thread (`--thread-ts "$root"`) by default. People
-often answer in the channel instead, especially while the thread is still near
-the bottom (fewer than ~5 channel messages since the root) — to them it is one
-conversation, and they may not be following the thread. Then reply in the
-channel too. If the channel has moved on, reply in the thread and `@mention`
-them so it reaches them. Either way keep `--conversation` unchanged: the
-channel is already in scope.
+**Where to reply: where they last replied.** Answer the person, not your own
+message:
+
+- They replied **in the thread** → reply in the thread.
+- They replied **at the top level** → reply at the top level. Never thread
+  under your own message after they have left it: to them it reads as you
+  talking to yourself. People do this constantly, especially while the thread
+  is near the bottom (fewer than ~5 messages since the root) — to them it is
+  one conversation.
+- **In a DM, top level is the default**; threads there are rare.
+- In a busy channel that has moved on, reply at the top level and `@mention`
+  them so it reaches them.
+
+Keep `--conversation` unchanged for all of these: the root's thread and the
+top level are both already in scope.
 
 ## Watching a channel
 

@@ -112,7 +112,9 @@ agent-slack message await "#team" --conversation "$root" --since "$cursor" \
   so a chain of `await`s can miss one added between runs.
 - **Gapless:** a background `stream --channel <c> --conversation <root>
   --since <root>` holds one socket for the whole conversation, so nothing lands
-  between turns. Give it a long `--duration` and an `--idle-timeout`.
+  between turns. Give it a long `--duration` and an `--idle-timeout`. Write
+  it to one file with `> conv.ndjson 2>&1` and follow only that file: BSD
+  `tail -F` over several files holds lines back.
 - Your own messages are out of scope (not `skipped`) unless `--include-self`.
 
 Watching a channel — alerts, deploys, an incident room:
