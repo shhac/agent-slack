@@ -1,8 +1,13 @@
 package slack
 
+// Dispatching a press: the blocks.actions call the web client makes when an
+// element is clicked, with an RTM listener started first so the app's
+// response is not missed. What the response was is judged in
+// blockaction_observe.go.
+
 import (
 	"context"
-	"reflect"
+	"encoding/json"
 	"sync/atomic"
 	"time"
 
@@ -10,31 +15,8 @@ import (
 	"github.com/shhac/agent-slack/internal/render"
 )
 
-// Press outcomes: what the app visibly did in response.
-const (
-	OutcomeMessageUpdated = "message_updated"
-	OutcomeMessageDeleted = "message_deleted"
-	OutcomeViewOpened     = "view_opened"
-	OutcomeNone           = "none"
-	// OutcomeUnknown: no re-read of the message succeeded, so a change to it
-	// cannot be ruled out — the press may still have had an effect.
-	OutcomeUnknown = "unknown"
-	// OutcomeUnobserved: the caller pressed without watching (Wait 0).
-	OutcomeUnobserved = "unobserved"
-)
-
-const (
-	// pressPollInterval spaces the re-reads that detect a card update; the
-	// RTM socket's message frames only hint at one (they are unverified on
-	// that socket, and absent for channels the user has not joined).
-	pressPollInterval = time.Second
-	// pressGrace keeps watching briefly after the first response: an app
-	// that updates its card and then opens a form (or the reverse) would
-	// otherwise leave that form open on the user's other clients.
-	pressGrace = time.Second
-	// helloTimeout bounds the wait for RTM's hello before pressing anyway.
-	helloTimeout = 3 * time.Second
-)
+// helloTimeout bounds the wait for RTM's hello before pressing anyway.
+const helloTimeout = 3 * time.Second
 
 // PressInput is the input to PressMessageAction. Message is the raw message
 // the element came from (the pre-press copy a change is judged against);
@@ -47,16 +29,6 @@ type PressInput struct {
 	// Choice is a menu or picker's selection, from ActionChoice.
 	Choice map[string]any
 	Wait   time.Duration
-}
-
-// PressResult reports the app's visible response. Message is the raw
-// updated message when it changed; View the raw view it opened. Both can be
-// set — Outcome names the most consequential.
-type PressResult struct {
-	Outcome  string
-	Message  map[string]any
-	View     map[string]any
-	Warnings []string
 }
 
 // RequireBlockActionAuth fails unless c can dispatch block actions —
@@ -97,50 +69,62 @@ func PressMessageAction(ctx context.Context, c *Client, in PressInput) (PressRes
 		return PressResult{}, err
 	}
 	defer conn.Close()
-
 	listenCtx, stopListening := context.WithCancel(ctx)
 	defer stopListening()
-	var pressed atomic.Bool
-	hello := make(chan struct{})
-	frames := make(chan map[string]any, 16)
+	listener := listenForPress(listenCtx, c, conn, in)
+
+	// Pressing before RTM is live would miss a fast app's form.
+	select {
+	case <-listener.hello:
+	case <-time.After(helloTimeout):
+	case <-ctx.Done():
+		return PressResult{}, ctx.Err()
+	}
+
+	listener.pressed.Store(true)
+	if err := dispatchBlockAction(ctx, c, params); err != nil {
+		return PressResult{}, err
+	}
+	return observePress(ctx, c, in, listener.frames), nil
+}
+
+// pressListener is the RTM side of a press: hello closes once the socket is
+// live, and frames carries only press-related frames read after pressed is
+// set. frames closes when the socket does.
+type pressListener struct {
+	hello   chan struct{}
+	frames  chan map[string]any
+	pressed atomic.Bool
+}
+
+func listenForPress(ctx context.Context, c *Client, conn rtmConn, in PressInput) *pressListener {
+	l := &pressListener{hello: make(chan struct{}), frames: make(chan map[string]any, 16)}
 	go func() {
-		defer close(frames)
+		defer close(l.frames)
 		helloSeen := false
 		for {
-			frame, err := conn.ReadJSON(listenCtx)
+			frame, err := conn.ReadJSON(ctx)
 			if err != nil {
 				return
 			}
 			c.debugJSON("RTM frame", frame)
 			if !helloSeen && getStr(frame, "type") == "hello" {
 				helloSeen = true
-				close(hello)
+				close(l.hello)
 			}
 			// A frame read before the press cannot be its response — an
 			// earlier edit of the card, or a form opened on another client.
-			if !pressed.Load() || !pressRelated(frame, in) {
+			if !l.pressed.Load() || !pressRelated(frame, in) {
 				continue
 			}
 			select {
-			case frames <- frame:
-			case <-listenCtx.Done():
+			case l.frames <- frame:
+			case <-ctx.Done():
 				return
 			}
 		}
 	}()
-	// Pressing before RTM is live would miss a fast app's form.
-	select {
-	case <-hello:
-	case <-time.After(helloTimeout):
-	case <-ctx.Done():
-		return PressResult{}, ctx.Err()
-	}
-
-	pressed.Store(true)
-	if err := dispatchBlockAction(ctx, c, params); err != nil {
-		return PressResult{}, err
-	}
-	return observePress(ctx, c, in, frames), nil
+	return l
 }
 
 // dispatchBlockAction sends the press. A transport failure leaves it unknown
@@ -158,150 +142,52 @@ func dispatchBlockAction(ctx context.Context, c *Client, params map[string]any) 
 	return err
 }
 
-// pressRelated keeps the frames that can be a press's response: a view the
-// message's app opened, or an edit/delete of the message (a cue to re-read).
-func pressRelated(frame map[string]any, in PressInput) bool {
-	if isOpenedView(frame) {
-		appID := FirstNonEmpty(getStr(in.Message, "app_id"), getStr(getRec(in.Message, "bot_profile"), "app_id"))
-		viewApp := getStr(getRec(frame, "view"), "app_id")
-		return appID == "" || viewApp == "" || appID == viewApp
+// blockActionParams builds the blocks.actions form the web client sends: the
+// app is addressed by the posting bot (service_id) and its team, the element
+// by its block/action ids, and the message by a container like the one Slack
+// hands the app in its block_actions payload.
+func blockActionParams(in PressInput) (map[string]any, error) {
+	serviceID := FirstNonEmpty(getStr(in.Message, "bot_id"), getStr(in.Message, "app_id"))
+	if serviceID == "" {
+		return nil, agenterrors.New("this message was not posted by an app, so there is nothing listening for the press",
+			agenterrors.FixableByAgent).WithHint("only app (bot) messages have pressable buttons")
 	}
-	if getStr(frame, "type") != "message" || getStr(frame, "channel") != in.Ref.ChannelID {
-		return false
+	actions, _ := json.Marshal([]map[string]any{actionPayload(in.Target, in.Choice)})
+	container, _ := json.Marshal(map[string]any{
+		"type":         "message",
+		"message_ts":   in.Ref.MessageTS,
+		"channel_id":   in.Ref.ChannelID,
+		"is_ephemeral": false,
+	})
+	params := map[string]any{
+		"service_id":   serviceID,
+		"actions":      string(actions),
+		"container":    string(container),
+		"client_token": clientToken(),
 	}
-	switch getStr(frame, "subtype") {
-	case "message_changed":
-		return getStr(getRec(frame, "message"), "ts") == in.Ref.MessageTS
-	case "message_deleted":
-		return getStr(frame, "deleted_ts") == in.Ref.MessageTS
+	if team := FirstNonEmpty(getStr(getRec(in.Message, "bot_profile"), "team_id"), getStr(in.Message, "team")); team != "" {
+		params["service_team_id"] = team
 	}
-	return false
+	return params, nil
 }
 
-// pressWatch accumulates what a press's observation has seen.
-type pressWatch struct {
-	ctx         context.Context
-	c           *Client
-	in          PressInput
-	res         PressResult
-	deleted     bool
-	misses      int
-	readOK      bool
-	messageDone bool
-	socketLost  bool
-}
-
-// observePress watches until in.Wait passes (measured from the press's
-// return) or, once a response is seen, a short grace period ends. A card
-// change is decided by re-reading the message, not by trusting a frame.
-func observePress(ctx context.Context, c *Client, in PressInput, frames <-chan map[string]any) PressResult {
-	w := &pressWatch{ctx: ctx, c: c, in: in}
-	deadline := time.Now().Add(in.Wait)
-	timer := time.NewTimer(in.Wait)
-	defer timer.Stop()
-	poll := time.NewTicker(pressPollInterval)
-	defer poll.Stop()
-
-	settle := func() {
-		if until := time.Until(deadline); until > pressGrace {
-			deadline = time.Now().Add(pressGrace)
-			timer.Reset(pressGrace)
+// actionPayload is the element as the app expects to receive it back: its
+// address, type, the fields an app keys behaviour on, and — for a menu or
+// picker — the chosen value under the element type's own key.
+func actionPayload(ie render.InteractiveElement, chosen map[string]any) map[string]any {
+	el := ie.Element
+	payload := map[string]any{
+		"block_id":  ie.BlockID,
+		"action_id": getStr(el, "action_id"),
+		"type":      getStr(el, "type"),
+	}
+	for _, key := range []string{"text", "value", "style", "placeholder"} {
+		if v, ok := el[key]; ok {
+			payload[key] = v
 		}
 	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return w.finish()
-		case <-timer.C:
-			return w.finish()
-		case frame, ok := <-frames:
-			if !ok {
-				frames = nil
-				w.socketLost = true
-				continue
-			}
-			if isOpenedView(frame) {
-				if w.res.View == nil {
-					w.res.View = getRec(frame, "view")
-					settle()
-				}
-				continue
-			}
-			if w.recheck() {
-				settle()
-			}
-		case <-poll.C:
-			if w.recheck() {
-				settle()
-			}
-		}
+	for key, v := range chosen {
+		payload[key] = v
 	}
-}
-
-// recheck re-reads the message and reports whether it has changed or gone.
-// Not-found must repeat before it counts as a delete: the lookup cascade
-// reads a failed fallback call as "not there".
-func (w *pressWatch) recheck() bool {
-	if w.messageDone {
-		return false
-	}
-	msg, err := findRawMessage(w.ctx, w.c, w.in.Ref, false)
-	if err != nil {
-		return false
-	}
-	w.readOK = true
-	if msg == nil {
-		w.misses++
-		if w.misses < 2 {
-			return false
-		}
-		w.deleted, w.messageDone = true, true
-		return true
-	}
-	w.misses = 0
-	if messageChanged(w.in.Message, msg) {
-		w.res.Message, w.messageDone = msg, true
-		return true
-	}
-	return false
-}
-
-func (w *pressWatch) finish() PressResult {
-	if !w.messageDone {
-		w.recheck()
-	}
-	switch {
-	case w.res.View != nil:
-		w.res.Outcome = OutcomeViewOpened
-	case w.deleted:
-		w.res.Outcome = OutcomeMessageDeleted
-	case w.res.Message != nil:
-		w.res.Outcome = OutcomeMessageUpdated
-	case !w.readOK:
-		w.res.Outcome = OutcomeUnknown
-	default:
-		w.res.Outcome = OutcomeNone
-	}
-	if w.socketLost && w.res.View == nil {
-		w.res.Warnings = append(w.res.Warnings,
-			"the RTM socket closed while watching, so a form the app opened would not have been seen")
-	}
-	if !w.readOK {
-		w.res.Warnings = append(w.res.Warnings,
-			"could not re-read the message after the press — check it with 'message get' rather than pressing again")
-	}
-	return w.res
-}
-
-// messageChanged compares what a press can change about a card: its text,
-// blocks, attachments, and edit stamp. Reactions are left out — another
-// user's reaction is not the app's response.
-func messageChanged(before, after map[string]any) bool {
-	for _, key := range []string{"text", "blocks", "attachments", "edited"} {
-		if !reflect.DeepEqual(before[key], after[key]) {
-			return true
-		}
-	}
-	return false
+	return payload
 }

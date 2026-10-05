@@ -1,7 +1,6 @@
 package slack
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -116,56 +115,6 @@ func noActionsError(msg map[string]any) error {
 		}
 	}
 	return err.WithHint("'message get' lists a message's interactive elements under 'actions'")
-}
-
-// blockActionParams builds the blocks.actions form the web client sends: the
-// app is addressed by the posting bot (service_id) and its team, the element
-// by its block/action ids, and the message by a container like the one Slack
-// hands the app in its block_actions payload.
-func blockActionParams(in PressInput) (map[string]any, error) {
-	serviceID := FirstNonEmpty(getStr(in.Message, "bot_id"), getStr(in.Message, "app_id"))
-	if serviceID == "" {
-		return nil, agenterrors.New("this message was not posted by an app, so there is nothing listening for the press",
-			agenterrors.FixableByAgent).WithHint("only app (bot) messages have pressable buttons")
-	}
-	actions, _ := json.Marshal([]map[string]any{actionPayload(in.Target, in.Choice)})
-	container, _ := json.Marshal(map[string]any{
-		"type":         "message",
-		"message_ts":   in.Ref.MessageTS,
-		"channel_id":   in.Ref.ChannelID,
-		"is_ephemeral": false,
-	})
-	params := map[string]any{
-		"service_id":   serviceID,
-		"actions":      string(actions),
-		"container":    string(container),
-		"client_token": clientToken(),
-	}
-	if team := FirstNonEmpty(getStr(getRec(in.Message, "bot_profile"), "team_id"), getStr(in.Message, "team")); team != "" {
-		params["service_team_id"] = team
-	}
-	return params, nil
-}
-
-// actionPayload is the element as the app expects to receive it back: its
-// address, type, the fields an app keys behaviour on, and — for a menu or
-// picker — the chosen value under the element type's own key.
-func actionPayload(ie render.InteractiveElement, chosen map[string]any) map[string]any {
-	el := ie.Element
-	payload := map[string]any{
-		"block_id":  ie.BlockID,
-		"action_id": getStr(el, "action_id"),
-		"type":      getStr(el, "type"),
-	}
-	for _, key := range []string{"text", "value", "style", "placeholder"} {
-		if v, ok := el[key]; ok {
-			payload[key] = v
-		}
-	}
-	for key, v := range chosen {
-		payload[key] = v
-	}
-	return payload
 }
 
 // ActionChoice validates the value a press supplies against the element: a

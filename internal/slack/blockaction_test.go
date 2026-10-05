@@ -166,3 +166,32 @@ func TestActionChoiceRefusesAValueForAButton(t *testing.T) {
 	_, err := ActionChoice(render.InteractiveElement{BlockID: "b", Element: button("go", "Go")}, "x")
 	agentHint(t, err)
 }
+
+// The outcome decides whether an agent may press again, so every
+// combination of what was seen maps to exactly one, and a blind spot is
+// always named in a warning.
+func TestPressWatchResult(t *testing.T) {
+	view := map[string]any{"id": "V1"}
+	msg := map[string]any{"ts": "1.1"}
+	cases := []struct {
+		name         string
+		watch        pressWatch
+		want         string
+		wantWarnings int
+	}{
+		{"nothing changed", pressWatch{readOK: true}, OutcomeNone, 0},
+		{"card updated", pressWatch{readOK: true, updated: msg}, OutcomeMessageUpdated, 0},
+		{"card deleted", pressWatch{readOK: true, deleted: true}, OutcomeMessageDeleted, 0},
+		{"form beats an update", pressWatch{readOK: true, updated: msg, view: view}, OutcomeViewOpened, 0},
+		{"never re-read", pressWatch{}, OutcomeUnknown, 1},
+		{"socket lost, card readable", pressWatch{readOK: true, socketLost: true}, OutcomeNone, 1},
+		{"socket lost and never re-read", pressWatch{socketLost: true}, OutcomeUnknown, 2},
+		{"socket lost after the form", pressWatch{socketLost: true, readOK: true, view: view}, OutcomeViewOpened, 0},
+	}
+	for _, tc := range cases {
+		got := tc.watch.result()
+		if got.Outcome != tc.want || len(got.Warnings) != tc.wantWarnings {
+			t.Errorf("%s: outcome %q with %d warnings, want %q with %d", tc.name, got.Outcome, len(got.Warnings), tc.want, tc.wantWarnings)
+		}
+	}
+}
