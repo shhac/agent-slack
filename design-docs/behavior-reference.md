@@ -344,7 +344,12 @@ suspect until it has been checked against a real Enterprise Grid id.
 - Once `blocks.actions` is sent nothing is retryable (a retry presses
   again): a transport failure on the press itself becomes agent-fixable with
   a "check before pressing again" hint, and failures while watching become
-  `warnings` (outcome `unknown` when nothing could be observed).
+  `warnings` (outcome `unknown` when no re-read of the message succeeded,
+  since a card change cannot then be ruled out). A failed form submission
+  keeps its hint in `view.error`: "may have been submitted" is what stops a
+  second one.
+- A view only counts if it is from the message's app (`app_id`, else
+  `bot_profile.app_id`); a pushed stub without one is accepted.
 
 ## The event socket (`client.getWebSocketURL`)
 

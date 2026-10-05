@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -28,6 +29,9 @@ func actionCLIFixture(t *testing.T, preScript []map[string]any, onPress ...map[s
 	f.server.HandleBody("blocks.actions", map[string]any{"ok": true})
 	return f
 }
+
+// anyParams makes a HandleWhen override the fixture's default response.
+func anyParams(url.Values) bool { return true }
 
 func pressArgs(extra ...string) []string {
 	return append([]string{"message", "action", actionChannel, "--ts", actionTS}, extra...)
@@ -408,5 +412,80 @@ func TestMessageActionMenuNeedsAValue(t *testing.T) {
 	}
 	if len(f.server.CallsFor("blocks.actions")) != 0 {
 		t.Error("nothing should be pressed without a choice")
+	}
+}
+
+// Once blocks.actions is sent a retry presses again, so a failure the
+// transport would call retryable must reach the agent as "check first".
+func TestMessageActionFailedPressIsNotRetryable(t *testing.T) {
+	for _, wait := range []string{"0", "1s"} {
+		t.Run("wait "+wait, func(t *testing.T) {
+			f := actionCLIFixture(t, nil)
+			f.server.HandleBody("conversations.history", historyWith(appCardMessage(actionTS)))
+			f.server.HandleWhen("blocks.actions", anyParams, mockslack.Response{Status: 500})
+
+			_, stderr, err := f.run(t, pressArgs("Approve", "--wait", wait, "--yes")...)
+			if err == nil {
+				t.Fatal("expected the failed press to error")
+			}
+			payload := errPayload(t, stderr)
+			if payload["fixable_by"] != "agent" || !strings.Contains(payload["hint"].(string), "message get") {
+				t.Errorf("payload = %v, want agent-fixable with a check-first hint", payload)
+			}
+			if n := len(f.server.CallsFor("blocks.actions")); n != 1 {
+				t.Errorf("blocks.actions called %d times", n)
+			}
+		})
+	}
+}
+
+// With no successful re-read a card change cannot be ruled out: that is
+// "unknown", never "none", or an agent would press again.
+func TestMessageActionCannotSeeTheCard(t *testing.T) {
+	f := actionCLIFixture(t, nil)
+	f.server.Handle("conversations.history",
+		mockslack.Response{Body: historyWith(appCardMessage(actionTS))},
+		mockslack.Response{Status: 500})
+
+	stdout, _, err := f.run(t, pressArgs("Approve", "--wait", "1s", "--yes")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, stdout)
+	warnings, _ := payload["warnings"].([]any)
+	if payload["outcome"] != "unknown" || len(warnings) != 1 || !strings.Contains(warnings[0].(string), "rather than pressing again") {
+		t.Errorf("payload = %v", payload)
+	}
+}
+
+func TestMessageActionIgnoresAnotherAppsForm(t *testing.T) {
+	card := appCardMessage(actionTS)
+	card["bot_profile"].(map[string]any)["app_id"] = "A0000000001"
+	f := actionCLIFixture(t, nil, mockslack.WSViewOpened(map[string]any{"id": "V0000000003", "app_id": "A0000000002"}))
+	f.server.HandleBody("conversations.history", historyWith(card))
+
+	stdout, _, err := f.run(t, pressArgs("Approve", "--wait", "1s", "--yes")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload := parseJSON(t, stdout); payload["outcome"] != "none" || payload["view"] != nil {
+		t.Errorf("payload = %v, want another app's form ignored", payload)
+	}
+	if len(f.server.CallsFor("views.close")) != 0 {
+		t.Error("a form that is not the press's response must not be closed")
+	}
+}
+
+func TestMessageActionKeepsTheMayHaveSubmittedHint(t *testing.T) {
+	f := formFixture(t)
+	f.server.HandleWhen("views.submit", anyParams, mockslack.Response{Status: 500})
+
+	stdout, _, err := f.run(t, pressArgs("Edit", "--field", "Severity=Major", "--yes")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := parseJSON(t, stdout)["view"].(map[string]any)
+	if msg, _ := view["error"].(string); !strings.Contains(msg, "may have been submitted") {
+		t.Errorf("view.error = %q, want the hint that stops a second submission", msg)
 	}
 }

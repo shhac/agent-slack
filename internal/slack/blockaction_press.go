@@ -16,8 +16,8 @@ const (
 	OutcomeMessageDeleted = "message_deleted"
 	OutcomeViewOpened     = "view_opened"
 	OutcomeNone           = "none"
-	// OutcomeUnknown: nothing could be observed (the socket and every
-	// re-read failed), so the press may still have had an effect.
+	// OutcomeUnknown: no re-read of the message succeeded, so a change to it
+	// cannot be ruled out — the press may still have had an effect.
 	OutcomeUnknown = "unknown"
 	// OutcomeUnobserved: the caller pressed without watching (Wait 0).
 	OutcomeUnobserved = "unobserved"
@@ -162,7 +162,7 @@ func dispatchBlockAction(ctx context.Context, c *Client, params map[string]any) 
 // message's app opened, or an edit/delete of the message (a cue to re-read).
 func pressRelated(frame map[string]any, in PressInput) bool {
 	if isOpenedView(frame) {
-		appID := getStr(in.Message, "app_id")
+		appID := FirstNonEmpty(getStr(in.Message, "app_id"), getStr(getRec(in.Message, "bot_profile"), "app_id"))
 		viewApp := getStr(getRec(frame, "view"), "app_id")
 		return appID == "" || viewApp == "" || appID == viewApp
 	}
@@ -278,7 +278,7 @@ func (w *pressWatch) finish() PressResult {
 		w.res.Outcome = OutcomeMessageDeleted
 	case w.res.Message != nil:
 		w.res.Outcome = OutcomeMessageUpdated
-	case !w.readOK && w.socketLost:
+	case !w.readOK:
 		w.res.Outcome = OutcomeUnknown
 	default:
 		w.res.Outcome = OutcomeNone

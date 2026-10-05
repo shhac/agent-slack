@@ -296,7 +296,7 @@ agent-slack message action "<permalink>" Edit --field "Message=Fix deployed" --y
 - Output: `{pressed, channel_id, ts, action, outcome, message?, view?,
   warnings?}`. `outcome` is judged by re-reading the message for up to
   `--wait`: `message_updated` (with the new `message`), `message_deleted`,
-  `view_opened` (the app opened a form — see Forms), `none`, `unknown` (nothing could be observed), or
+  `view_opened` (the app opened a form — see Forms), `none`, `unknown` (the message could not be re-read, so a change can't be ruled out), or
   `unobserved` (`--wait 0`).
 - **Never press again on `none` or `unknown`** — the press was sent. Check
   with `message get`; an app that answers with a new message rather than an

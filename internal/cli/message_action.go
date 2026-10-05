@@ -138,7 +138,7 @@ func handleOpenedView(ctx context.Context, c *slack.Client, pushed map[string]an
 	}
 	res, err := slack.SubmitView(ctx, c, full, fields)
 	if err != nil {
-		view.Error = err.Error()
+		view.Error = errorWithHint(err)
 		view.Closed = slack.CloseView(ctx, c, view.ID)
 		return view, ""
 	}
@@ -171,4 +171,14 @@ func describePress(msg map[string]any, target render.InteractiveElement, value s
 		desc += fmt.Sprintf(" (Slack would first ask: %q)", confirm)
 	}
 	return desc
+}
+
+// errorWithHint keeps an error's hint in a result field: for a submission
+// that may have landed, the hint is what stops a second one.
+func errorWithHint(err error) string {
+	var apiErr *agenterrors.APIError
+	if agenterrors.As(err, &apiErr) && apiErr.Hint != "" {
+		return apiErr.Message + " — " + apiErr.Hint
+	}
+	return err.Error()
 }
