@@ -489,3 +489,31 @@ func TestMessageActionKeepsTheMayHaveSubmittedHint(t *testing.T) {
 		t.Errorf("view.error = %q, want the hint that stops a second submission", msg)
 	}
 }
+
+// A submission that moves the form to another step leaves that step open on
+// the user's other clients; it is closed and named.
+func TestMessageActionClosesAFurtherFormStep(t *testing.T) {
+	for _, action := range []string{"update", "push"} {
+		t.Run(action, func(t *testing.T) {
+			f := formFixture(t)
+			f.server.HandleWhen("views.submit", anyParams, mockslack.Response{Body: map[string]any{"ok": true, "response_action": action}})
+
+			stdout, _, err := f.run(t, pressArgs("Edit", "--field", "Severity=Major", "--yes")...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload := parseJSON(t, stdout)
+			view := payload["view"].(map[string]any)
+			warnings, _ := payload["warnings"].([]any)
+			if view["submitted"] != true || view["response_action"] != action || view["closed"] != true {
+				t.Errorf("view = %v", view)
+			}
+			if len(warnings) != 1 || !strings.Contains(warnings[0].(string), "another step") {
+				t.Errorf("warnings = %v", warnings)
+			}
+			if n := len(f.server.CallsFor("views.close")); n != 1 {
+				t.Errorf("views.close called %d times", n)
+			}
+		})
+	}
+}

@@ -3,6 +3,7 @@ package mockslack
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -105,5 +106,44 @@ func TestGetWebSocketURLBodyPointsAtFakeSocket(t *testing.T) {
 	}
 	if got := WebSocketURLFor("https://acme.example"); got != "wss://acme.example/websocket" {
 		t.Errorf("https should map to wss, got %v", got)
+	}
+}
+
+// PushOnCall frames model an effect of a call, so they must reach an open
+// connection only once the call is made — never at connect time.
+func TestWebSocketPushesFramesOnCall(t *testing.T) {
+	server := New()
+	server.EnableWebSocket(WSScript{
+		Frames:     []map[string]any{Hello()},
+		KeepOpen:   true,
+		PushOnCall: map[string][]map[string]any{"blocks.actions": {WSViewOpened(map[string]any{"id": "V1"})}},
+	})
+	server.HandleBody("blocks.actions", map[string]any{"ok": true})
+	ts := httptest.NewServer(server)
+	t.Cleanup(ts.Close)
+	conn := dialFake(t, ts)
+
+	if frame := readFrame(t, conn); frame["type"] != "hello" {
+		t.Fatalf("first frame = %v", frame)
+	}
+	// A read that times out closes the socket, so the queue is inspected
+	// directly: nothing may be waiting before the call.
+	server.mu.Lock()
+	queued := 0
+	for _, push := range server.wsPushers {
+		queued += len(push)
+	}
+	server.mu.Unlock()
+	if queued != 0 {
+		t.Fatalf("%d frames queued before the call", queued)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/blocks.actions", "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if frame := readFrame(t, conn); frame["type"] != "view_opened" {
+		t.Errorf("pushed frame = %v", frame)
 	}
 }
