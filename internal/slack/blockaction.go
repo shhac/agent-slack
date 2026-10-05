@@ -190,7 +190,7 @@ func ActionChoice(ie render.InteractiveElement, value string) (map[string]any, e
 		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s is a %s and needs a --value", describeElement(ie), elemType).
 			WithHint(hint)
 	}
-	entry, err := formStateEntry(ie.Element, label, value)
+	entry, err := formStateEntry(ie.Element, label, value, menuValues)
 	if err != nil {
 		return nil, err
 	}

@@ -62,7 +62,7 @@ func buildFormState(view map[string]any, schema WorkflowSchema, fields map[strin
 		if !ok {
 			return nil, nil, missingFormFieldError(title)
 		}
-		entry, err := formStateEntry(block.element, field.Title, value)
+		entry, err := formStateEntry(block.element, field.Title, value, workflowFieldValues)
 		if err != nil {
 			return nil, nil, err
 		}

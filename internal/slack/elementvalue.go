@@ -13,13 +13,28 @@ import (
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
+// valueContext words a value error for its caller: what the element is
+// called, and what became of the larger operation — a workflow run is
+// abandoned, an app form is not submitted, a menu is not pressed.
+type valueContext struct {
+	noun        string
+	recovery    string
+	unsupported string
+}
+
 const nothingSubmittedHint = "nothing was submitted"
+
+var (
+	workflowFieldValues = valueContext{"field", abandonedRunHint, abandonedRunHint + "; use a Slack client for this workflow's form"}
+	appFormValues       = valueContext{"field", nothingSubmittedHint, nothingSubmittedHint + "; use a Slack client for this form"}
+	menuValues          = valueContext{"menu", "nothing was pressed", "nothing was pressed; use a Slack client for this menu"}
+)
 
 // formStateEntry builds one element value in the shape the element's type
 // expects — views.submit rejects state whose type does not match the
 // rendered element, and reports it only via response_action "errors".
 // Multi-value elements take comma-separated values.
-func formStateEntry(element map[string]any, title, value string) (map[string]any, error) {
+func formStateEntry(element map[string]any, title, value string, vc valueContext) (map[string]any, error) {
 	elemType := FirstNonEmpty(getStr(element, "type"), "plain_text_input")
 	switch elemType {
 	case "plain_text_input", "number_input", "email_text_input", "url_text_input":
@@ -27,7 +42,7 @@ func formStateEntry(element map[string]any, title, value string) (map[string]any
 	case "rich_text_input":
 		return map[string]any{"type": elemType, "rich_text_value": richTextValue(value)}, nil
 	case "static_select", "radio_buttons", "overflow":
-		opt, err := matchElementOption(element, title, value)
+		opt, err := matchElementOption(element, title, value, vc)
 		if err != nil {
 			return nil, err
 		}
@@ -35,7 +50,7 @@ func formStateEntry(element map[string]any, title, value string) (map[string]any
 	case "checkboxes", "multi_static_select":
 		var opts []any
 		for _, part := range splitValues(value) {
-			opt, err := matchElementOption(element, title, part)
+			opt, err := matchElementOption(element, title, part, vc)
 			if err != nil {
 				return nil, err
 			}
@@ -45,24 +60,24 @@ func formStateEntry(element map[string]any, title, value string) (map[string]any
 	case "datepicker":
 		if _, err := time.Parse("2006-01-02", value); err != nil {
 			return nil, agenterrors.Newf(agenterrors.FixableByAgent,
-				"field %q expects a date, got %q", title, value).
-				WithHint("use YYYY-MM-DD and rerun — " + nothingSubmittedHint)
+				"%s %q expects a date, got %q", vc.noun, title, value).
+				WithHint("use YYYY-MM-DD and rerun — " + vc.recovery)
 		}
 		return map[string]any{"type": elemType, "selected_date": value}, nil
 	case "timepicker":
 		if _, err := time.Parse("15:04", value); err != nil {
 			return nil, agenterrors.Newf(agenterrors.FixableByAgent,
-				"field %q expects a time, got %q", title, value).
-				WithHint("use HH:MM (24h) and rerun — " + nothingSubmittedHint)
+				"%s %q expects a time, got %q", vc.noun, title, value).
+				WithHint("use HH:MM (24h) and rerun — " + vc.recovery)
 		}
 		return map[string]any{"type": elemType, "selected_time": value}, nil
 	}
 	if key, ok := idSelectKeys[elemType]; ok {
-		return idSelectEntry(elemType, key, title, value)
+		return idSelectEntry(elemType, key, title, value, vc)
 	}
 	return nil, agenterrors.Newf(agenterrors.FixableByHuman,
-		"field %q is a %s input, which agent-slack cannot fill", title, elemType).
-		WithHint(nothingSubmittedHint + "; use a Slack client for this one")
+		"%s %q is a %s input, which agent-slack cannot submit", vc.noun, title, elemType).
+		WithHint(vc.unsupported)
 }
 
 // idSelectKeys maps the user/channel/conversation menus to the key their
@@ -77,16 +92,16 @@ var idSelectKeys = map[string]string{
 	"multi_channels_select":      "selected_channels",
 }
 
-func idSelectEntry(elemType, key, title, value string) (map[string]any, error) {
+func idSelectEntry(elemType, key, title, value string, vc valueContext) (map[string]any, error) {
 	ids := splitValues(value)
 	if len(ids) == 0 {
-		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "field %q needs an id", title).
-			WithHint("pass a U… or C… id ('user get' / 'channel get' resolve names) — " + nothingSubmittedHint)
+		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s %q needs an id", vc.noun, title).
+			WithHint("pass a U… or C… id ('user get' / 'channel get' resolve names) and rerun — " + vc.recovery)
 	}
 	if !strings.HasPrefix(elemType, "multi_") {
 		if len(ids) > 1 {
-			return nil, agenterrors.Newf(agenterrors.FixableByAgent, "field %q takes one id, got %d", title, len(ids)).
-				WithHint(nothingSubmittedHint)
+			return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s %q takes one id, got %d", vc.noun, title, len(ids)).
+				WithHint("pass one id and rerun — " + vc.recovery)
 		}
 		return map[string]any{"type": elemType, key: ids[0]}, nil
 	}
@@ -123,7 +138,7 @@ func richTextValue(value string) map[string]any {
 // (labels case-insensitively) and returns the option object verbatim —
 // Slack expects the full option, text object included. Grouped options
 // (option_groups) are flattened in.
-func matchElementOption(element map[string]any, title, value string) (map[string]any, error) {
+func matchElementOption(element map[string]any, title, value string, vc valueContext) (map[string]any, error) {
 	options := recItems(getArr(element, "options"))
 	for _, group := range recItems(getArr(element, "option_groups")) {
 		options = append(options, recItems(getArr(group, "options"))...)
@@ -137,6 +152,6 @@ func matchElementOption(element map[string]any, title, value string) (map[string
 		labels = append(labels, label)
 	}
 	return nil, agenterrors.Newf(agenterrors.FixableByAgent,
-		"field %q has no option matching %q. Available: %s", title, value, strings.Join(labels, ", ")).
-		WithHint("match an option by its label or value and rerun — " + nothingSubmittedHint)
+		"%s %q has no option matching %q. Available: %s", vc.noun, title, value, strings.Join(labels, ", ")).
+		WithHint("match an option by its label or value and rerun — " + vc.recovery)
 }

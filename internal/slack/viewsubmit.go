@@ -123,7 +123,7 @@ func buildViewState(view map[string]any, fields map[string]string) (map[string]a
 				WithHint(nothingSubmittedHint + "; use a Slack client for this form")
 		}
 		in := &inputs[matched[0]]
-		entry, err := formStateEntry(in.element, in.title, fields[title])
+		entry, err := formStateEntry(in.element, in.title, fields[title], appFormValues)
 		if err != nil {
 			return nil, nil, err
 		}

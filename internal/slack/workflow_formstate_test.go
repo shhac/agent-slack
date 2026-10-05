@@ -71,7 +71,7 @@ func selectElement(elemType string) map[string]any {
 
 func TestFormStateEntryTypes(t *testing.T) {
 	t.Run("rich text wraps the value in a rich_text document", func(t *testing.T) {
-		entry, err := formStateEntry(map[string]any{"type": "rich_text_input"}, "Notes", "hello")
+		entry, err := formStateEntry(map[string]any{"type": "rich_text_input"}, "Notes", "hello", workflowFieldValues)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,7 +84,7 @@ func TestFormStateEntryTypes(t *testing.T) {
 	})
 
 	t.Run("select matches by label case-insensitively and copies the option verbatim", func(t *testing.T) {
-		entry, err := formStateEntry(selectElement("static_select"), "Urgency", "low")
+		entry, err := formStateEntry(selectElement("static_select"), "Urgency", "low", workflowFieldValues)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,7 +95,7 @@ func TestFormStateEntryTypes(t *testing.T) {
 	})
 
 	t.Run("select matches by option value", func(t *testing.T) {
-		entry, err := formStateEntry(selectElement("radio_buttons"), "Urgency", "opt-high")
+		entry, err := formStateEntry(selectElement("radio_buttons"), "Urgency", "opt-high", workflowFieldValues)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -105,7 +105,7 @@ func TestFormStateEntryTypes(t *testing.T) {
 	})
 
 	t.Run("unmatched option lists the available labels", func(t *testing.T) {
-		_, err := formStateEntry(selectElement("static_select"), "Urgency", "Medium")
+		_, err := formStateEntry(selectElement("static_select"), "Urgency", "Medium", workflowFieldValues)
 		if err == nil || !strings.Contains(err.Error(), "Low, High") {
 			t.Fatalf("err = %v", err)
 		}
@@ -121,7 +121,7 @@ func TestFormStateEntryTypes(t *testing.T) {
 				}},
 			}},
 		}
-		entry, err := formStateEntry(element, "Category", "Grouped")
+		entry, err := formStateEntry(element, "Category", "Grouped", workflowFieldValues)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,7 +131,7 @@ func TestFormStateEntryTypes(t *testing.T) {
 	})
 
 	t.Run("checkboxes split on commas", func(t *testing.T) {
-		entry, err := formStateEntry(selectElement("checkboxes"), "Tags", "Low, opt-high")
+		entry, err := formStateEntry(selectElement("checkboxes"), "Tags", "Low, opt-high", workflowFieldValues)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,27 +142,27 @@ func TestFormStateEntryTypes(t *testing.T) {
 	})
 
 	t.Run("datepicker validates the format", func(t *testing.T) {
-		entry, err := formStateEntry(map[string]any{"type": "datepicker"}, "Due", "2026-01-31")
+		entry, err := formStateEntry(map[string]any{"type": "datepicker"}, "Due", "2026-01-31", workflowFieldValues)
 		if err != nil || entry["selected_date"] != "2026-01-31" {
 			t.Fatalf("entry = %v err = %v", entry, err)
 		}
-		if _, err := formStateEntry(map[string]any{"type": "datepicker"}, "Due", "31/01/2026"); err == nil {
+		if _, err := formStateEntry(map[string]any{"type": "datepicker"}, "Due", "31/01/2026", workflowFieldValues); err == nil {
 			t.Fatal("non-ISO date must error")
 		}
 	})
 
 	t.Run("timepicker validates the format", func(t *testing.T) {
-		entry, err := formStateEntry(map[string]any{"type": "timepicker"}, "At", "09:30")
+		entry, err := formStateEntry(map[string]any{"type": "timepicker"}, "At", "09:30", workflowFieldValues)
 		if err != nil || entry["selected_time"] != "09:30" {
 			t.Fatalf("entry = %v err = %v", entry, err)
 		}
-		if _, err := formStateEntry(map[string]any{"type": "timepicker"}, "At", "9.30pm"); err == nil {
+		if _, err := formStateEntry(map[string]any{"type": "timepicker"}, "At", "9.30pm", workflowFieldValues); err == nil {
 			t.Fatal("non-HH:MM time must error")
 		}
 	})
 
 	t.Run("unsupported element types error instead of guessing a shape", func(t *testing.T) {
-		_, err := formStateEntry(map[string]any{"type": "file_input"}, "Attachment", "x")
+		_, err := formStateEntry(map[string]any{"type": "file_input"}, "Attachment", "x", workflowFieldValues)
 		if err == nil || !strings.Contains(err.Error(), "file_input") {
 			t.Fatalf("err = %v", err)
 		}
