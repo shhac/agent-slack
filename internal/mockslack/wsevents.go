@@ -402,3 +402,11 @@ func DefaultEventScript() []map[string]any {
 		ReconnectURL(),
 	}
 }
+
+// WSViewOpened is the RTM push announcing a modal opened for this user — what
+// an app's views.open produces after a button press. Slack can push a stub
+// (id only) when another client shares the session, so consumers re-fetch
+// with views.get.
+func WSViewOpened(view map[string]any) map[string]any {
+	return map[string]any{"type": "view_opened", "view": view}
+}

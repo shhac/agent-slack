@@ -21,7 +21,7 @@ boundaries. It mirrors the conventions of the sibling `agent-*` CLIs
   commands. Shared list/mutation factories and compact projections live
   alongside.
 
-Destructive mutations (`message edit|delete`, `scheduled cancel`,
+Destructive mutations (`message edit|delete`, `message action`, `scheduled cancel`,
 `channel new|invite`, `emoji add|remove`) return a structured `fixable_by: human`
 error unless `--yes` is set; other writes are ungated. The full command tree, flag
 defaults, projections, and the decisions behind them are in `cli-design.md`.

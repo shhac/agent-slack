@@ -35,6 +35,7 @@ global persistent flags.
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post together as ONE message with one `initial_comment`, not one message per file), `--blocks` (path or `-`), `--forward <permalink>`, `--schedule`, `--schedule-in` | | DM auto-opens for `U…` targets |
 | `message edit <target> [text]` | `--ts`, `--slack-markdown`, `--attach` (repeatable), `--remove-attachment <F…>` (repeatable) | `--yes` | text optional when only changing attachments |
 | `message delete <target>` | `--ts` | `--yes` | |
+| `message action <target> [label]` | `--ts`, `--action-id`, `--block-id`, `--wait` (5s) | `--yes` | presses an app message's button via `blocks.actions`; browser-only; reports the app's response (see behavior-reference) |
 | `message react add/remove <target> <emoji>` | `--ts` | | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | | NDJSON |
 | `message scheduled cancel <id>` | `--channel` | `--yes` | destroys a pending send |
@@ -84,9 +85,19 @@ the tool's purpose and run ungated (like `lin`, which gates nothing). Gated:
   membership (external invites especially)
 - `emoji add`, `emoji remove` — create/delete a workspace-wide custom emoji
   (org-visible structure, like `channel new`)
+- `message action` — presses a button on an app's message. Unlike `workflow
+  run`, where the caller names a workflow it chose to run, a button's effect
+  is whatever the app wired to it (accept an incident status change, approve
+  a deploy) and cannot be read off the message. Its `confirm` dialog, which a
+  programmatic press skips, travels in the preview instead.
 
 Ungated by decision: `message send`, `react add/remove`, `workflow run`,
 `later *`, `channel mark`, `user dm-open`, `api call`.
+
+Gated commands normally refuse before any network call. `message action`
+reads first (the message, to find the element) because the preview must name
+the button and carry its confirm text; its local auth check also runs before
+the gate, so nobody is asked to confirm a press a bot token could never make.
 
 Without `--yes`, a gated command returns `fixable_by: human` describing
 exactly what would happen and a hint with the rerun command including `--yes`.

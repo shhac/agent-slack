@@ -23,6 +23,36 @@ func setIncludeMetadata(params map[string]any, on bool) {
 // the ts → the thread named by the permalink's thread_ts hint → the ts itself
 // as a thread root via conversations.replies.
 func FetchMessage(ctx context.Context, c *Client, ref *render.MessageRef, includeReactions bool) (render.MessageSummary, error) {
+	msg, err := FetchRawMessage(ctx, c, ref, includeReactions)
+	if err != nil {
+		return render.MessageSummary{}, err
+	}
+	summary := SummaryFromRaw(ref.ChannelID, msg)
+	if summary.TS == "" {
+		summary.TS = ref.MessageTS
+	}
+	summary.Files = enrichFiles(ctx, c, summary.Files)
+	return summary, nil
+}
+
+// FetchRawMessage is FetchMessage's lookup without the shaping: the decoded
+// API message, for callers that need fields the summary drops (an app
+// message's bot and team ids).
+func FetchRawMessage(ctx context.Context, c *Client, ref *render.MessageRef, includeReactions bool) (map[string]any, error) {
+	msg, err := findRawMessage(ctx, c, ref, includeReactions)
+	if err != nil {
+		return nil, err
+	}
+	if msg == nil {
+		return nil, agenterrors.New("message not found (no access or wrong URL)", agenterrors.FixableByAgent).
+			WithHint("check the permalink/--ts and that this account can see the channel")
+	}
+	return msg, nil
+}
+
+// findRawMessage is the lookup cascade; a nil message with a nil error means
+// the message is not there (deleted, or never visible to this account).
+func findRawMessage(ctx context.Context, c *Client, ref *render.MessageRef, includeReactions bool) (map[string]any, error) {
 	params := map[string]any{
 		"channel":   ref.ChannelID,
 		"latest":    ref.MessageTS,
@@ -32,14 +62,14 @@ func FetchMessage(ctx context.Context, c *Client, ref *render.MessageRef, includ
 	setIncludeMetadata(params, includeReactions)
 	history, err := c.API(ctx, "conversations.history", params)
 	if err != nil {
-		return render.MessageSummary{}, err
+		return nil, err
 	}
 	msg := findByTS(getArr(history, "messages"), ref.MessageTS)
 
 	if msg == nil && ref.ThreadTSHint != "" {
 		msg, err = findMessageInThread(ctx, c, ref.ChannelID, ref.ThreadTSHint, ref.MessageTS, includeReactions)
 		if err != nil {
-			return render.MessageSummary{}, err
+			return nil, err
 		}
 	}
 
@@ -56,17 +86,7 @@ func FetchMessage(ctx context.Context, c *Client, ref *render.MessageRef, includ
 		}
 	}
 
-	if msg == nil {
-		return render.MessageSummary{}, agenterrors.New("message not found (no access or wrong URL)", agenterrors.FixableByAgent).
-			WithHint("check the permalink/--ts and that this account can see the channel")
-	}
-
-	summary := SummaryFromRaw(ref.ChannelID, msg)
-	if summary.TS == "" {
-		summary.TS = ref.MessageTS
-	}
-	summary.Files = enrichFiles(ctx, c, summary.Files)
-	return summary, nil
+	return msg, nil
 }
 
 func findByTS(messages []any, ts string) map[string]any {

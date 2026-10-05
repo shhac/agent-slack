@@ -302,6 +302,37 @@ suspect until it has been checked against a real Enterprise Grid id.
   is the only visibility into the push events driving this flow.
 - There is no self-update command.
 
+## Pressing a message's buttons (`blocks.actions`, client API)
+
+- **Unverified request shape.** No real press has been captured. The form
+  follows a captured modal-button press (bolt-js issue #300: `service_id`,
+  `service_team_id`, JSON-string `actions` and `container`, `client_token`)
+  with the `container` Slack documents in the `block_actions` payload it
+  hands apps for a message: `{type:"message", message_ts, channel_id,
+  is_ephemeral}`. `service_id` is the message's `bot_id`, else `app_id`;
+  `service_team_id` is `bot_profile.team_id`, else `team`. Capture a press in
+  devtools to confirm before relying on edge cases.
+- Each `actions[]` entry echoes the element: `block_id`, `action_id`,
+  `type`, and its `text`/`value`/`style` when present.
+- Outcome is judged by **re-reading the message**, not by socket frames:
+  edits/deletes are only verified on the event socket, and classic RTM is
+  silent for channels the user has not joined. RTM frames are used as cues to
+  re-read early, and for `view_opened`/`view_push` (verified on RTM via the
+  workflow form flow). A not-found re-read must repeat before it counts as a
+  delete, since the lookup cascade reads a failed fallback as "not there".
+- Frames read before the press are dropped, and a view from a different
+  `app_id` than the message's is ignored — an edit already in flight or a
+  modal on another client is not the press's response. The press waits for
+  RTM's `hello` (3s cap) so a fast app's form is not missed.
+- After the first response the watch continues for a 1s grace window: an
+  app that updates its card and opens a form must not leave the form open on
+  the user's other clients. Opened views are fetched with `views.get`,
+  described, and closed with `views.close`; `closed` reports Slack's answer.
+- Once `blocks.actions` is sent nothing is retryable (a retry presses
+  again): a transport failure on the press itself becomes agent-fixable with
+  a "check before pressing again" hint, and failures while watching become
+  `warnings` (outcome `unknown` when nothing could be observed).
+
 ## The event socket (`client.getWebSocketURL`)
 
 The web client does not poll for new messages: it renders its message pane from

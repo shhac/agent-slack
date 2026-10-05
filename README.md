@@ -24,7 +24,7 @@ family so conventions, output contract, and credential handling are shared.
 - **Keychain-first credentials**: browser (`xoxc`/`xoxd`) and bot (`xoxb`/`xoxp`)
   tokens stored in the macOS Keychain; secrets never printed.
 - **Mutation safety**: destructive commands (`message edit|delete`,
-  `scheduled cancel`, `channel new|invite`, `emoji add|remove`) require `--yes`
+  `message action`, `scheduled cancel`, `channel new|invite`, `emoji add|remove`) require `--yes`
   and describe what would happen without it.
 - **Live delivery**: `message await` blocks until the next reply (or reaction)
   and `message stream` emits events as NDJSON — over the same WebSocket the

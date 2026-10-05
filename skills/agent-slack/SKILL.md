@@ -32,10 +32,10 @@ need a person; `retry` → transient failure, wait and re-run (`retry_after_seco
 gives the recommended back-off when present).
 
 **Safety.** Read and search freely. Do not send, edit, delete, react, schedule,
-invite, create channels, or add/remove emoji unless the user explicitly asked
-for that action. Destructive commands — `message edit|delete`, `message draft
-delete`, `message scheduled cancel`, `channel new|invite`, `emoji add|remove` —
-require `--yes`; without it they return a description of what *would* happen.
+invite, create channels, press an app's buttons, or add/remove emoji unless the
+user explicitly asked for that action. Destructive commands — `message
+edit|delete`, `message action`, `message draft delete`, `message scheduled
+cancel`, `channel new|invite`, `emoji add|remove` — require `--yes`; without it they return a description of what *would* happen.
 Show that to the user before retrying with `--yes`.
 
 This page covers the common paths inline. Every domain has complete, always-
@@ -127,6 +127,7 @@ agent-slack message send "#general" "see attached" --attach ./report.md
 agent-slack message react add "<permalink>" :eyes:
 agent-slack message edit "<permalink>" "fixed wording" --yes        # edit/delete gated
 agent-slack message delete "<permalink>" --yes
+agent-slack message action "<permalink>" Approve --yes        # press an app's button (see actions[] in message get)
 ```
 
 Message text is standard Markdown — `**bold**`, `*italic*`/`_italic_`,

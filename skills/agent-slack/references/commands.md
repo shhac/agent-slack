@@ -9,13 +9,13 @@ need. For the in-binary version of any domain, run `agent-slack <domain> usage`.
 **Gate (`--yes`):** a destructive command refuses to run without `--yes`;
 instead it returns a description of what *would* happen (`fixable_by: human`).
 Show that to the user, then re-run with `--yes`. Gated commands: `message
-edit|delete`, `message draft delete`, `message scheduled cancel`, `channel
-new|invite`, `emoji add|remove`.
+edit|delete`, `message action`, `message draft delete`, `message scheduled
+cancel`, `channel new|invite`, `emoji add|remove`.
 
 | Domain | Commands | Reference |
 |---|---|---|
 | auth | `list` / `test` / `import-desktop` / `import-browser` / `parse-curl` / `add` / `set-default` / `remove` | [commands/auth.md](commands/auth.md) |
-| message | `get` / `list` / `send` / `edit`\* / `delete`\* / `react` / `draft` / `scheduled` | [commands/message.md](commands/message.md) |
+| message | `get` / `list` / `send` / `edit`\* / `delete`\* / `action`\* / `react` / `draft` / `scheduled` | [commands/message.md](commands/message.md) |
 | channel | `list` / `get` / `members` / `new`\* / `invite`\* / `mark` | [commands/channel.md](commands/channel.md) |
 | user | `list` / `get` / `dm-open` | [commands/user.md](commands/user.md) |
 | usergroup | `list` / `get` / `members` | [commands/usergroup.md](commands/usergroup.md) |

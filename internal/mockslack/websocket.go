@@ -46,6 +46,11 @@ type WSScript struct {
 	// it: "hold every connection open" and "drop the first N" cannot both be
 	// true, and the drop is always the more specific request.
 	HangUpAfterScript int
+	// PushOnCall pushes frames to every open connection when the named Web
+	// API method is called — events a side effect causes, which must arrive
+	// after the call rather than at connect time. They follow the scripted
+	// frames, and only reach a connection that stays open (KeepOpen).
+	PushOnCall map[string][]map[string]any
 }
 
 // EnableWebSocket installs a script on WebSocketPath. Without it the path 404s
@@ -124,7 +129,13 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	s.wsConns = append(s.wsConns, &WSConnection{Query: r.URL.RawQuery, Cookie: r.Header.Get("Cookie")})
 	record := s.wsConns[len(s.wsConns)-1]
 	connectionCount := len(s.wsConns)
+	// Registered before the upgrade completes: a client may call a
+	// PushOnCall method the moment its dial returns, and the frames must not
+	// be lost to the gap before this handler resumes.
+	push := make(chan map[string]any, 64)
+	s.wsPushers = append(s.wsPushers, push)
 	s.mu.Unlock()
+	defer s.removePusher(push)
 	keepOpen := script.KeepOpen
 	if script.HangUpAfterScript > 0 {
 		keepOpen = connectionCount > script.HangUpAfterScript
@@ -166,9 +177,45 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 		return
 	}
-	select {
-	case <-ctx.Done():
-	case <-drained:
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-drained:
+			return
+		case frame := <-push:
+			if err := writer.write(ctx, frame); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// pushOnCall queues method's PushOnCall frames to every open connection.
+func (s *Server) pushOnCall(method string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.wsScript == nil {
+		return
+	}
+	for _, frame := range s.wsScript.PushOnCall[method] {
+		for _, push := range s.wsPushers {
+			select {
+			case push <- frame:
+			default:
+			}
+		}
+	}
+}
+
+func (s *Server) removePusher(push chan map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, p := range s.wsPushers {
+		if p == push {
+			s.wsPushers = append(s.wsPushers[:i], s.wsPushers[i+1:]...)
+			return
+		}
 	}
 }
 

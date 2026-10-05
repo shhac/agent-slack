@@ -47,8 +47,9 @@ type Server struct {
 
 	// wsScript, when set by EnableWebSocket, serves the fake event socket on
 	// WebSocketPath; wsConns records the connections it accepted.
-	wsScript *WSScript
-	wsConns  []*WSConnection
+	wsScript  *WSScript
+	wsConns   []*WSConnection
+	wsPushers []chan map[string]any
 
 	// ExpectToken, when set, rejects calls whose Bearer or form token differs
 	// with Slack's invalid_auth error — exercises auth and refresh paths.
@@ -146,6 +147,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "invalid_auth"})
 		return
 	}
+
+	s.pushOnCall(method)
 
 	s.mu.Lock()
 	resp, ok := s.popResponse(method, r.Form)

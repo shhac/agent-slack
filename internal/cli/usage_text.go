@@ -53,7 +53,7 @@ OUTPUT
   Buttons, menus, and pickers an app listens on are in 'actions'
   [{block_id,action_id,type,text?,style?,url?,options?,confirm?}] — content
   keeps only link buttons. List rows carry option_count instead of options;
-  message get lists the labels.
+  message get lists the labels. 'message action' presses one.
   Bodies truncate with a trailing … at --max-body-chars
   (message 8000, search/later/unreads 4000, canvas 20000; -1 = unlimited).
 
@@ -218,6 +218,19 @@ EDIT   message edit <target> [text] --yes     (destructive)
        (repeatable); text becomes optional when only changing attachments.
        Get attachment ids from 'message get' (files[].id).
 DELETE message delete <target> --yes          (destructive)
+ACTION message action <target> [label] --yes  (gated: runs whatever the app wired)
+       Presses a button on an app's message, as clicking it in Slack does.
+       Pick it by label or action_id (see 'actions' in message get);
+       --action-id / --block-id disambiguate. Link buttons are refused (fetch
+       the url). Browser auth only. Without --yes it previews the button, the
+       app, and any confirm warning Slack would have shown.
+       Prints {pressed, channel_id, ts, action, outcome, message?, view?,
+       warnings?}; outcome is message_updated | message_deleted | view_opened
+       | none | unknown | unobserved, judged by re-reading the message for up
+       to --wait (5s; 0 presses without watching). A form the app opens is
+       described (view.fields) and closed. Never re-press on 'none' or
+       'unknown' — check with message get first. Replies the app posts are
+       not reported: follow with message await.
 REACT  message react add|remove <target> <emoji>   (:rocket:, rocket, or 🚀)
 SCHED  message scheduled list [--channel …] [--cursor …]
        message scheduled cancel <id> [--channel <…>] --yes   (destructive)
