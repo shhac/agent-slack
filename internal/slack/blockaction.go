@@ -35,23 +35,23 @@ func SelectMessageAction(msg map[string]any, sel ActionSelector) (render.Interac
 			matches = append(matches, ie)
 		}
 	}
-	switch len(matches) {
-	case 1:
-		if url := getStr(matches[0].Element, "url"); url != "" {
-			return render.InteractiveElement{}, agenterrors.Newf(agenterrors.FixableByAgent,
-				"%s only opens a link, so pressing it does nothing an agent can use", describeElement(matches[0])).
-				WithHint("fetch the link instead: " + url)
-		}
-		return matches[0], nil
-	case 0:
+	if len(matches) == 0 {
 		return render.InteractiveElement{}, agenterrors.Newf(agenterrors.FixableByAgent,
 			"no button or menu matching %s on this message", describeSelector(sel)).
 			WithHint("this message offers " + describeCandidates(elements))
-	default:
+	}
+	if len(matches) > 1 {
 		return render.InteractiveElement{}, agenterrors.Newf(agenterrors.FixableByAgent,
 			"%d buttons or menus match %s", len(matches), describeSelector(sel)).
 			WithHint("narrow with --block-id or --action-id: " + describeCandidates(matches))
 	}
+	target := matches[0]
+	if url := getStr(target.Element, "url"); url != "" {
+		return render.InteractiveElement{}, agenterrors.Newf(agenterrors.FixableByAgent,
+			"%s only opens a link, so pressing it does nothing an agent can use", DescribeElement(target)).
+			WithHint("fetch the link instead: " + url)
+	}
+	return target, nil
 }
 
 func elementMatches(ie render.InteractiveElement, sel ActionSelector) bool {
@@ -86,25 +86,20 @@ func describeSelector(sel ActionSelector) string {
 func describeCandidates(elements []render.InteractiveElement) string {
 	parts := make([]string, 0, len(elements))
 	for _, ie := range elements {
-		parts = append(parts, describeElement(ie))
+		parts = append(parts, DescribeElement(ie))
 	}
 	return strings.Join(parts, ", ")
 }
 
-// describeElement is the one-line address of an element: its label, then
+// DescribeElement is the one-line address of an element: its label, then
 // block_id/action_id so a caller can pick it unambiguously.
-func describeElement(ie render.InteractiveElement) string {
+func DescribeElement(ie render.InteractiveElement) string {
 	label := render.ElementLabel(ie.Element)
 	addr := fmt.Sprintf("%s/%s", ie.BlockID, getStr(ie.Element, "action_id"))
 	if label == "" {
 		return fmt.Sprintf("%s (%s)", getStr(ie.Element, "type"), addr)
 	}
 	return fmt.Sprintf("%q (%s %s)", label, getStr(ie.Element, "type"), addr)
-}
-
-// DescribeElement is describeElement for callers outside the package.
-func DescribeElement(ie render.InteractiveElement) string {
-	return describeElement(ie)
 }
 
 func noActionsError(msg map[string]any) error {
@@ -123,10 +118,9 @@ func noActionsError(msg map[string]any) error {
 // reaches the app.
 func ActionChoice(ie render.InteractiveElement, value string) (map[string]any, error) {
 	elemType := getStr(ie.Element, "type")
-	label := FirstNonEmpty(render.ElementLabel(ie.Element), getStr(ie.Element, "action_id"))
 	if elemType == "button" {
 		if value != "" {
-			return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s is a button, which takes no --value", describeElement(ie)).
+			return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s is a button, which takes no --value", DescribeElement(ie)).
 				WithHint("drop --value to press it")
 		}
 		return nil, nil
@@ -136,13 +130,9 @@ func ActionChoice(ie render.InteractiveElement, value string) (map[string]any, e
 		if labels := render.OptionLabels(ie.Element); len(labels) > 0 {
 			hint += "; options: " + strings.Join(labels, ", ")
 		}
-		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s is a %s and needs a --value", describeElement(ie), elemType).
+		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s is a %s and needs a --value", DescribeElement(ie), elemType).
 			WithHint(hint)
 	}
-	entry, err := formStateEntry(ie.Element, label, value, menuValues)
-	if err != nil {
-		return nil, err
-	}
-	delete(entry, "type")
-	return entry, nil
+	label := FirstNonEmpty(render.ElementLabel(ie.Element), getStr(ie.Element, "action_id"))
+	return formStateEntry(ie.Element, label, value, menuValues)
 }

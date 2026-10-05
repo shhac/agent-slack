@@ -25,6 +25,28 @@ type messageActionFlags struct {
 	yes      bool
 }
 
+// validate checks the flags before anything touches the network and returns
+// the element selector and the parsed --field values.
+func (f *messageActionFlags) validate(args []string) (slack.ActionSelector, map[string]string, error) {
+	if f.wait < 0 {
+		return slack.ActionSelector{}, nil, agenterrors.New("--wait must not be negative", agenterrors.FixableByAgent).
+			WithHint("pass a duration like 5s, or 0 to press without watching for the app's response")
+	}
+	fields, err := parseFieldArgs(f.fields)
+	if err != nil {
+		return slack.ActionSelector{}, nil, err
+	}
+	if len(fields) > 0 && f.wait == 0 {
+		return slack.ActionSelector{}, nil, agenterrors.New("--field needs --wait above 0: the form is only seen by watching for it", agenterrors.FixableByAgent).
+			WithHint("drop --wait 0, or pass --wait 5s")
+	}
+	sel := slack.ActionSelector{ActionID: f.actionID, BlockID: f.blockID}
+	if len(args) == 2 {
+		sel.Label = args[1]
+	}
+	return sel, fields, nil
+}
+
 func registerMessageAction(parent *cobra.Command, globals *GlobalFlags) {
 	flags := &messageActionFlags{}
 	cmd := &cobra.Command{
@@ -34,21 +56,9 @@ func registerMessageAction(parent *cobra.Command, globals *GlobalFlags) {
 		ValidArgsFunction: targetCompletion(globals),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			if flags.wait < 0 {
-				return agenterrors.New("--wait must not be negative", agenterrors.FixableByAgent).
-					WithHint("pass a duration like 5s, or 0 to press without watching for the app's response")
-			}
-			fields, err := parseFieldArgs(flags.fields)
+			sel, fields, err := flags.validate(args)
 			if err != nil {
 				return err
-			}
-			if len(fields) > 0 && flags.wait == 0 {
-				return agenterrors.New("--field needs --wait above 0: the form is only seen by watching for it", agenterrors.FixableByAgent).
-					WithHint("drop --wait 0, or pass --wait 5s")
-			}
-			sel := slack.ActionSelector{ActionID: flags.actionID, BlockID: flags.blockID}
-			if len(args) == 2 {
-				sel.Label = args[1]
 			}
 			cc, ref, err := resolveMessageTarget(ctx, globals, args[0], flags.ts, "")
 			if err != nil {
@@ -139,7 +149,7 @@ func pressPayload(ref *render.MessageRef, target render.InteractiveElement, res 
 // element, on whose message. A press runs whatever the app wired to it, so
 // the preview carries the element's own confirm warning when it has one.
 func describePress(msg map[string]any, target render.InteractiveElement, value string, fields map[string]string, targetInput string) string {
-	app := slack.FirstNonEmpty(slack.SummaryFromRaw("", msg).BotName, "an app")
+	app := slack.FirstNonEmpty(slack.BotDisplayName(msg), "an app")
 	verb := "press"
 	if value != "" {
 		verb = fmt.Sprintf("choose %q in", value)

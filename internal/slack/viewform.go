@@ -98,7 +98,7 @@ func viewInputs(view map[string]any) []viewInput {
 			continue
 		}
 		in.entry = getRec(getRec(values, in.blockID), in.actionID)
-		if len(in.entry) == 0 {
+		if !entryHasValue(in.entry) {
 			in.entry = initialEntry(element)
 		}
 		out = append(out, in)
@@ -106,37 +106,50 @@ func viewInputs(view map[string]any) []viewInput {
 	return out
 }
 
-// initialEntries maps an element's initial_* key to the state key its value
-// is submitted under.
-var initialEntries = map[string]string{
-	"initial_value":         "value",
-	"initial_option":        "selected_option",
-	"initial_options":       "selected_options",
-	"initial_date":          "selected_date",
-	"initial_time":          "selected_time",
-	"initial_user":          "selected_user",
-	"initial_users":         "selected_users",
-	"initial_conversation":  "selected_conversation",
-	"initial_conversations": "selected_conversations",
-	"initial_channel":       "selected_channel",
-	"initial_channels":      "selected_channels",
+// initialEntries pairs each initial_* key with the state key its value is
+// submitted under. An element carries at most one; the order only makes
+// the pick deterministic if a malformed one carries more.
+var initialEntries = []struct{ initialKey, stateKey string }{
+	{"initial_value", "value"},
+	{"initial_option", "selected_option"},
+	{"initial_options", "selected_options"},
+	{"initial_date", "selected_date"},
+	{"initial_time", "selected_time"},
+	{"initial_user", "selected_user"},
+	{"initial_users", "selected_users"},
+	{"initial_conversation", "selected_conversation"},
+	{"initial_conversations", "selected_conversations"},
+	{"initial_channel", "selected_channel"},
+	{"initial_channels", "selected_channels"},
 }
 
 // initialEntry turns an element's initial value into the state entry that
 // would submit it unchanged, or nil when the element starts empty.
 func initialEntry(element map[string]any) map[string]any {
 	elemType := getStr(element, "type")
-	for initialKey, stateKey := range initialEntries {
-		v, ok := element[initialKey]
-		if !ok || v == nil || v == "" {
+	for _, pair := range initialEntries {
+		v := element[pair.initialKey]
+		if isEmptyValue(v) {
 			continue
 		}
-		if elemType == "rich_text_input" && initialKey == "initial_value" {
+		stateKey := pair.stateKey
+		if elemType == "rich_text_input" && pair.initialKey == "initial_value" {
 			stateKey = "rich_text_value"
 		}
 		return map[string]any{"type": elemType, stateKey: v}
 	}
 	return nil
+}
+
+// entryHasValue reports whether a state entry holds a value: live state can
+// carry an element's key with nothing in it (selected_option: null).
+func entryHasValue(entry map[string]any) bool {
+	for key, v := range entry {
+		if key != "type" && !isEmptyValue(v) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildViewState lays fields (label → value) over the view's current values
@@ -153,24 +166,10 @@ func buildViewState(view map[string]any, fields map[string]string) (map[string]a
 	}
 
 	for _, title := range slices.Sorted(maps.Keys(fields)) {
-		var matched []int
-		for i, in := range inputs {
-			if strings.EqualFold(in.title, strings.TrimSpace(title)) {
-				matched = append(matched, i)
-			}
+		in, err := inputByTitle(inputs, title, titles)
+		if err != nil {
+			return nil, nil, err
 		}
-		switch len(matched) {
-		case 0:
-			return nil, nil, agenterrors.Newf(agenterrors.FixableByAgent,
-				"the form has no field %q. Fields: %s", title, strings.Join(titles, ", ")).
-				WithHint(nothingSubmittedHint)
-		case 1:
-		default:
-			return nil, nil, agenterrors.Newf(agenterrors.FixableByAgent,
-				"%d fields in the form are labelled %q, so it cannot be filled by label", len(matched), title).
-				WithHint(nothingSubmittedHint + "; use a Slack client for this form")
-		}
-		in := &inputs[matched[0]]
 		entry, err := formStateEntry(in.element, in.title, fields[title], appFormValues)
 		if err != nil {
 			return nil, nil, err
@@ -180,22 +179,39 @@ func buildViewState(view map[string]any, fields map[string]string) (map[string]a
 
 	state := map[string]any{}
 	for _, in := range inputs {
-		if len(in.entry) == 0 {
-			if !in.optional {
-				return nil, nil, agenterrors.Newf(agenterrors.FixableByAgent,
-					"required field %q has no value", in.title).
-					WithHint("add --field '" + in.title + "=…' — " + nothingSubmittedHint)
-			}
+		if entryHasValue(in.entry) {
+			// An input block holds one element, and block_ids are unique.
+			state[in.blockID] = map[string]any{in.actionID: in.entry}
 			continue
 		}
-		block, _ := state[in.blockID].(map[string]any)
-		if block == nil {
-			block = map[string]any{}
-			state[in.blockID] = block
+		if !in.optional {
+			return nil, nil, agenterrors.Newf(agenterrors.FixableByAgent,
+				"required field %q has no value", in.title).
+				WithHint("add --field '" + in.title + "=…' — " + nothingSubmittedHint)
 		}
-		block[in.actionID] = in.entry
 	}
 	return state, titlesByBlock, nil
+}
+
+// inputByTitle finds the one input labelled title (case-insensitively).
+func inputByTitle(inputs []viewInput, title string, titles []string) (*viewInput, error) {
+	var matched []*viewInput
+	for i := range inputs {
+		if strings.EqualFold(inputs[i].title, strings.TrimSpace(title)) {
+			matched = append(matched, &inputs[i])
+		}
+	}
+	if len(matched) == 0 {
+		return nil, agenterrors.Newf(agenterrors.FixableByAgent,
+			"the form has no field %q. Fields: %s", title, strings.Join(titles, ", ")).
+			WithHint(nothingSubmittedHint)
+	}
+	if len(matched) > 1 {
+		return nil, agenterrors.Newf(agenterrors.FixableByAgent,
+			"%d fields in the form are labelled %q, so it cannot be filled by label", len(matched), title).
+			WithHint(nothingSubmittedHint + "; use a Slack client for this form")
+	}
+	return matched[0], nil
 }
 
 // entryDisplay renders a state entry's value for a reader: text as-is, an

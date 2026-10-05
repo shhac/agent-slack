@@ -30,10 +30,8 @@ type WorkflowSubmission struct {
 // values. Requires browser auth: views.submit and rtm.connect are client
 // APIs.
 func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission) (WorkflowSubmitResult, error) {
-	if c.currentAuth().Type != AuthBrowser {
-		return WorkflowSubmitResult{}, agenterrors.New(
-			"form submission requires browser auth (xoxc/xoxd); standard bot tokens cannot submit workflow forms",
-			agenterrors.FixableByHuman).WithHint("import browser credentials with 'agent-slack auth import-desktop'")
+	if err := requireBrowserAuth(c, "form submission requires browser auth (xoxc/xoxd); standard bot tokens cannot submit workflow forms"); err != nil {
+		return WorkflowSubmitResult{}, err
 	}
 
 	conn, err := c.connectRTM(ctx)

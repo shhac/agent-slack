@@ -72,13 +72,14 @@ func formStateEntry(element map[string]any, title, value string, vc valueContext
 				WithHint("use HH:MM (24h) and rerun — " + vc.recovery)
 		}
 		return map[string]any{"type": elemType, "selected_time": value}, nil
+	default:
+		if key, ok := idSelectKeys[elemType]; ok {
+			return idSelectEntry(elemType, key, title, value, vc)
+		}
+		return nil, agenterrors.Newf(agenterrors.FixableByHuman,
+			"%s %q is a %s input, which agent-slack cannot submit", vc.noun, title, elemType).
+			WithHint(vc.unsupported)
 	}
-	if key, ok := idSelectKeys[elemType]; ok {
-		return idSelectEntry(elemType, key, title, value, vc)
-	}
-	return nil, agenterrors.Newf(agenterrors.FixableByHuman,
-		"%s %q is a %s input, which agent-slack cannot submit", vc.noun, title, elemType).
-		WithHint(vc.unsupported)
 }
 
 // idSelectKeys maps the user/channel/conversation menus to the key their

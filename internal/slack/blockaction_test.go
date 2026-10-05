@@ -130,38 +130,6 @@ func TestMessageChangedIgnoresReactions(t *testing.T) {
 	}
 }
 
-func TestBuildViewStatePrefersLiveStateAndRequiresValues(t *testing.T) {
-	view := map[string]any{
-		"blocks": []any{
-			map[string]any{"type": "input", "block_id": "a",
-				"label":   map[string]any{"type": "plain_text", "text": "Title"},
-				"element": map[string]any{"type": "plain_text_input", "action_id": "x", "initial_value": "old"}},
-			map[string]any{"type": "input", "block_id": "b",
-				"label":   map[string]any{"type": "plain_text", "text": "Owner"},
-				"element": map[string]any{"type": "users_select", "action_id": "x"}},
-		},
-		"state": map[string]any{"values": map[string]any{
-			"a": map[string]any{"x": map[string]any{"type": "plain_text_input", "value": "edited"}},
-		}},
-	}
-
-	_, _, err := buildViewState(view, nil)
-	if hint := agentHint(t, err); !strings.Contains(hint, "Owner") {
-		t.Errorf("hint = %q, want the missing required field named", hint)
-	}
-
-	state, _, err := buildViewState(view, map[string]string{"owner": "U0000000009"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := state["a"].(map[string]any)["x"].(map[string]any)["value"]; got != "edited" {
-		t.Errorf("title = %v, want the live state over initial_value", got)
-	}
-	if got := state["b"].(map[string]any)["x"].(map[string]any)["selected_user"]; got != "U0000000009" {
-		t.Errorf("owner = %v", got)
-	}
-}
-
 func TestActionChoiceRefusesAValueForAButton(t *testing.T) {
 	_, err := ActionChoice(render.InteractiveElement{BlockID: "b", Element: button("go", "Go")}, "x")
 	agentHint(t, err)

@@ -34,11 +34,8 @@ const eventSocketStartArgs = "?agent=client&org_wide_aware=true&eac_cache_ts=tru
 
 // FetchEventSocket resolves the workspace's event socket hosts.
 func FetchEventSocket(ctx context.Context, c *Client) (EventSocket, error) {
-	if c.currentAuth().Type != AuthBrowser {
-		return EventSocket{}, agenterrors.New(
-			"the event socket requires browser auth (xoxc/xoxd); standard bot tokens cannot open it",
-			agenterrors.FixableByHuman).
-			WithHint("import browser credentials with 'agent-slack auth import-desktop'")
+	if err := requireBrowserAuth(c, "the event socket requires browser auth (xoxc/xoxd); standard bot tokens cannot open it"); err != nil {
+		return EventSocket{}, err
 	}
 	resp, err := c.API(ctx, "client.getWebSocketURL", nil)
 	if err != nil {

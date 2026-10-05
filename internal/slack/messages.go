@@ -134,14 +134,14 @@ func SummaryFromRaw(channelID string, m map[string]any) render.MessageSummary {
 		Files:       files,
 		Reactions:   getArr(m, "reactions"),
 		Edited:      getRec(m, "edited") != nil,
-		BotName:     botDisplayName(m),
+		BotName:     BotDisplayName(m),
 	}
 }
 
-// botDisplayName extracts a bot/app's display name from a raw message: the
+// BotDisplayName extracts a bot/app's display name from a raw message: the
 // modern bot_profile.name, falling back to the legacy username field. Empty for
 // human messages.
-func botDisplayName(m map[string]any) string {
+func BotDisplayName(m map[string]any) string {
 	if name := getStr(getRec(m, "bot_profile"), "name"); name != "" {
 		return name
 	}

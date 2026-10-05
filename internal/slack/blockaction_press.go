@@ -35,12 +35,7 @@ type PressInput struct {
 // blocks.actions and rtm.connect are client APIs. It is a local check, so
 // callers run it before asking for confirmation.
 func RequireBlockActionAuth(c *Client) error {
-	if c.currentAuth().Type == AuthBrowser {
-		return nil
-	}
-	return agenterrors.New(
-		"pressing a message's buttons requires browser auth (xoxc/xoxd); bot tokens cannot dispatch block actions",
-		agenterrors.FixableByHuman).WithHint("import browser credentials with 'agent-slack auth import-desktop'")
+	return requireBrowserAuth(c, "pressing a message's buttons requires browser auth (xoxc/xoxd); bot tokens cannot dispatch block actions")
 }
 
 // PressMessageAction dispatches a block action on a message — what clicking

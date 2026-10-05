@@ -87,3 +87,14 @@ func (w *websocketConn) WriteJSON(ctx context.Context, msg map[string]any) error
 }
 
 func (w *websocketConn) Close() { _ = w.conn.Close(websocket.StatusNormalClosure, "") }
+
+// requireBrowserAuth fails human-fixably unless c holds browser auth, which
+// the client-only APIs (RTM, views, block actions, drafts) need. message
+// says what needed it.
+func requireBrowserAuth(c *Client, message string) error {
+	if c.currentAuth().Type == AuthBrowser {
+		return nil
+	}
+	return agenterrors.New(message, agenterrors.FixableByHuman).
+		WithHint("import browser credentials with 'agent-slack auth import-desktop'")
+}
