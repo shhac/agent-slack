@@ -98,7 +98,7 @@ func indexFormBlocks(view map[string]any, schema WorkflowSchema) (map[string]for
 }
 
 // abandonedRunHint states the contract owned by SubmitWorkflowForm's
-// success-gated abandonView defer: any error after the trigger trips closes
+// success-gated closeView defer: any error after the trigger trips closes
 // the opened form, cancelling that run.
 const abandonedRunHint = "this run was abandoned without submitting"
 
