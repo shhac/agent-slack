@@ -49,7 +49,7 @@ OUTPUT
   The message body field is 'content', NOT 'text': one rendered-Markdown
   string merging Slack's raw text, blocks, and attachment/app-card unfurls.
   A message without 'content' has no text body — re-fetching another way
-  won't reveal more (--full shows the raw payload).
+  won't reveal more (message get --full adds the raw API message as 'raw').
   Buttons, menus, and pickers an app listens on are in 'actions'
   [{block_id,action_id,type,text?,style?,url?,options?,confirm?}] — content
   keeps only link buttons. List rows carry option_count instead of options;
@@ -130,7 +130,8 @@ GET    message get <target> [--ts …] [--thread-ts …]
        skips). Interactive elements (buttons, menus, pickers) are listed in
        'actions' with their block_id/action_id, label, options, and any
        confirm warning. Flags: --max-body-chars 8000, --include-reactions,
-       --resolve none|cached|auto|fresh.
+       --resolve none|cached|auto|fresh. --full adds 'raw': the API message
+       (text, blocks, attachments) beside the compact one.
 LIST   message list <target>
        Channel or U…/@handle target → recent history (DM auto-opens for a
        user; --limit 25 max 200, --oldest, --latest), chronological NDJSON

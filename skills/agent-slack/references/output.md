@@ -57,7 +57,8 @@ The body field is `content`, **not** `text`: one rendered-Markdown string
 merging Slack's raw `text`, blocks, and attachment/app-card unfurls (it is
 deliberately not the raw API `text`, which is only a notification fallback and
 often empty). A message without `content` genuinely has no text body —
-re-fetching another way won't reveal more; `--full` shows the raw payload.
+re-fetching another way won't reveal more; `message get --full` adds the raw
+API message beside it as `raw` (the compact `message` is kept, not replaced).
 
 Message bodies are capped by `--max-body-chars` (defaults: 8000 for
 get/list, 4000 for search/later/unreads, 20000 for canvas; `-1` = unlimited).

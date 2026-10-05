@@ -23,16 +23,23 @@ func setIncludeMetadata(params map[string]any, on bool) {
 // the ts → the thread named by the permalink's thread_ts hint → the ts itself
 // as a thread root via conversations.replies.
 func FetchMessage(ctx context.Context, c *Client, ref *render.MessageRef, includeReactions bool) (render.MessageSummary, error) {
+	summary, _, err := FetchMessageWithRaw(ctx, c, ref, includeReactions)
+	return summary, err
+}
+
+// FetchMessageWithRaw is FetchMessage plus the decoded API message it was
+// shaped from, for callers that also show the raw payload (--full).
+func FetchMessageWithRaw(ctx context.Context, c *Client, ref *render.MessageRef, includeReactions bool) (render.MessageSummary, map[string]any, error) {
 	msg, err := FetchRawMessage(ctx, c, ref, includeReactions)
 	if err != nil {
-		return render.MessageSummary{}, err
+		return render.MessageSummary{}, nil, err
 	}
 	summary := SummaryFromRaw(ref.ChannelID, msg)
 	if summary.TS == "" {
 		summary.TS = ref.MessageTS
 	}
 	summary.Files = enrichFiles(ctx, c, summary.Files)
-	return summary, nil
+	return summary, msg, nil
 }
 
 // FetchRawMessage is FetchMessage's lookup without the shaping: the decoded

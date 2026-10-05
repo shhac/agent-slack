@@ -89,8 +89,8 @@ in `agent-slack message usage`.
 The message body is the **`content`** field — one rendered-Markdown string
 merging Slack's raw `text`, blocks, and attachment/app-card unfurls. There is
 no `text` field in output. A row without `content` genuinely has no text body;
-re-fetching another way won't reveal more (`--full` shows the raw payload if
-you must check).
+re-fetching another way won't reveal more (`message get --full` adds the raw
+API message as `raw` if you must check).
 
 An app's card lists its buttons, menus, and pickers under **`actions`**
 (`content` keeps only link buttons). Pressing one is `message action`, gated by

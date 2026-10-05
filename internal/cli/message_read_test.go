@@ -313,3 +313,32 @@ func TestMessageGetListsActions(t *testing.T) {
 		t.Error("an element's value is app-internal and should not be emitted")
 	}
 }
+
+// --full was documented as showing a message's raw payload but was ignored:
+// the output was identical with and without it.
+func TestMessageGetFullAddsTheRawMessage(t *testing.T) {
+	link := "https://acme.slack.com/archives/C0123ABCD/p1770165109628379"
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.history", historyWith(appCardMessage("1770165109.628379")))
+
+	out, _, err := f.run(t, "message", "get", link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, has := parseJSON(t, out)["raw"]; has {
+		t.Error("raw should appear only with --full")
+	}
+
+	out, _, err = f.run(t, "message", "get", link, "--full")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := parseJSON(t, out)
+	raw, _ := payload["raw"].(map[string]any)
+	if raw["bot_id"] != "B0000000001" || len(raw["blocks"].([]any)) != 2 {
+		t.Errorf("raw = %v, want the API message with its blocks", payload["raw"])
+	}
+	if msg := payload["message"].(map[string]any); msg["content"] == nil {
+		t.Errorf("message = %v, want the compact message kept alongside", msg)
+	}
+}

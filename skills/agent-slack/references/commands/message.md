@@ -5,7 +5,7 @@ In-binary version: `agent-slack message usage`. Formatting: [../formatting.md](.
 
 | Command | Key flags | Gate |
 |---|---|---|
-| `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|auto\|fresh`, `--no-download`, `--slack-markdown` | |
+| `message get <target>` | `--ts`, `--thread-ts`, `--max-body-chars` (8000), `--include-reactions`, `--resolve none\|cached\|auto\|fresh`, `--no-download`, `--slack-markdown`, `--full` (adds the raw API message as `raw`) | |
 | `message list <target>` | `--ts`, `--thread-ts`, `--limit` (25, max 200), `--oldest`, `--latest`, `--with-reaction`, `--without-reaction`, `--max-body-chars`, `--download`, `--slack-markdown`, + the resolve/reaction flags from `get` | |
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post as one message, text = shared comment), `--blocks <path\|->`, `--schedule <iso\|unix>`, `--schedule-in <30m\|2d\|tomorrow 9am>`, `--slack-markdown`, `--forward <permalink>` | |
 | `message draft create <target> [text]` | `--blocks <path\|->`, `--slack-markdown`, `--forward <permalink>`, `--attach <path>` (repeatable; keeps rich text, unlike a direct attachment send), `--thread-ts <ts>` (draft a thread reply; or pass a message permalink as the target) — returns a draft id (+ `thread_ts` when threaded) | |

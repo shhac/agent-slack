@@ -117,7 +117,10 @@ This supersedes the broader "all writes gated" wording in
   - channel: `id, name, is_private, is_im, is_mpim, is_archived, is_member,
     member_count, topic`
   - user: `id, name, real_name, display_name, is_bot, deleted, tz, email`
-  - message: `render.CompactMessage` (already implemented)
+  - message: `render.CompactMessage`. `message get --full` adds the API
+    message as a sibling `raw` instead of replacing the compact one (as
+    channel/user do): `content`, the permalink, and the thread summary are
+    built from it and would otherwise be lost. Lists stay compact.
   - search results / scheduled / later items: same compaction approach,
     fields fixed when each command is built
 - **Truncation:** `--max-body-chars` defaults (8000 message

@@ -29,7 +29,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			msg, err := slack.FetchMessage(ctx, cc.Client, ref, flags.includeReactions)
+			msg, raw, err := slack.FetchMessageWithRaw(ctx, cc.Client, ref, flags.includeReactions)
 			if err != nil {
 				return err
 			}
@@ -65,6 +65,12 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 			}
 			if thread != nil {
 				payload["thread"] = thread
+			}
+			// --full adds the API message beside the compact one rather than
+			// replacing it: the rendered content and permalink stay, and the
+			// raw text/blocks/attachments show what content was built from.
+			if globals.Full {
+				payload["raw"] = raw
 			}
 			for k, v := range resolveReferencedEntities(ctx, cc, globals, flags, []render.MessageSummary{msg}) {
 				payload[k] = v
