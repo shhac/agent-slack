@@ -81,8 +81,8 @@ func InteractiveElements(blocks []any) []InteractiveElement {
 	return out
 }
 
-// MessageActions shapes a message's interactive elements for output.
-func MessageActions(blocks []any) []CompactAction {
+// messageActions shapes a message's interactive elements for output.
+func messageActions(blocks []any) []CompactAction {
 	elements := InteractiveElements(blocks)
 	if len(elements) == 0 {
 		return nil
@@ -94,10 +94,10 @@ func MessageActions(blocks []any) []CompactAction {
 	return out
 }
 
-// compactActions is MessageActions with options optionally reduced to a
+// compactActions is messageActions with options optionally reduced to a
 // count.
 func compactActions(blocks []any, withOptions bool) []CompactAction {
-	actions := MessageActions(blocks)
+	actions := messageActions(blocks)
 	if withOptions {
 		return actions
 	}
@@ -118,7 +118,7 @@ func CompactActionFor(ie InteractiveElement) CompactAction {
 		Text:     ElementLabel(el),
 		Style:    str(el["style"]),
 		URL:      str(el["url"]),
-		Options:  optionLabels(ElementOptions(el)),
+		Options:  OptionLabels(el),
 		Confirm:  confirmText(el["confirm"]),
 	}
 }
@@ -150,18 +150,11 @@ func ElementOptions(el map[string]any) []map[string]any {
 	return out
 }
 
-// TextObjectValue reads a Block Kit text object's text.
-func TextObjectValue(v any) string {
-	t, ok := asRecord(v)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(str(t["text"]))
-}
-
-func optionLabels(options []map[string]any) []string {
+// OptionLabels lists an element's choices by label — the same labels a
+// --value or --field matches against.
+func OptionLabels(el map[string]any) []string {
 	var out []string
-	for _, o := range options {
+	for _, o := range ElementOptions(el) {
 		if label := TextObjectValue(o["text"]); label != "" {
 			out = append(out, label)
 		}

@@ -61,11 +61,7 @@ func describeView(view map[string]any) ViewSummary {
 			Required: !in.optional,
 			Value:    entryDisplay(in.entry),
 		}
-		for _, o := range render.ElementOptions(in.element) {
-			if label := render.TextObjectValue(o["text"]); label != "" {
-				field.Options = append(field.Options, label)
-			}
-		}
+		field.Options = render.OptionLabels(in.element)
 		summary.Fields = append(summary.Fields, field)
 	}
 	return summary

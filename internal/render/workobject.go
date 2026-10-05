@@ -24,10 +24,10 @@ func renderWorkObject(a map[string]any) string {
 	layout := workObjectLayout(woe)
 
 	var chunk []string
-	if link := slackLink(str(woe["external_url"]), workObjectText(layout["title"])); link != "" {
+	if link := slackLink(str(woe["external_url"]), TextObjectValue(layout["title"])); link != "" {
 		chunk = append(chunk, link)
 	}
-	if subtitle := workObjectText(layout["subtitle"]); subtitle != "" {
+	if subtitle := TextObjectValue(layout["subtitle"]); subtitle != "" {
 		chunk = append(chunk, subtitle)
 	}
 	chunk = append(chunk, workObjectFields(layout)...)
@@ -48,17 +48,6 @@ func workObjectLayout(woe map[string]any) map[string]any {
 		}
 	}
 	return nil
-}
-
-// workObjectText unwraps a work-object text object ({"text": …}). Not
-// mrkdwnTextValue: these objects carry no "type", so that helper would reject
-// every one.
-func workObjectText(v any) string {
-	t, ok := asRecord(v)
-	if !ok {
-		return ""
-	}
-	return strings.TrimSpace(str(t["text"]))
 }
 
 // workObjectFields renders the expanded layout's labelled fields

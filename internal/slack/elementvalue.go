@@ -11,6 +11,7 @@ import (
 	"time"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
+	"github.com/shhac/agent-slack/internal/render"
 )
 
 // valueContext words a value error for its caller: what the element is
@@ -139,13 +140,9 @@ func richTextValue(value string) map[string]any {
 // Slack expects the full option, text object included. Grouped options
 // (option_groups) are flattened in.
 func matchElementOption(element map[string]any, title, value string, vc valueContext) (map[string]any, error) {
-	options := recItems(getArr(element, "options"))
-	for _, group := range recItems(getArr(element, "option_groups")) {
-		options = append(options, recItems(getArr(group, "options"))...)
-	}
 	var labels []string
-	for _, opt := range options {
-		label := getStr(getRec(opt, "text"), "text")
+	for _, opt := range render.ElementOptions(element) {
+		label := render.TextObjectValue(opt["text"])
 		if getStr(opt, "value") == value || strings.EqualFold(label, value) {
 			return opt, nil
 		}

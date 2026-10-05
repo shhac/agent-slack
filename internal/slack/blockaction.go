@@ -184,7 +184,7 @@ func ActionChoice(ie render.InteractiveElement, value string) (map[string]any, e
 	}
 	if value == "" {
 		hint := "pass the choice with --value"
-		if labels := render.CompactActionFor(ie).Options; len(labels) > 0 {
+		if labels := render.OptionLabels(ie.Element); len(labels) > 0 {
 			hint += "; options: " + strings.Join(labels, ", ")
 		}
 		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s is a %s and needs a --value", describeElement(ie), elemType).

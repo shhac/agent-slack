@@ -4,6 +4,8 @@
 // the Slack client and CLI commands can be tested against it directly.
 package render
 
+import "strings"
+
 // Raw Slack payloads arrive as decoded JSON (map[string]any / []any / float64).
 // These helpers mirror the loose lookups the TS code did on `unknown` values:
 // missing keys and wrong types collapse to zero values instead of erroring.
@@ -84,4 +86,15 @@ func truthy(v any) bool {
 	default:
 		return true
 	}
+}
+
+// TextObjectValue reads a Block Kit text object's text, trimmed. Not
+// mrkdwnTextValue, which also requires a "type": work-object text objects
+// carry none, so that helper would reject every one.
+func TextObjectValue(v any) string {
+	t, ok := asRecord(v)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(str(t["text"]))
 }

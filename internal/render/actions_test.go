@@ -35,7 +35,7 @@ func TestMessageActionsCollectsInteractiveElements(t *testing.T) {
 			"text": map[string]any{"type": "mrkdwn", "text": "no accessory"}},
 	}
 
-	got := MessageActions(blocks)
+	got := messageActions(blocks)
 	want := []CompactAction{
 		{BlockID: "summary", ActionID: "more", Type: "overflow", Options: []string{"Retry", "Cancel"}},
 		{BlockID: "decide", ActionID: "approve", Type: "button", Text: "Approve", Style: "primary",
@@ -44,7 +44,7 @@ func TestMessageActionsCollectsInteractiveElements(t *testing.T) {
 		{BlockID: "decide", ActionID: "env", Type: "static_select", Text: "Pick an environment", Options: []string{"Staging"}},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("MessageActions =\n%+v\nwant\n%+v", got, want)
+		t.Errorf("messageActions =\n%+v\nwant\n%+v", got, want)
 	}
 }
 
