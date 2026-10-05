@@ -105,6 +105,7 @@ type CompactMessage struct {
 	Files            []CompactFile     `json:"files,omitempty"`
 	Reactions        []CompactReaction `json:"reactions,omitempty"`
 	ForwardedThreads []ForwardedThread `json:"forwarded_threads,omitempty"`
+	Actions          []CompactAction   `json:"actions,omitempty"`
 }
 
 type CompactAuthor struct {
@@ -174,6 +175,10 @@ type CompactOptions struct {
 	// SlackMarkdown keeps the native Slack mrkdwn in the rendered content
 	// instead of converting to standard Markdown.
 	SlackMarkdown bool
+	// ActionOptions keeps each action's option labels. A menu can carry
+	// hundreds, so list-shaped output sets only option_count and a single
+	// message read restores the labels.
+	ActionOptions bool
 }
 
 // ToCompactMessage shapes a parsed message into the compact output form.
@@ -227,6 +232,7 @@ func ToCompactMessage(msg MessageSummary, opts CompactOptions) CompactMessage {
 		Files:            files,
 		Reactions:        reactions,
 		ForwardedThreads: ExtractForwardedThreads(msg.Attachments),
+		Actions:          compactActions(msg.Blocks, opts.ActionOptions),
 	}
 }
 

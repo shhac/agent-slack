@@ -52,6 +52,7 @@ func registerMessageGet(parent *cobra.Command, globals *GlobalFlags) {
 				IncludeReactions: flags.includeReactions,
 				DownloadedPaths:  downloads,
 				SlackMarkdown:    flags.slackMarkdown,
+				ActionOptions:    true,
 			})
 			payload := map[string]any{
 				"message": compact,

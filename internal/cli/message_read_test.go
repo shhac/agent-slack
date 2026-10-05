@@ -269,3 +269,47 @@ func TestMessageGetResolveWarmHintGate(t *testing.T) {
 		}
 	}
 }
+
+// appCardMessage is an app-posted card with an actions block — the shape of
+// an incident or deploy bot asking for a decision.
+func appCardMessage(ts string) map[string]any {
+	return map[string]any{
+		"type": "message", "ts": ts, "bot_id": "B0000000001", "team": "T0000000001",
+		"bot_profile": map[string]any{"id": "B0000000001", "name": "deploy-bot", "team_id": "T0000000001"},
+		"text":        "Deploy 42 is waiting for approval",
+		"blocks": []any{
+			map[string]any{"type": "section", "block_id": "summary",
+				"text": map[string]any{"type": "mrkdwn", "text": "Deploy 42 is waiting for approval"}},
+			map[string]any{"type": "actions", "block_id": "decide", "elements": []any{
+				map[string]any{"type": "button", "action_id": "approve", "style": "primary", "value": "deploy-42",
+					"text": map[string]any{"type": "plain_text", "text": "Approve"}},
+				map[string]any{"type": "button", "action_id": "edit",
+					"text": map[string]any{"type": "plain_text", "text": "Edit"}},
+				map[string]any{"type": "button", "action_id": "dismiss",
+					"text": map[string]any{"type": "plain_text", "text": "Dismiss"}},
+			}},
+		},
+	}
+}
+
+func TestMessageGetListsActions(t *testing.T) {
+	f := newCLIFixture(t)
+	f.server.HandleBody("conversations.history", historyWith(appCardMessage("1770165109.628379")))
+
+	out, _, err := f.run(t, "message", "get", "https://acme.slack.com/archives/C0123ABCD/p1770165109628379")
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := parseJSON(t, out)["message"].(map[string]any)
+	actions, _ := msg["actions"].([]any)
+	if len(actions) != 3 {
+		t.Fatalf("actions = %v, want the card's three buttons", msg["actions"])
+	}
+	first := actions[0].(map[string]any)
+	if first["block_id"] != "decide" || first["action_id"] != "approve" || first["text"] != "Approve" || first["style"] != "primary" {
+		t.Errorf("first action = %v", first)
+	}
+	if _, leaked := first["value"]; leaked {
+		t.Error("an element's value is app-internal and should not be emitted")
+	}
+}

@@ -50,6 +50,10 @@ OUTPUT
   string merging Slack's raw text, blocks, and attachment/app-card unfurls.
   A message without 'content' has no text body — re-fetching another way
   won't reveal more (--full shows the raw payload).
+  Buttons, menus, and pickers an app listens on are in 'actions'
+  [{block_id,action_id,type,text?,style?,url?,options?,confirm?}] — content
+  keeps only link buttons. List rows carry option_count instead of options;
+  message get lists the labels.
   Bodies truncate with a trailing … at --max-body-chars
   (message 8000, search/later/unreads 4000, canvas 20000; -1 = unlimited).
 
@@ -123,7 +127,9 @@ GET    message get <target> [--ts …] [--thread-ts …]
        'content' field (rendered Markdown merging text, blocks, and
        attachment/app-card unfurls; there is no 'text' field). Files
        auto-download to the cache dir (paths in files[].path; --no-download
-       skips). Flags: --max-body-chars 8000, --include-reactions,
+       skips). Interactive elements (buttons, menus, pickers) are listed in
+       'actions' with their block_id/action_id, label, options, and any
+       confirm warning. Flags: --max-body-chars 8000, --include-reactions,
        --resolve none|cached|auto|fresh.
 LIST   message list <target>
        Channel or U…/@handle target → recent history (DM auto-opens for a
