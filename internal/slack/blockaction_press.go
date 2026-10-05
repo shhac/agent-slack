@@ -305,8 +305,3 @@ func messageChanged(before, after map[string]any) bool {
 	}
 	return false
 }
-
-func isOpenedView(frame map[string]any) bool {
-	t := getStr(frame, "type")
-	return t == "view_opened" || t == "view_push"
-}

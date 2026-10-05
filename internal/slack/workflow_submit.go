@@ -2,11 +2,6 @@ package slack
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"maps"
-	"slices"
-	"strings"
 	"time"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
@@ -66,25 +61,23 @@ func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission
 	}
 	// From here the form is open server-side: every giving-up path must
 	// abandon it, so the cleanup is owned by one success-gated defer.
+	// Workflow form views set notify_on_close, so the close cancels the
+	// tripped run instead of leaving a dangling modal on the user's other
+	// clients.
 	submitted := false
 	defer func() {
 		if !submitted {
-			abandonView(ctx, c, viewID)
+			closeView(ctx, c, viewID)
 		}
 	}()
-	view = fetchOpenedView(ctx, c, viewID, view)
+	view = fetchOpenedView(ctx, c, view)
 
 	state, titlesByBlock, err := buildFormState(view, input.Schema, input.Fields)
 	if err != nil {
 		return WorkflowSubmitResult{}, err
 	}
 
-	stateJSON, _ := json.Marshal(map[string]any{"values": state})
-	resp, err := c.API(ctx, "views.submit", map[string]any{
-		"view_id":      viewID,
-		"client_token": clientToken(),
-		"state":        string(stateJSON),
-	})
+	resp, err := submitViewState(ctx, c, viewID, state)
 	if err != nil {
 		return WorkflowSubmitResult{}, err
 	}
@@ -102,22 +95,6 @@ func SubmitWorkflowForm(ctx context.Context, c *Client, input WorkflowSubmission
 	}, nil
 }
 
-// fetchOpenedView fetches the authoritative view via views.get — the real
-// client re-fetches after tripping rather than trusting the push payload,
-// which can be a stub when several clients share the session. Best-effort:
-// any failure falls back to the event's view.
-func fetchOpenedView(ctx context.Context, c *Client, viewID string, eventView map[string]any) map[string]any {
-	resp, err := c.API(ctx, "views.get", map[string]any{"view_id": viewID})
-	if err != nil {
-		return eventView
-	}
-	view := getRec(resp, "view")
-	if len(getArr(view, "blocks")) == 0 {
-		return eventView
-	}
-	return view
-}
-
 // submitRejection interprets an ok:true views.submit body. Block Kit reports
 // modal validation failures as response_action "errors" plus a block_id-keyed
 // errors map, not ok:false — treating bare ok as success silently drops the
@@ -131,31 +108,6 @@ func submitRejection(resp map[string]any, titlesByBlock map[string]string) error
 	return agenterrors.Newf(agenterrors.FixableByAgent,
 		"the workflow form rejected the submission: %s", detail).
 		WithHint("fix the field values and rerun — this run did not complete")
-}
-
-// rejectedFields reads a views.submit body's field errors as "Title: error"
-// pairs; rejected is false when Slack accepted the submission.
-func rejectedFields(resp map[string]any, titlesByBlock map[string]string) (detail string, rejected bool) {
-	errsByBlock := getRec(resp, "errors")
-	if getStr(resp, "response_action") != "errors" && len(errsByBlock) == 0 {
-		return "", false
-	}
-	parts := make([]string, 0, len(errsByBlock))
-	for _, blockID := range slices.Sorted(maps.Keys(errsByBlock)) {
-		label := FirstNonEmpty(titlesByBlock[blockID], blockID)
-		parts = append(parts, fmt.Sprintf("%s: %v", label, errsByBlock[blockID]))
-	}
-	return FirstNonEmpty(strings.Join(parts, "; "), "no field errors were reported"), true
-}
-
-// abandonView best-effort closes a form view whose submission is being given
-// up on. Workflow form views set notify_on_close, so the close cancels the
-// tripped run instead of leaving a dangling modal on the user's other
-// clients.
-func abandonView(ctx context.Context, c *Client, viewID string) {
-	if _, err := c.API(ctx, "views.close", map[string]any{"view_id": viewID}); err != nil {
-		c.debugf("views.close %s failed: %v", viewID, err)
-	}
 }
 
 // awaitOpenedView listens for the workflow's view_opened/view_push on the RTM
@@ -175,7 +127,7 @@ func awaitOpenedView(ctx context.Context, conn rtmConn, debugFrame func(map[stri
 				return
 			}
 			debugFrame(msg)
-			if t := getStr(msg, "type"); t == "view_opened" || t == "view_push" {
+			if isOpenedView(msg) {
 				viewCh <- msg
 				return
 			}

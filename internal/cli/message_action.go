@@ -82,7 +82,8 @@ func registerMessageAction(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
-			return emitItem(globals, pressPayload(ctx, cc, ref, target, res, fields))
+			view, warnings := settleView(ctx, cc.Client, res, fields)
+			return emitItem(globals, pressPayload(ref, target, res, view, warnings))
 		},
 	}
 	registerMessageTS(cmd, &flags.ts)
@@ -95,10 +96,26 @@ func registerMessageAction(parent *cobra.Command, globals *GlobalFlags) {
 	parent.AddCommand(cmd)
 }
 
-// pressPayload reports a completed press. An opened view is filled in when
-// fields were given, and is otherwise described and closed — left open it
-// would linger on the user's other clients.
-func pressPayload(ctx context.Context, cc *clientContext, ref *render.MessageRef, target render.InteractiveElement, res slack.PressResult, fields map[string]string) map[string]any {
+// settleView handles the view a press opened, if any. Without one, fields
+// that were given had nothing to fill — said in a warning, since the press
+// itself still happened.
+func settleView(ctx context.Context, c *slack.Client, res slack.PressResult, fields map[string]string) (*slack.ViewSummary, []string) {
+	warnings := res.Warnings
+	if res.View == nil {
+		if len(fields) > 0 {
+			warnings = append(warnings, "--field was given but the app opened no form, so nothing was filled in")
+		}
+		return nil, warnings
+	}
+	view, warning := slack.SettleOpenedView(ctx, c, res.View, fields)
+	if warning != "" {
+		warnings = append(warnings, warning)
+	}
+	return &view, warnings
+}
+
+// pressPayload shapes a completed press for output.
+func pressPayload(ref *render.MessageRef, target render.InteractiveElement, res slack.PressResult, view *slack.ViewSummary, warnings []string) map[string]any {
 	payload := map[string]any{
 		"pressed":    true,
 		"channel_id": ref.ChannelID,
@@ -109,49 +126,13 @@ func pressPayload(ctx context.Context, cc *clientContext, ref *render.MessageRef
 	if res.Message != nil {
 		payload["message"] = render.ToCompactMessage(slack.SummaryFromRaw(ref.ChannelID, res.Message), render.CompactOptions{ActionOptions: true})
 	}
-	warnings := res.Warnings
-	if res.View != nil {
-		view, warning := handleOpenedView(ctx, cc.Client, res.View, fields)
+	if view != nil {
 		payload["view"] = view
-		if warning != "" {
-			warnings = append(warnings, warning)
-		}
-	} else if len(fields) > 0 {
-		warnings = append(warnings, "--field was given but the app opened no form, so nothing was filled in")
 	}
 	if len(warnings) > 0 {
 		payload["warnings"] = warnings
 	}
 	return payload
-}
-
-// handleOpenedView submits the view with fields, or describes and closes it
-// when there are none (or the submission fails). A submission that moves the
-// form to another step leaves that step open, so it is closed and named in
-// the warning.
-func handleOpenedView(ctx context.Context, c *slack.Client, pushed map[string]any, fields map[string]string) (slack.ViewSummary, string) {
-	full := slack.OpenedView(ctx, c, pushed)
-	view := slack.DescribeView(full)
-	if len(fields) == 0 {
-		view.Closed = slack.CloseView(ctx, c, view.ID)
-		return view, ""
-	}
-	res, err := slack.SubmitView(ctx, c, full, fields)
-	if err != nil {
-		view.Error = errorWithHint(err)
-		view.Closed = slack.CloseView(ctx, c, view.ID)
-		return view, ""
-	}
-	view.Submitted = true
-	view.ResponseAction = res.ResponseAction
-	switch res.ResponseAction {
-	case "update", "push":
-		view.Closed = slack.CloseView(ctx, c, view.ID)
-		return view, "the form moved to another step, which was closed — multi-step forms are not supported"
-	default:
-		view.Closed = true
-		return view, ""
-	}
 }
 
 // describePress names what a press would do, for the --yes gate: which
@@ -171,14 +152,4 @@ func describePress(msg map[string]any, target render.InteractiveElement, value s
 		desc += fmt.Sprintf(" (Slack would first ask: %q)", confirm)
 	}
 	return desc
-}
-
-// errorWithHint keeps an error's hint in a result field: for a submission
-// that may have landed, the hint is what stops a second one.
-func errorWithHint(err error) string {
-	var apiErr *agenterrors.APIError
-	if agenterrors.As(err, &apiErr) && apiErr.Hint != "" {
-		return apiErr.Message + " — " + apiErr.Hint
-	}
-	return err.Error()
 }

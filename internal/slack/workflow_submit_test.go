@@ -209,7 +209,7 @@ func TestFetchOpenedViewFallsBackOnBlocklessView(t *testing.T) {
 
 	c := New(Auth{Type: AuthBrowser, XOXC: "xoxc-1", XOXD: "xoxd", WorkspaceURL: ts.URL})
 	eventView := stubEventView()
-	got := fetchOpenedView(context.Background(), c, "V123", eventView)
+	got := fetchOpenedView(context.Background(), c, eventView)
 	if len(getArr(got, "blocks")) != 1 {
 		t.Errorf("blockless fetched view must fall back to the event view, got %v", got)
 	}
