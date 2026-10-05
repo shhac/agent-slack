@@ -4,10 +4,11 @@ description: |
   Read and act on Slack from the terminal: permalinks, threads, history,
   unreads, saved-for-later, canvases, and workflows; message and file
   search; attachment downloads; user lookup; channel listing and creation;
-  DMs; sending, editing, deleting, scheduling, and reacting; and raw Slack
-  API calls. Use when asked to fetch a Slack message URL, read a thread or
-  channel, check unreads, search Slack, post or edit a message, invite
-  someone to a channel, or run a workflow.
+  DMs; sending, editing, deleting, scheduling, and reacting; pressing the
+  buttons on an app's message; and raw Slack API calls. Use when asked to
+  fetch a Slack message URL, read a thread or channel, check unreads, search
+  Slack, post or edit a message, invite someone to a channel, run a
+  workflow, or click Accept/Approve/Dismiss on a bot's card.
 allowed-tools: Bash(agent-slack *) Read
 ---
 
@@ -91,6 +92,10 @@ no `text` field in output. A row without `content` genuinely has no text body;
 re-fetching another way won't reveal more (`--full` shows the raw payload if
 you must check).
 
+An app's card lists its buttons, menus, and pickers under **`actions`**
+(`content` keeps only link buttons). Pressing one is `message action`, gated by
+`--yes` — see [Pressing an app's buttons](references/commands/message.md#pressing-an-apps-buttons-action).
+
 **Files over MCP (`agent-slack mcp`):** an MCP client has no filesystem, so the
 local `path`s above come back as fetchable references
 (`{"@type":"file","root":"cache","path":"<team_id>/<user_id>/downloads/F….png"}`)
@@ -127,7 +132,7 @@ agent-slack message send "#general" "see attached" --attach ./report.md
 agent-slack message react add "<permalink>" :eyes:
 agent-slack message edit "<permalink>" "fixed wording" --yes        # edit/delete gated
 agent-slack message delete "<permalink>" --yes
-agent-slack message action "<permalink>" Approve --yes        # press an app's button (see actions[] in message get)
+agent-slack message action "<permalink>" Approve --yes        # press an app's button — see actions[] under Reading
 ```
 
 Message text is standard Markdown — `**bold**`, `*italic*`/`_italic_`,
@@ -272,6 +277,7 @@ task needs that domain (so finding a user never makes you load emoji, etc.):
 | `usergroup` | subteams (`@group`): `list` / `get` / `members` | `agent-slack usergroup usage` |
 | `emoji` | custom emoji: `list` / `get` / `search`; `add` / `remove` (`--yes`) | `agent-slack emoji usage` |
 | `message draft` · `scheduled` | hand-off drafts for a human; scheduled sends | `agent-slack message usage` |
+| `message action` | press an app card's button or menu; fill the form it opens (`--yes`) | [commands/message.md](references/commands/message.md#pressing-an-apps-buttons-action) |
 | `workflow` | discover and run Slack workflows | `agent-slack workflow usage` |
 | `canvas` | fetch a canvas as Markdown | `agent-slack canvas usage` |
 | `later` | saved-for-later (Slack's Later tab) | `agent-slack later usage` |
