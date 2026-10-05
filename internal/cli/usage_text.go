@@ -224,11 +224,17 @@ ACTION message action <target> [label] --yes  (gated: runs whatever the app wire
        --action-id / --block-id disambiguate. Link buttons are refused (fetch
        the url). Browser auth only. Without --yes it previews the button, the
        app, and any confirm warning Slack would have shown.
+       Menus and pickers need --value: an option label or value, YYYY-MM-DD,
+       HH:MM, or U…/C… ids (comma-separate several).
+       --field 'Title=value' (repeatable) fills the form the press opens, by
+       field label; unnamed fields keep their current (pre-filled) values.
+       view.submitted / view.error report how it went.
        Prints {pressed, channel_id, ts, action, outcome, message?, view?,
        warnings?}; outcome is message_updated | message_deleted | view_opened
        | none | unknown | unobserved, judged by re-reading the message for up
-       to --wait (5s; 0 presses without watching). A form the app opens is
-       described (view.fields) and closed. Never re-press on 'none' or
+       to --wait (5s; 0 presses without watching). A form the app opens
+       without --field is described (view.fields, with current values) and
+       closed — press again with --field to fill it. Never re-press on 'none' or
        'unknown' — check with message get first. Replies the app posts are
        not reported: follow with message await.
 REACT  message react add|remove <target> <emoji>   (:rocket:, rocket, or 🚀)

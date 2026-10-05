@@ -155,7 +155,7 @@ func parseFieldArgs(fields []string) (map[string]string, error) {
 		title, value, found := strings.Cut(arg, "=")
 		if !found || title == "" {
 			return nil, agenterrors.Newf(agenterrors.FixableByAgent, "invalid --field format: %q", arg).
-				WithHint("expected Title=value; 'workflow get <trigger-id>' lists field titles")
+				WithHint("expected Title=value, where Title is the field's label ('workflow get' and 'message action' list them)")
 		}
 		values[title] = value
 	}

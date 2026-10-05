@@ -128,7 +128,7 @@ func blockActionParams(in PressInput) (map[string]any, error) {
 		return nil, agenterrors.New("this message was not posted by an app, so there is nothing listening for the press",
 			agenterrors.FixableByAgent).WithHint("only app (bot) messages have pressable buttons")
 	}
-	actions, _ := json.Marshal([]map[string]any{actionPayload(in.Target)})
+	actions, _ := json.Marshal([]map[string]any{actionPayload(in.Target, in.Choice)})
 	container, _ := json.Marshal(map[string]any{
 		"type":         "message",
 		"message_ts":   in.Ref.MessageTS,
@@ -148,18 +148,52 @@ func blockActionParams(in PressInput) (map[string]any, error) {
 }
 
 // actionPayload is the element as the app expects to receive it back: its
-// address, type, and the fields an app keys behaviour on.
-func actionPayload(ie render.InteractiveElement) map[string]any {
+// address, type, the fields an app keys behaviour on, and — for a menu or
+// picker — the chosen value under the element type's own key.
+func actionPayload(ie render.InteractiveElement, chosen map[string]any) map[string]any {
 	el := ie.Element
 	payload := map[string]any{
 		"block_id":  ie.BlockID,
 		"action_id": getStr(el, "action_id"),
 		"type":      getStr(el, "type"),
 	}
-	for _, key := range []string{"text", "value", "style"} {
+	for _, key := range []string{"text", "value", "style", "placeholder"} {
 		if v, ok := el[key]; ok {
 			payload[key] = v
 		}
 	}
+	for key, v := range chosen {
+		payload[key] = v
+	}
 	return payload
+}
+
+// ActionChoice validates the value a press supplies against the element: a
+// button takes none, and every menu or picker needs one — Slack sends the
+// selection, not the click. It runs before the press, so a bad value never
+// reaches the app.
+func ActionChoice(ie render.InteractiveElement, value string) (map[string]any, error) {
+	elemType := getStr(ie.Element, "type")
+	label := FirstNonEmpty(render.ElementLabel(ie.Element), getStr(ie.Element, "action_id"))
+	if elemType == "button" {
+		if value != "" {
+			return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s is a button, which takes no --value", describeElement(ie)).
+				WithHint("drop --value to press it")
+		}
+		return nil, nil
+	}
+	if value == "" {
+		hint := "pass the choice with --value"
+		if labels := render.CompactActionFor(ie).Options; len(labels) > 0 {
+			hint += "; options: " + strings.Join(labels, ", ")
+		}
+		return nil, agenterrors.Newf(agenterrors.FixableByAgent, "%s is a %s and needs a --value", describeElement(ie), elemType).
+			WithHint(hint)
+	}
+	entry, err := formStateEntry(ie.Element, label, value)
+	if err != nil {
+		return nil, err
+	}
+	delete(entry, "type")
+	return entry, nil
 }

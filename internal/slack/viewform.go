@@ -7,13 +7,21 @@ import (
 )
 
 // ViewSummary is a modal an app opened, reduced to what a caller needs to
-// fill it in: its title and the input fields by label.
+// fill it in: its title and the input fields by label, with their current
+// values.
 type ViewSummary struct {
 	ID     string      `json:"id"`
 	Title  string      `json:"title,omitempty"`
 	Fields []ViewField `json:"fields,omitempty"`
+	// Submitted reports whether the view was filled in and accepted.
+	Submitted bool `json:"submitted"`
+	// ResponseAction is Slack's answer to a submission ("clear", "update", …).
+	ResponseAction string `json:"response_action,omitempty"`
+	// Error is why a submission was not made or was rejected.
+	Error string `json:"error,omitempty"`
 	// Closed reports whether Slack accepted closing the view; false means it
-	// may still be open on the user's other clients.
+	// may still be open on the user's other clients. A view accepted with
+	// "clear" closed itself.
 	Closed bool `json:"closed"`
 }
 
@@ -22,6 +30,7 @@ type ViewField struct {
 	Title    string   `json:"title"`
 	Type     string   `json:"type"`
 	Required bool     `json:"required,omitempty"`
+	Value    string   `json:"value,omitempty"`
 	Options  []string `json:"options,omitempty"`
 }
 
@@ -31,17 +40,14 @@ func DescribeView(view map[string]any) ViewSummary {
 		ID:    getStr(view, "id"),
 		Title: render.TextObjectValue(view["title"]),
 	}
-	for _, b := range recItems(getArr(view, "blocks")) {
-		if getStr(b, "type") != "input" {
-			continue
-		}
-		element := getRec(b, "element")
+	for _, in := range viewInputs(view) {
 		field := ViewField{
-			Title:    render.TextObjectValue(b["label"]),
-			Type:     getStr(element, "type"),
-			Required: !getBool(b, "optional"),
+			Title:    in.title,
+			Type:     getStr(in.element, "type"),
+			Required: !in.optional,
+			Value:    entryDisplay(in.entry),
 		}
-		for _, o := range render.ElementOptions(element) {
+		for _, o := range render.ElementOptions(in.element) {
 			if label := render.TextObjectValue(o["text"]); label != "" {
 				field.Options = append(field.Options, label)
 			}

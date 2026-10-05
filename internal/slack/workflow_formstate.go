@@ -8,7 +8,6 @@ package slack
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
@@ -125,85 +124,4 @@ func schemaFieldByTitle(schema WorkflowSchema, title string) *FormField {
 		}
 	}
 	return nil
-}
-
-// formStateEntry builds one state entry in the shape the element's input type
-// expects — views.submit rejects state whose type does not match the rendered
-// element, and reports it only via response_action "errors".
-func formStateEntry(element map[string]any, title, value string) (map[string]any, error) {
-	elemType := FirstNonEmpty(getStr(element, "type"), "plain_text_input")
-	switch elemType {
-	case "plain_text_input", "number_input", "email_text_input", "url_text_input":
-		return map[string]any{"type": elemType, "value": value}, nil
-	case "rich_text_input":
-		return map[string]any{"type": elemType, "rich_text_value": richTextValue(value)}, nil
-	case "static_select", "radio_buttons":
-		opt, err := matchElementOption(element, title, value)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]any{"type": elemType, "selected_option": opt}, nil
-	case "checkboxes":
-		var opts []any
-		for _, part := range strings.Split(value, ",") {
-			opt, err := matchElementOption(element, title, strings.TrimSpace(part))
-			if err != nil {
-				return nil, err
-			}
-			opts = append(opts, opt)
-		}
-		return map[string]any{"type": elemType, "selected_options": opts}, nil
-	case "datepicker":
-		if _, err := time.Parse("2006-01-02", value); err != nil {
-			return nil, agenterrors.Newf(agenterrors.FixableByAgent,
-				"field %q expects a date, got %q", title, value).
-				WithHint("use YYYY-MM-DD and rerun — " + abandonedRunHint)
-		}
-		return map[string]any{"type": elemType, "selected_date": value}, nil
-	case "timepicker":
-		if _, err := time.Parse("15:04", value); err != nil {
-			return nil, agenterrors.Newf(agenterrors.FixableByAgent,
-				"field %q expects a time, got %q", title, value).
-				WithHint("use HH:MM (24h) and rerun — " + abandonedRunHint)
-		}
-		return map[string]any{"type": elemType, "selected_time": value}, nil
-	default:
-		return nil, agenterrors.Newf(agenterrors.FixableByHuman,
-			"field %q is a %s input, which agent-slack cannot submit", title, elemType).
-			WithHint(abandonedRunHint + "; use a Slack client for this workflow's form")
-	}
-}
-
-// richTextValue wraps a plain string in the minimal rich_text document a
-// rich_text_input element expects.
-func richTextValue(value string) map[string]any {
-	return map[string]any{
-		"type": "rich_text",
-		"elements": []any{map[string]any{
-			"type":     "rich_text_section",
-			"elements": []any{map[string]any{"type": "text", "text": value}},
-		}},
-	}
-}
-
-// matchElementOption finds the element option whose value or label matches
-// (labels case-insensitively) and returns the option object verbatim —
-// views.submit expects the full option, text object included. Grouped options
-// (option_groups) are flattened in.
-func matchElementOption(element map[string]any, title, value string) (map[string]any, error) {
-	options := recItems(getArr(element, "options"))
-	for _, group := range recItems(getArr(element, "option_groups")) {
-		options = append(options, recItems(getArr(group, "options"))...)
-	}
-	var labels []string
-	for _, opt := range options {
-		label := getStr(getRec(opt, "text"), "text")
-		if getStr(opt, "value") == value || strings.EqualFold(label, value) {
-			return opt, nil
-		}
-		labels = append(labels, label)
-	}
-	return nil, agenterrors.Newf(agenterrors.FixableByAgent,
-		"field %q has no option matching %q. Available: %s", title, value, strings.Join(labels, ", ")).
-		WithHint("match an option by its label or value and rerun — " + abandonedRunHint)
 }

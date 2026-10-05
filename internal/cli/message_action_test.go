@@ -254,3 +254,159 @@ func TestMessageActionWithoutWatching(t *testing.T) {
 		t.Error("--wait 0 should press once without opening RTM")
 	}
 }
+
+// editFormView is an app's pre-filled "edit" modal: the update text arrives
+// as the current value, the way an incident bot's Edit button opens it.
+func editFormView() map[string]any {
+	return map[string]any{
+		"id": "V0000000002", "app_id": "A0000000001",
+		"title": map[string]any{"type": "plain_text", "text": "Edit update"},
+		"blocks": []any{
+			map[string]any{"type": "input", "block_id": "msg",
+				"label": map[string]any{"type": "plain_text", "text": "Message"},
+				"element": map[string]any{"type": "rich_text_input", "action_id": "input",
+					"initial_value": map[string]any{"type": "rich_text", "elements": []any{
+						map[string]any{"type": "rich_text_section", "elements": []any{
+							map[string]any{"type": "text", "text": "We found the cause."},
+						}},
+					}}}},
+			map[string]any{"type": "input", "block_id": "sev",
+				"label": map[string]any{"type": "plain_text", "text": "Severity"},
+				"element": map[string]any{"type": "static_select", "action_id": "input",
+					"initial_option": map[string]any{"text": map[string]any{"type": "plain_text", "text": "Minor"}, "value": "minor"},
+					"options": []any{
+						map[string]any{"text": map[string]any{"type": "plain_text", "text": "Minor"}, "value": "minor"},
+						map[string]any{"text": map[string]any{"type": "plain_text", "text": "Major"}, "value": "major"},
+					}}},
+		},
+	}
+}
+
+func formFixture(t *testing.T) *cliFixture {
+	t.Helper()
+	f := actionCLIFixture(t, nil, mockslack.WSViewOpened(map[string]any{"id": "V0000000002"}))
+	f.server.HandleBody("conversations.history", historyWith(appCardMessage(actionTS)))
+	f.server.HandleBody("views.get", map[string]any{"ok": true, "view": editFormView()})
+	f.server.HandleBody("views.submit", map[string]any{"ok": true, "view": nil, "response_action": "clear"})
+	f.server.HandleBody("views.close", map[string]any{"ok": true})
+	return f
+}
+
+func TestMessageActionFillsTheOpenedForm(t *testing.T) {
+	f := formFixture(t)
+
+	stdout, _, err := f.run(t, pressArgs("Edit", "--field", "severity=Major", "--yes")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := parseJSON(t, stdout)["view"].(map[string]any)
+	if view["submitted"] != true || view["closed"] != true || view["error"] != nil {
+		t.Fatalf("view = %v", view)
+	}
+	if fields := view["fields"].([]any); fields[0].(map[string]any)["value"] != "We found the cause." {
+		t.Errorf("fields = %v, want the pre-filled message shown", fields)
+	}
+
+	submits := f.server.CallsFor("views.submit")
+	if len(submits) != 1 || submits[0].Params.Get("view_id") != "V0000000002" {
+		t.Fatalf("views.submit calls = %v", submits)
+	}
+	var state struct {
+		Values map[string]map[string]map[string]any `json:"values"`
+	}
+	if err := json.Unmarshal([]byte(submits[0].Params.Get("state")), &state); err != nil {
+		t.Fatal(err)
+	}
+	// Both blocks reuse action_id "input": the state must keep them apart,
+	// and the untouched message must go back as it was, not empty.
+	if _, kept := state.Values["msg"]["input"]["rich_text_value"]; !kept {
+		t.Errorf("state = %v, want the pre-filled message resubmitted", state.Values)
+	}
+	if opt := state.Values["sev"]["input"]["selected_option"].(map[string]any); opt["value"] != "major" {
+		t.Errorf("severity = %v", opt)
+	}
+	if len(f.server.CallsFor("views.close")) != 0 {
+		t.Error("an accepted submission closes itself")
+	}
+}
+
+func TestMessageActionClosesAFormItCannotFill(t *testing.T) {
+	f := formFixture(t)
+
+	stdout, _, err := f.run(t, pressArgs("Edit", "--field", "Owner=U0000000009", "--yes")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := parseJSON(t, stdout)["view"].(map[string]any)
+	if msg, _ := view["error"].(string); !strings.Contains(msg, `no field "Owner"`) || view["submitted"] != false || view["closed"] != true {
+		t.Errorf("view = %v", view)
+	}
+	if len(f.server.CallsFor("views.submit")) != 0 {
+		t.Error("nothing should be submitted for an unknown field")
+	}
+}
+
+func TestMessageActionWarnsWhenNoFormOpens(t *testing.T) {
+	f := actionCLIFixture(t, nil)
+	f.server.HandleBody("conversations.history", historyWith(appCardMessage(actionTS)))
+
+	stdout, _, err := f.run(t, pressArgs("Approve", "--field", "Message=x", "--wait", "1s", "--yes")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnings, _ := parseJSON(t, stdout)["warnings"].([]any)
+	if len(warnings) != 1 || !strings.Contains(warnings[0].(string), "opened no form") {
+		t.Errorf("warnings = %v", warnings)
+	}
+}
+
+func menuCard(ts string) map[string]any {
+	msg := appCardMessage(ts)
+	msg["blocks"] = []any{map[string]any{"type": "actions", "block_id": "route", "elements": []any{
+		map[string]any{"type": "static_select", "action_id": "env",
+			"placeholder": map[string]any{"type": "plain_text", "text": "Environment"},
+			"options": []any{
+				map[string]any{"text": map[string]any{"type": "plain_text", "text": "Staging"}, "value": "stg"},
+				map[string]any{"text": map[string]any{"type": "plain_text", "text": "Production"}, "value": "prd"},
+			}},
+	}}}
+	return msg
+}
+
+func TestMessageActionChoosesAMenuOption(t *testing.T) {
+	f := actionCLIFixture(t, nil)
+	f.server.HandleBody("conversations.history", historyWith(menuCard(actionTS)))
+
+	_, stderr, _ := f.run(t, pressArgs("Environment", "--value", "production")...)
+	if msg := errPayload(t, stderr)["error"].(string); !strings.Contains(msg, `choose "production"`) {
+		t.Errorf("preview %q should name the choice", msg)
+	}
+
+	if _, _, err := f.run(t, pressArgs("Environment", "--value", "production", "--wait", "0", "--yes")...); err != nil {
+		t.Fatal(err)
+	}
+	var actions []map[string]any
+	if err := json.Unmarshal([]byte(f.server.CallsFor("blocks.actions")[0].Params.Get("actions")), &actions); err != nil {
+		t.Fatal(err)
+	}
+	if opt, _ := actions[0]["selected_option"].(map[string]any); opt["value"] != "prd" {
+		t.Errorf("action = %v, want the Production option selected", actions[0])
+	}
+}
+
+func TestMessageActionMenuNeedsAValue(t *testing.T) {
+	f := actionCLIFixture(t, nil)
+	f.server.HandleBody("conversations.history", historyWith(menuCard(actionTS)))
+
+	_, stderr, err := f.run(t, pressArgs("env", "--yes")...)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	payload := errPayload(t, stderr)
+	if payload["fixable_by"] != "agent" || !strings.Contains(payload["hint"].(string), "Staging, Production") {
+		t.Errorf("payload = %v", payload)
+	}
+	if len(f.server.CallsFor("blocks.actions")) != 0 {
+		t.Error("nothing should be pressed without a choice")
+	}
+}

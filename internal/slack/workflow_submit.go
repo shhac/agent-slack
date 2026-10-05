@@ -124,19 +124,28 @@ func fetchOpenedView(ctx context.Context, c *Client, viewID string, eventView ma
 // run. Block ids resolve to field titles via the mapping buildFormState
 // produced, falling back to the raw id.
 func submitRejection(resp map[string]any, titlesByBlock map[string]string) error {
+	detail, rejected := rejectedFields(resp, titlesByBlock)
+	if !rejected {
+		return nil
+	}
+	return agenterrors.Newf(agenterrors.FixableByAgent,
+		"the workflow form rejected the submission: %s", detail).
+		WithHint("fix the field values and rerun — this run did not complete")
+}
+
+// rejectedFields reads a views.submit body's field errors as "Title: error"
+// pairs; rejected is false when Slack accepted the submission.
+func rejectedFields(resp map[string]any, titlesByBlock map[string]string) (detail string, rejected bool) {
 	errsByBlock := getRec(resp, "errors")
 	if getStr(resp, "response_action") != "errors" && len(errsByBlock) == 0 {
-		return nil
+		return "", false
 	}
 	parts := make([]string, 0, len(errsByBlock))
 	for _, blockID := range slices.Sorted(maps.Keys(errsByBlock)) {
 		label := FirstNonEmpty(titlesByBlock[blockID], blockID)
 		parts = append(parts, fmt.Sprintf("%s: %v", label, errsByBlock[blockID]))
 	}
-	detail := FirstNonEmpty(strings.Join(parts, "; "), "no field errors were reported")
-	return agenterrors.Newf(agenterrors.FixableByAgent,
-		"the workflow form rejected the submission: %s", detail).
-		WithHint("fix the field values and rerun — this run did not complete")
+	return FirstNonEmpty(strings.Join(parts, "; "), "no field errors were reported"), true
 }
 
 // abandonView best-effort closes a form view whose submission is being given

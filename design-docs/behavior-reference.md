@@ -328,6 +328,19 @@ suspect until it has been checked against a real Enterprise Grid id.
   app that updates its card and opens a form must not leave the form open on
   the user's other clients. Opened views are fetched with `views.get`,
   described, and closed with `views.close`; `closed` reports Slack's answer.
+- A menu or picker press carries the choice under the element type's own key
+  (`selected_option`, `selected_options`, `selected_date`, `selected_time`,
+  `selected_user(s)`, `selected_conversation(s)`, `selected_channel(s)`) —
+  the same keys and shapes as a `views.submit` state entry, so one builder
+  (`elementvalue.go`) serves workflow forms, app forms, and menus.
+- **App forms** (`--field`) differ from workflow forms: there is no schema,
+  so the view's own input blocks are the form, matched by label and keyed by
+  `block_id` (apps reuse one `action_id` across blocks). They often arrive
+  pre-filled, and `views.submit` replaces the whole state, so the submission
+  starts from the view's `state.values` (as `views.get` returns it), else
+  each element's `initial_*`, and lays the named fields over it. A required
+  field still empty is an error before anything is sent. A response_action of
+  `update`/`push` means a further step opened; it is closed and reported.
 - Once `blocks.actions` is sent nothing is retryable (a retry presses
   again): a transport failure on the press itself becomes agent-fixable with
   a "check before pressing again" hint, and failures while watching become

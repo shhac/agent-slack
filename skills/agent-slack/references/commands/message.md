@@ -14,7 +14,7 @@ In-binary version: `agent-slack message usage`. Formatting: [../formatting.md](.
 | `message draft delete <target\|id>` | | `--yes` |
 | `message edit <target> [text]` | `--ts`, `--slack-markdown`, `--attach <path>` (repeatable), `--remove-attachment <F…>` (repeatable; ids from `message get` `files[].id`) — text optional when only changing attachments | `--yes` |
 | `message delete <target>` | `--ts` | `--yes` |
-| `message action <target> [label]` | `--ts`, `--action-id`, `--block-id`, `--wait` (5s; `0` = press without watching) — browser auth only | `--yes` |
+| `message action <target> [label]` | `--ts`, `--action-id`, `--block-id`, `--value <choice>` (menus/pickers), `--field 'Title=value'` (repeatable; fills the form the press opens), `--wait` (5s; `0` = press without watching) — browser auth only | `--yes` |
 | `message react add\|remove <target> <emoji>` | `--ts` | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | |
 | `message scheduled cancel <id>` | `--channel` (required for bot/user tokens) | `--yes` |
@@ -265,6 +265,9 @@ agent-slack message get "<permalink>"                       # read actions[]: la
 agent-slack message action "<permalink>" Approve            # preview: which button, which app, any confirm warning
 agent-slack message action "<permalink>" Approve --yes      # press
 agent-slack message action "<permalink>" --action-id approve --block-id decide --yes
+agent-slack message action "<permalink>" Environment --value Production --yes            # a menu
+agent-slack message action "<permalink>" Edit --yes                                      # see the form: view.fields
+agent-slack message action "<permalink>" Edit --field "Message=Fix deployed" --yes       # fill and submit it
 ```
 
 - **Always gated.** A press runs whatever the app wired to it — a status
@@ -272,6 +275,20 @@ agent-slack message action "<permalink>" --action-id approve --block-id decide -
   explicit instruction. The preview carries the element's `confirm` text: a
   programmatic press skips the dialog Slack would have shown, so show it to
   the user.
+- **Menus and pickers** need `--value`: an option's label or value
+  (`static_select`, `overflow`, `radio_buttons`; comma-separate for
+  `checkboxes`/multi-selects), `YYYY-MM-DD`, `HH:MM`, or `U…`/`C…` ids for the
+  user/channel/conversation menus (resolve names with `user get`/`channel
+  get`). Without it the error lists the options. `external_select` menus
+  (options loaded from the app) cannot be chosen.
+- **Forms.** A button that opens a form (an "Edit") is reported as
+  `view_opened` with `view.fields` — each field's label, type, `required`,
+  current `value`, and `options` — and the form is closed. Press again with
+  `--field 'Label=value'` (repeatable, labels case-insensitive, values as for
+  `--value`) to fill and submit it: fields you don't name keep the values the
+  app pre-filled. `view.submitted` says whether the app accepted it;
+  `view.error` says why not (the form is then closed). Multi-step forms stop
+  after the first step.
 - Select by label (case-insensitive) or `action_id`; an ambiguous or unknown
   label fails with `fixable_by: agent` and lists what the message offers.
   Link buttons are refused — fetch the `url` instead. Legacy attachment
@@ -279,8 +296,7 @@ agent-slack message action "<permalink>" --action-id approve --block-id decide -
 - Output: `{pressed, channel_id, ts, action, outcome, message?, view?,
   warnings?}`. `outcome` is judged by re-reading the message for up to
   `--wait`: `message_updated` (with the new `message`), `message_deleted`,
-  `view_opened` (the app opened a form: `view.fields` lists it, and it is
-  closed, not submitted), `none`, `unknown` (nothing could be observed), or
+  `view_opened` (the app opened a form — see Forms), `none`, `unknown` (nothing could be observed), or
   `unobserved` (`--wait 0`).
 - **Never press again on `none` or `unknown`** — the press was sent. Check
   with `message get`; an app that answers with a new message rather than an

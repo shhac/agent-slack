@@ -35,7 +35,7 @@ global persistent flags.
 | `message send <target> [text]` | `--thread-ts`, `--reply-broadcast`, `--attach` (repeatable; multiple files post together as ONE message with one `initial_comment`, not one message per file), `--blocks` (path or `-`), `--forward <permalink>`, `--schedule`, `--schedule-in` | | DM auto-opens for `U…` targets |
 | `message edit <target> [text]` | `--ts`, `--slack-markdown`, `--attach` (repeatable), `--remove-attachment <F…>` (repeatable) | `--yes` | text optional when only changing attachments |
 | `message delete <target>` | `--ts` | `--yes` | |
-| `message action <target> [label]` | `--ts`, `--action-id`, `--block-id`, `--wait` (5s) | `--yes` | presses an app message's button via `blocks.actions`; browser-only; reports the app's response (see behavior-reference) |
+| `message action <target> [label]` | `--ts`, `--action-id`, `--block-id`, `--value`, `--field` (repeatable), `--wait` (5s) | `--yes` | presses an app message's button, or chooses in its menu/picker, via `blocks.actions`; `--field` fills the form the press opens; browser-only; reports the app's response (see behavior-reference) |
 | `message react add/remove <target> <emoji>` | `--ts` | | |
 | `message scheduled list` | `--channel`, `--oldest`, `--latest`, `--limit`, `--cursor` | | NDJSON |
 | `message scheduled cancel <id>` | `--channel` | `--yes` | destroys a pending send |

@@ -44,7 +44,9 @@ type PressInput struct {
 	Ref     *render.MessageRef
 	Message map[string]any
 	Target  render.InteractiveElement
-	Wait    time.Duration
+	// Choice is a menu or picker's selection, from ActionChoice.
+	Choice map[string]any
+	Wait   time.Duration
 }
 
 // PressResult reports the app's visible response. Message is the raw
