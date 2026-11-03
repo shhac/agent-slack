@@ -20,7 +20,11 @@ so outbound and inbound are independent).
 | Bulleted list | `- item` / `* item`     | indent to nest; any depth, spaces or tabs |
 | Numbered list | `1. item` / `1) item`   | first number sets the start; nesting doesn't restart it |
 | Blockquote    | `> quoted`              |                                         |
-| Escape        | `\*literal\*`           | backslash before `* _ ~ \` [ ] ( ) @ :` |
+| Heading       | `# Big` `## Medium` `### Small` | Slack's three sizes; `####`+ is small. Space after `#` required |
+| Divider       | `---` (or `***`, `___`) | a line on its own; see [Structure](#structure) |
+| Table         | `\| a \| b \|` + `\|---\|---\|` | GFM pipe table; the composer can't make these |
+| Checklist     | `- [ ] todo` / `- [x] done` | works on bullets and numbers, nests like any list |
+| Escape        | `\*literal\*`           | backslash before `* _ ~ \` [ ] ( ) @ : # - \|` |
 
 Nesting works: `**bold with _italic_ and `code`**` styles each span correctly.
 
@@ -44,6 +48,63 @@ a sub-list never restarts the numbering above it.
 Two- and four-space indents and tabs all work; what matters is that a nested
 item is indented further than its parent. The first number sets where an
 ordered list starts (`5.` begins at five), so lazy `1. 1. 1.` still counts up.
+
+### Structure
+
+Headings, dividers and tables are separate Block Kit blocks rather than inline
+styles, so a message using them is sent as a sequence of blocks — exactly what
+Slack's composer writes for its heading and divider buttons.
+
+- **Headings** — `#`, `##`, `###` map to Slack's big/medium/small heading;
+  deeper levels become small (Slack accepts only three). A heading is plain
+  text: bold/italic inside it are dropped (it's already bold), and `:emoji:`
+  works. A heading containing a **link or mention**, or longer than 150
+  characters, can't be a Slack heading — it's sent as a **bold line** instead so
+  nothing is lost.
+- **Dividers** — `---`, `***` or `___` (spaces between allowed) alone on a line.
+  A `---` directly under a paragraph is still a divider, not a setext heading.
+- **Tables** — a header row, a delimiter row (`|---|`, with `:--`, `:-:`, `--:`
+  for left/center/right), then body rows until a line without a `|`. Outer
+  pipes are optional. Cells take inline formatting, links, mentions and emoji;
+  write `\|` for a literal pipe. Short rows are padded and long rows cut to the
+  header's width (Slack rejects ragged tables). Slack caps a table at 100 rows
+  and 20 columns.
+- **Checklists** — `[ ]`/`[x]` (or `[X]`) followed by a space, right after a list
+  marker. Checked state is stored and round-trips through agent-slack, but
+  Slack's client currently draws checklist items as plain bullets — readers
+  can't see which are ticked, so say so in the text when it matters.
+
+```
+## Release 4.2
+
+| Service  | p95 (ms) |
+| :------- | -------: |
+| checkout |      412 |
+
+---
+
+- [x] tests
+- [ ] docs
+```
+
+Escape to keep any of these literal: `\# not a heading`, `\---`, `a \| b`.
+Structure applies in `--slack-markdown` mode too — it's line-level, not a
+dialect question. Slack limits a message to 50 blocks; every heading, divider
+and table is one, and so is each run of text between them. Past the limit Slack
+rejects the send with an agent-fixable `invalid_blocks` error.
+
+Reading returns the same syntax: headings as `#`/`##`/`###` (an app's title
+header with no size reads as `#`), dividers as `---`, tables as pipe tables with
+their alignment, and checklists as `- [ ]`/`- [x]`.
+
+### Beyond Markdown: raw blocks
+
+Your token can also post blocks the composer has no button for — `section`
+blocks with two-column `fields`, small grey `context` lines, and a rich_text
+`color` element (`{"type":"color","value":"#FF5A1F"}`, drawn as a swatch).
+There is no Markdown syntax for these: pass them verbatim with
+`--blocks <file|->`. A rich_text `date` element is accepted but the client shows
+only its `fallback` text, so don't rely on it for a localised time.
 
 ### Links
 
@@ -78,15 +139,14 @@ it stays literal. Use an id (`<@U…>` / `<!subteam^S…>`) when you need to be 
 
 ### `#channel` vs Markdown headings
 
-Slack has no Markdown headings, so there is no real conflict — and the two
-shapes are distinguished structurally, not heuristically:
+The two shapes are distinguished structurally, not heuristically:
 
 - **Channel** — `#name` with a name character flush against the `#`
   (`#general`, `word #ops`). Lowercase letters/digits/`-`/`_`, the way Slack
   stores channel names. Resolved to a link only when it matches a real channel;
   otherwise left literal.
-- **Heading** — `# Title` (a space after the `#`) never matches: the space
-  isn't a name character. `## Sub` and friends are safe for the same reason.
+- **Heading** — `# Title` (a space after the `#`) is a heading, never a channel:
+  the space isn't a name character. `## Sub` and friends likewise.
 - **Not a channel** — `C#`/`F#` (the `#` follows a word character),
   already-formed `<#C…>` tokens, anything inside code spans/blocks, and
   all-digit refs like `#5`/`#1234` (issue/PR numbers) are all left untouched.
@@ -108,4 +168,7 @@ the *formatting* dialect.
 - `--blocks <file|->` and the raw `api` command bypass dialect conversion
   entirely (you provide Block Kit / params verbatim).
 - When Markdown formatting is present, it is sent as rich_text blocks and the
-  notification/`text` fallback is the marker-stripped plain text.
+  notification/`text` fallback is the marker-stripped plain text (heading
+  markers included).
+- Sending with `--attach` posts plain text, so headings, tables and the rest
+  degrade to their text. A draft with `--attach` keeps them.

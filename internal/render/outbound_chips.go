@@ -11,7 +11,8 @@ import (
 // pattern here is fine.
 var slackMessageURLRe = regexp.MustCompile(`https?://[A-Za-z0-9.-]+\.slack\.com/archives/[A-Za-z0-9]+/p\d{7,}(?:\?[A-Za-z0-9_=&.%~-]*)?`)
 
-// UpgradeOutboundLinks rewrites links in the outbound rich_text blocks into the
+// UpgradeOutboundLinks rewrites links in the outbound blocks — rich_text and
+// table cells alike — into the
 // inline "chips" Slack's own composer produces, so an agent's message reads like
 // a human's:
 //
@@ -30,27 +31,45 @@ var slackMessageURLRe = regexp.MustCompile(`https?://[A-Za-z0-9.-]+\.slack\.com/
 // (so RenderOutbound returned no blocks), blocks are force-built to carry a chip;
 // if that build turns up nothing to upgrade, the original (empty) blocks are
 // returned so plain text stays block-free.
-func UpgradeOutboundLinks(blocks []RichTextBlock, text string, slackMarkdown bool, workspaceURL string) []RichTextBlock {
+func UpgradeOutboundLinks(blocks []Block, text string, slackMarkdown bool, workspaceURL string) []Block {
 	forced := len(blocks) == 0
 	work := blocks
 	if forced {
-		work = RichTextBlocksForText(text, RichTextOptions{
+		work = BlocksForText(text, RichTextOptions{
 			SlackMarkdown:           slackMarkdown,
 			IncludeInlineFormatting: !slackMarkdown,
 		})
 	}
 	changed := false
-	for bi := range work {
-		for ei := range work[bi].Elements {
-			upgraded, did := upgradeInlineAny(work[bi].Elements[ei].Elements, workspaceURL)
-			work[bi].Elements[ei].Elements = upgraded
-			changed = changed || did
+	for _, block := range work {
+		switch b := block.(type) {
+		case RichTextBlock:
+			changed = upgradeRichText(b, workspaceURL) || changed
+		case TableBlock:
+			for _, row := range b.Rows {
+				for _, cell := range row {
+					changed = upgradeRichText(cell, workspaceURL) || changed
+				}
+			}
 		}
 	}
 	if forced && !changed {
 		return blocks // nothing to carry — keep plain text block-free
 	}
 	return work
+}
+
+// upgradeRichText rewrites a rich_text block's links in place — its Elements
+// slice is shared with the caller's copy of the block — and reports whether
+// anything changed.
+func upgradeRichText(b RichTextBlock, workspaceURL string) bool {
+	changed := false
+	for ei := range b.Elements {
+		upgraded, did := upgradeInlineAny(b.Elements[ei].Elements, workspaceURL)
+		b.Elements[ei].Elements = upgraded
+		changed = changed || did
+	}
+	return changed
 }
 
 // sameWorkspaceMessageRef parses rawURL as a Slack message permalink and returns

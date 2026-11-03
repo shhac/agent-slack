@@ -159,6 +159,8 @@ Text I/O is **standard Markdown** by default (both sending and reading): use
 `[label](https://…)` for links (don't paste a bare URL and expect a nice link),
 and `@name`/`@group` handles and `#channel` names resolve to real
 mentions/links; `--slack-markdown` switches to Slack's native mrkdwn dialect.
+Headings (`#`–`###`), `---` dividers, pipe tables and `- [ ]` checklists are
+sent as the blocks Slack's composer uses and read back as the same Markdown.
 An **unlabeled link** — `[url](url)` or `<url>`, i.e. no distinct label — is
 auto-upgraded to Slack's inline link **chip** (the scheme-stripped pill its own
 composer makes when you paste a URL); and a **same-workspace message permalink**

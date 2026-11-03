@@ -13,12 +13,12 @@ const (
 )
 
 // upgrade mirrors outboundTextAndBlocks: render the text, then upgrade.
-func upgrade(text string, slackMarkdown bool, ws string) []RichTextBlock {
+func upgrade(text string, slackMarkdown bool, ws string) []Block {
 	b, _ := RenderOutbound(text, slackMarkdown)
 	return UpgradeOutboundLinks(b, text, slackMarkdown, ws)
 }
 
-func linkChips(blocks []RichTextBlock) []InlineElement {
+func linkChips(blocks []Block) []InlineElement {
 	var out []InlineElement
 	for _, el := range inlineElems(blocks) {
 		if el.Type == "link" && el.Truncated {
@@ -28,7 +28,9 @@ func linkChips(blocks []RichTextBlock) []InlineElement {
 	return out
 }
 
-func inlineElems(blocks []RichTextBlock) []InlineElement {
+// inlineElems flattens every inline element in the blocks, table cells
+// included, in document order.
+func inlineElems(blocks []Block) []InlineElement {
 	var out []InlineElement
 	var walk func(elems []any)
 	walk = func(elems []any) {
@@ -41,15 +43,27 @@ func inlineElems(blocks []RichTextBlock) []InlineElement {
 			}
 		}
 	}
-	for _, b := range blocks {
+	walkRichText := func(b RichTextBlock) {
 		for _, sec := range b.Elements {
 			walk(sec.Elements)
+		}
+	}
+	for _, block := range blocks {
+		switch b := block.(type) {
+		case RichTextBlock:
+			walkRichText(b)
+		case TableBlock:
+			for _, row := range b.Rows {
+				for _, cell := range row {
+					walkRichText(cell)
+				}
+			}
 		}
 	}
 	return out
 }
 
-func mentions(blocks []RichTextBlock) []InlineElement {
+func mentions(blocks []Block) []InlineElement {
 	var out []InlineElement
 	for _, el := range inlineElems(blocks) {
 		if el.Type == "message_mention" {

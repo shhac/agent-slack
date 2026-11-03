@@ -369,13 +369,6 @@ func TestUnknownBlocksAndElementsDegradeRatherThanVanish(t *testing.T) {
 		blocks []any
 		want   string
 	}{{
-		name: "header carries the headline of most app notifications",
-		blocks: []any{
-			map[string]any{"type": "header", "text": map[string]any{"type": "plain_text", "text": "Deploy failed"}},
-			map[string]any{"type": "section", "text": map[string]any{"type": "mrkdwn", "text": "service: api"}},
-		},
-		want: "Deploy failed\n\nservice: api",
-	}, {
 		name: "message_mention is the chip we ourselves send",
 		blocks: []any{map[string]any{"type": "rich_text", "elements": []any{
 			map[string]any{"type": "rich_text_section", "elements": []any{

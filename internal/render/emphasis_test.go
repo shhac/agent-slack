@@ -8,7 +8,7 @@ import (
 
 // spans renders the styled runs of an outbound conversion as a compact string
 // like `"foo" BOLD(bar) "baz"`, so a case reads as what Slack will show.
-func spans(t *testing.T, blocks []RichTextBlock) string {
+func spans(t *testing.T, blocks []Block) string {
 	t.Helper()
 	raw, err := json.Marshal(blocks)
 	if err != nil {

@@ -23,7 +23,7 @@ func listElements(t *testing.T, blocks []RichTextBlock) []RichTextElement {
 }
 
 func TestTextToRichTextBlocksBulletList(t *testing.T) {
-	blocks := TextToRichTextBlocks("- Item 1\n- Item 2\n- Item 3", RichTextOptions{})
+	blocks := textToRichText(t, "- Item 1\n- Item 2\n- Item 3", RichTextOptions{})
 	lists := listElements(t, blocks)
 	if len(lists) != 1 {
 		t.Fatalf("expected 1 list, got %d", len(lists))
@@ -37,13 +37,13 @@ func TestTextToRichTextBlocksBulletList(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksBulletCharacter(t *testing.T) {
-	if TextToRichTextBlocks("• Item 1\n• Item 2", RichTextOptions{}) == nil {
+	if textToRichText(t, "• Item 1\n• Item 2", RichTextOptions{}) == nil {
 		t.Error("expected blocks for • bullets")
 	}
 }
 
 func TestTextToRichTextBlocksSubBullets(t *testing.T) {
-	blocks := TextToRichTextBlocks("- Main 1\n- Main 2\n  - Sub 2a\n  - Sub 2b\n- Main 3", RichTextOptions{})
+	blocks := textToRichText(t, "- Main 1\n- Main 2\n  - Sub 2a\n  - Sub 2b\n- Main 3", RichTextOptions{})
 	lists := listElements(t, blocks)
 	if len(lists) != 3 { // main, sub, main
 		t.Fatalf("expected 3 list runs, got %d", len(lists))
@@ -57,7 +57,7 @@ func TestTextToRichTextBlocksSubBullets(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksWhiteBulletSubs(t *testing.T) {
-	blocks := TextToRichTextBlocks("• Top level\n  ◦ Sub-bullet\n  ◦ Another sub", RichTextOptions{})
+	blocks := textToRichText(t, "• Top level\n  ◦ Sub-bullet\n  ◦ Another sub", RichTextOptions{})
 	lists := listElements(t, blocks)
 	if len(lists) != 2 {
 		t.Fatalf("expected 2 list runs, got %d", len(lists))
@@ -68,7 +68,7 @@ func TestTextToRichTextBlocksWhiteBulletSubs(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksNumberedList(t *testing.T) {
-	blocks := TextToRichTextBlocks("1. First\n2. Second\n3. Third", RichTextOptions{})
+	blocks := textToRichText(t, "1. First\n2. Second\n3. Third", RichTextOptions{})
 	lists := listElements(t, blocks)
 	if len(lists) != 1 || lists[0].Style != "ordered" {
 		t.Fatalf("expected one ordered list, got %+v", lists)
@@ -76,7 +76,7 @@ func TestTextToRichTextBlocksNumberedList(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksBoldListItems(t *testing.T) {
-	blocks := TextToRichTextBlocks("- **Bold item**\n- Normal item", RichTextOptions{})
+	blocks := textToRichText(t, "- **Bold item**\n- Normal item", RichTextOptions{})
 	lists := listElements(t, blocks)
 	if len(lists) != 1 {
 		t.Fatalf("expected 1 list, got %d", len(lists))
@@ -86,7 +86,7 @@ func TestTextToRichTextBlocksBoldListItems(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksEmojiAndChannelInItems(t *testing.T) {
-	blocks := TextToRichTextBlocks(
+	blocks := textToRichText(t,
 		"Header:\n- :rocket: launch sequence\n- discuss in <#C0AHR9XAT8B>\n- :white_check_mark: all clear",
 		RichTextOptions{})
 	lists := listElements(t, blocks)
@@ -110,7 +110,7 @@ type listShape struct {
 
 func assertListShapes(t *testing.T, src string, want []listShape) {
 	t.Helper()
-	lists := listElements(t, TextToRichTextBlocks(src, RichTextOptions{}))
+	lists := listElements(t, textToRichText(t, src, RichTextOptions{}))
 	if len(lists) != len(want) {
 		t.Fatalf("got %d list runs, want %d", len(lists), len(want))
 	}
@@ -230,7 +230,7 @@ func TestTextToRichTextBlocksIndentCapCollapsesIntoOneRun(t *testing.T) {
 	for depth := range maxListIndent + 3 {
 		src.WriteString(strings.Repeat("  ", depth) + "- item\n")
 	}
-	lists := listElements(t, TextToRichTextBlocks(src.String(), RichTextOptions{}))
+	lists := listElements(t, textToRichText(t, src.String(), RichTextOptions{}))
 
 	if len(lists) != maxListIndent+1 {
 		t.Fatalf("got %d runs, want %d (one per level up to the cap)", len(lists), maxListIndent+1)

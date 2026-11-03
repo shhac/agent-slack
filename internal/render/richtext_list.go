@@ -13,6 +13,8 @@ import (
 var (
 	bulletLineRe  = regexp.MustCompile(`^(\s*)[•◦▪▫▸‣●○◆◇\-*]\s+(.*)$`)
 	orderedLineRe = regexp.MustCompile(`^(\s*)(\d+)[.)]\s+(.*)$`)
+	// A task-list box opens the item text: `- [ ] todo`, `1. [x] done`.
+	checkboxRe = regexp.MustCompile(`^\[([ xX])\](?:[ \t]+(.*))?$`)
 )
 
 // tabStop is the column width a tab advances to when measuring list indent, so
@@ -26,26 +28,44 @@ const maxListIndent = 8
 
 // listLine is one parsed source list item.
 type listLine struct {
-	width int    // leading indent in columns, tabs expanded
-	style string // "bullet" | "ordered"
-	start int    // the literal number written on an ordered line
-	text  string
+	width     int    // leading indent in columns, tabs expanded
+	style     string // "bullet" | "ordered"
+	start     int    // the literal number written on an ordered line
+	checklist bool   // the item opens with a [ ] / [x] box
+	checked   bool
+	text      string
 }
 
-// parseListLine classifies a line as a list item. Bullets are tried first so a
-// "- " marker wins over any digits that follow it.
+// parseListLine classifies a line as a list item. A divider wins over a
+// bullet — `* * *` is a thematic break, not an item reading "* *" — and
+// bullets are tried before numbers so a "- " marker wins over any digits that
+// follow it.
 func parseListLine(line string) (listLine, bool) {
+	if isDividerLine(line) {
+		return listLine{}, false
+	}
 	if m := bulletLineRe.FindStringSubmatch(line); m != nil {
-		return listLine{width: indentWidth(m[1]), style: "bullet", start: 1, text: m[2]}, true
+		return withCheckbox(listLine{width: indentWidth(m[1]), style: "bullet", start: 1, text: m[2]}), true
 	}
 	if m := orderedLineRe.FindStringSubmatch(line); m != nil {
 		start, err := strconv.Atoi(m[2])
 		if err != nil {
 			start = 1 // a number too long for an int; treat it as an ordinary list
 		}
-		return listLine{width: indentWidth(m[1]), style: "ordered", start: start, text: m[3]}, true
+		return withCheckbox(listLine{width: indentWidth(m[1]), style: "ordered", start: start, text: m[3]}), true
 	}
 	return listLine{}, false
+}
+
+func withCheckbox(item listLine) listLine {
+	m := checkboxRe.FindStringSubmatch(item.text)
+	if m == nil {
+		return item
+	}
+	item.checklist = true
+	item.checked = m[1] != " "
+	item.text = m[2]
+	return item
 }
 
 func isListLine(line string) bool {
@@ -79,10 +99,11 @@ func resumesList(lines []string, idx int) bool {
 // listRun is a maximal stretch of items sharing one depth and style — the unit
 // that becomes a single rich_text_list element.
 type listRun struct {
-	depth int
-	style string
-	start int // first item's literal number, seeding a fresh ordered list
-	items []any
+	depth     int
+	style     string
+	checklist bool
+	start     int // first item's literal number, seeding a fresh ordered list
+	items     []any
 }
 
 // listLevel is one open nesting level: the indent width that opened it, and the
@@ -130,10 +151,11 @@ func collectList(lines []string, startIdx int, inline func(string) []InlineEleme
 			return
 		}
 		el := RichTextElement{
-			Type:     "rich_text_list",
-			Style:    run.style,
-			Indent:   run.depth,
-			Elements: run.items,
+			Type:      "rich_text_list",
+			Style:     run.style,
+			Indent:    run.depth,
+			Checklist: run.checklist,
+			Elements:  run.items,
 		}
 		if run.style == "ordered" {
 			level := &levels[run.depth]
@@ -162,7 +184,7 @@ func collectList(lines []string, startIdx int, inline func(string) []InlineEleme
 		// Flush before touching levels: the outgoing run still needs its own
 		// level to record where its numbering finished.
 		depth := depthOf(levels, item.width)
-		if run != nil && (run.depth != depth || run.style != item.style) {
+		if run != nil && (run.depth != depth || run.style != item.style || run.checklist != item.checklist) {
 			flush()
 		}
 		if depth == len(levels) {
@@ -174,15 +196,26 @@ func collectList(lines []string, startIdx int, inline func(string) []InlineEleme
 		}
 
 		if run == nil {
-			run = &listRun{depth: depth, style: item.style, start: item.start}
+			run = &listRun{depth: depth, style: item.style, checklist: item.checklist, start: item.start}
 		}
-		run.items = append(run.items, RichTextElement{
-			Type:     "rich_text_section",
-			Elements: inlineToAny(inline(item.text)),
-		})
+		run.items = append(run.items, listItemSection(item, inline))
 		idx++
 	}
 
 	flush()
 	return idx
+}
+
+// listItemSection is one item's section. A checklist item carries checked even
+// when false: that is how Slack writes an unticked box.
+func listItemSection(item listLine, inline func(string) []InlineElement) RichTextElement {
+	section := RichTextElement{
+		Type:     "rich_text_section",
+		Elements: inlineToAny(inline(item.text)),
+	}
+	if item.checklist {
+		checked := item.checked
+		section.Checked = &checked
+	}
+	return section
 }

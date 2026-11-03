@@ -8,10 +8,10 @@ import (
 
 func TestRichTextBlocksForText(t *testing.T) {
 	// Plain text → exactly one rich_text block (TextToRichTextBlocks returns nil here).
-	if got := TextToRichTextBlocks("hello world", RichTextOptions{}); got != nil {
+	if got := textToRichText(t, "hello world", RichTextOptions{}); got != nil {
 		t.Fatalf("precondition: plain text should yield nil blocks, got %v", got)
 	}
-	plain := RichTextBlocksForText("hello world", RichTextOptions{})
+	plain := richTextOnly(t, BlocksForText("hello world", RichTextOptions{}))
 	if len(plain) != 1 || plain[0].Type != "rich_text" {
 		t.Errorf("plain text blocks = %+v", plain)
 	}
@@ -21,12 +21,12 @@ func TestRichTextBlocksForText(t *testing.T) {
 	}
 
 	// Inline formatting (a mention) round-trips through the IncludeInlineFormatting path.
-	if raw, _ := json.Marshal(RichTextBlocksForText("hi <@U12345678>", RichTextOptions{})); !strings.Contains(string(raw), "U12345678") {
+	if raw, _ := json.Marshal(richTextOnly(t, BlocksForText("hi <@U12345678>", RichTextOptions{}))); !strings.Contains(string(raw), "U12345678") {
 		t.Errorf("inline content lost: %s", raw)
 	}
 
 	// Structured text → delegates to TextToRichTextBlocks (non-empty).
-	if got := RichTextBlocksForText("- one\n- two", RichTextOptions{}); len(got) == 0 {
+	if got := richTextOnly(t, BlocksForText("- one\n- two", RichTextOptions{})); len(got) == 0 {
 		t.Error("structured text should produce blocks")
 	}
 }
@@ -36,7 +36,7 @@ func TestRichTextBlocksForText(t *testing.T) {
 // fallback, so any change to this structure changes what users see.
 func TestRichTextBlocksForTextPlainShape(t *testing.T) {
 	const want = `[{"type":"rich_text","elements":[{"type":"rich_text_section","elements":[{"type":"text","text":"hello world"}]}]}]`
-	got, _ := json.Marshal(RichTextBlocksForText("hello world", RichTextOptions{}))
+	got, _ := json.Marshal(richTextOnly(t, BlocksForText("hello world", RichTextOptions{})))
 	if string(got) != want {
 		t.Errorf("plain fallback shape:\n got %s\nwant %s", got, want)
 	}
@@ -87,7 +87,7 @@ func TestTextToRichTextBlocksNil(t *testing.T) {
 		{"user mention only", "ping <@U12345678>", RichTextOptions{IncludeInlineFormatting: true}},
 	}
 	for _, tc := range cases {
-		if got := TextToRichTextBlocks(tc.text, tc.opts); got != nil {
+		if got := textToRichText(t, tc.text, tc.opts); got != nil {
 			t.Errorf("%s: expected nil, got %+v", tc.name, got)
 		}
 	}
@@ -121,7 +121,7 @@ func TestTextToRichTextBlocksInlineFormatting(t *testing.T) {
 			]}]`},
 	}
 	for _, tc := range cases {
-		got := TextToRichTextBlocks(tc.text, RichTextOptions{IncludeInlineFormatting: true})
+		got := textToRichText(t, tc.text, RichTextOptions{IncludeInlineFormatting: true})
 		if got == nil {
 			t.Errorf("%s: expected blocks, got nil", tc.name)
 			continue
@@ -131,7 +131,7 @@ func TestTextToRichTextBlocksInlineFormatting(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksMixedTextAndBullets(t *testing.T) {
-	blocks := TextToRichTextBlocks("Here is a list:\n- Item 1\n- Item 2", RichTextOptions{})
+	blocks := textToRichText(t, "Here is a list:\n- Item 1\n- Item 2", RichTextOptions{})
 	if blocks == nil {
 		t.Fatal("expected blocks")
 	}
@@ -145,7 +145,7 @@ func TestTextToRichTextBlocksMixedTextAndBullets(t *testing.T) {
 // SlackMarkdown set, single-delimiter Slack mrkdwn is parsed (and standard
 // Markdown markers are taken literally).
 func TestTextToRichTextBlocksSlackDialect(t *testing.T) {
-	blocks := TextToRichTextBlocks("a *bold* and _italic_ and ~struck~",
+	blocks := textToRichText(t, "a *bold* and _italic_ and ~struck~",
 		RichTextOptions{IncludeInlineFormatting: true, SlackMarkdown: true})
 	if len(blocks) != 1 {
 		t.Fatalf("expected 1 block, got %d", len(blocks))
@@ -163,7 +163,7 @@ func TestTextToRichTextBlocksSlackDialect(t *testing.T) {
 
 // TestTextToRichTextBlocksMarkdownDialect pins the default: standard Markdown.
 func TestTextToRichTextBlocksMarkdownDialect(t *testing.T) {
-	blocks := TextToRichTextBlocks("a **bold** and _italic_ and ~~struck~~ and __under__",
+	blocks := textToRichText(t, "a **bold** and _italic_ and ~~struck~~ and __under__",
 		RichTextOptions{IncludeInlineFormatting: true})
 	if len(blocks) != 1 {
 		t.Fatalf("expected 1 block, got %d", len(blocks))
@@ -182,7 +182,7 @@ func TestTextToRichTextBlocksMarkdownDialect(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksCodeBlock(t *testing.T) {
-	blocks := TextToRichTextBlocks("- Item\n```\ncode here\n```", RichTextOptions{})
+	blocks := textToRichText(t, "- Item\n```\ncode here\n```", RichTextOptions{})
 	if blocks == nil {
 		t.Fatal("expected blocks")
 	}
@@ -196,7 +196,7 @@ func TestTextToRichTextBlocksCodeBlock(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksBlockquote(t *testing.T) {
-	blocks := TextToRichTextBlocks("- Item\n> quoted text", RichTextOptions{})
+	blocks := textToRichText(t, "- Item\n> quoted text", RichTextOptions{})
 	if blocks == nil {
 		t.Fatal("expected blocks")
 	}

@@ -208,15 +208,15 @@ func createDraft(ctx context.Context, c *Client, method string, params map[strin
 	return toDraft(getRec(resp, "draft")), nil
 }
 
-// draftBlocks returns the rich_text blocks to store: the message's own blocks
-// when present (structured text or --blocks), otherwise a rich_text block built
-// from the raw text (a draft has no plain-text field).
+// draftBlocks returns the blocks to store: the message's own blocks when
+// present (structured text or --blocks), otherwise blocks built from the raw
+// text (a draft has no plain-text field).
 func draftBlocks(m OutgoingMessage) []any {
 	if len(m.Blocks) > 0 {
 		return m.Blocks
 	}
 	var out []any
-	for _, b := range render.RichTextBlocksForText(m.RawText, render.RichTextOptions{SlackMarkdown: m.SlackMarkdown}) {
+	for _, b := range render.BlocksForText(m.RawText, render.RichTextOptions{SlackMarkdown: m.SlackMarkdown}) {
 		out = append(out, b)
 	}
 	return out

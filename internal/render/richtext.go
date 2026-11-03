@@ -69,14 +69,12 @@ type RichTextElement struct {
 	Indent int    `json:"indent,omitempty"`
 	// Offset starts an ordered list at Offset+1 instead of 1, which is how a
 	// numbered list resumes after a nested sub-list interrupts it.
-	Offset   int   `json:"offset,omitempty"`
-	Elements []any `json:"elements"`
-}
-
-// RichTextBlock is a top-level rich_text block for chat.postMessage.
-type RichTextBlock struct {
-	Type     string            `json:"type"`
-	Elements []RichTextElement `json:"elements"`
+	Offset int `json:"offset,omitempty"`
+	// Checklist marks a rich_text_list as task items, each section carrying its
+	// own Checked state — set on the item even when false, as Slack writes it.
+	Checklist bool  `json:"checklist,omitempty"`
+	Checked   *bool `json:"checked,omitempty"`
+	Elements  []any `json:"elements"`
 }
 
 func textEl(text string) InlineElement { return InlineElement{Type: "text", Text: text} }

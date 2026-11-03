@@ -101,7 +101,7 @@ func blocksAsJSON(t *testing.T, blocks []RichTextBlock) any {
 func TestRoundTripNestedListMarkdown(t *testing.T) {
 	src := "1. One\n    - a\n    - b\n2. Two\n    - c\n3. Three\n4. Four"
 
-	blocks := TextToRichTextBlocks(src, RichTextOptions{})
+	blocks := textToRichText(t, src, RichTextOptions{})
 	got := MrkdwnToMarkdown(richTextBlockToMrkdwn(blocksAsJSON(t, blocks)), false)
 
 	if got != src {
@@ -113,7 +113,7 @@ func TestRoundTripNestedListMarkdown(t *testing.T) {
 func TestRoundTripDeepNestedListMarkdown(t *testing.T) {
 	src := "- top\n    - mid\n        - deep\n- back"
 
-	blocks := TextToRichTextBlocks(src, RichTextOptions{})
+	blocks := textToRichText(t, src, RichTextOptions{})
 	got := MrkdwnToMarkdown(richTextBlockToMrkdwn(blocksAsJSON(t, blocks)), false)
 
 	if got != src {
@@ -154,7 +154,7 @@ func TestBlocksToMrkdwnHonoursIndentAndOffset(t *testing.T) {
 // every ordered item below it up by one — a silent renumbering, visible only
 // after the message had already been sent.
 func TestRoundTripEmptyOrderedItemKeepsNumbering(t *testing.T) {
-	blocks := TextToRichTextBlocks("1. One\n2. \n3. Three", RichTextOptions{})
+	blocks := textToRichText(t, "1. One\n2. \n3. Three", RichTextOptions{})
 	got := MrkdwnToMarkdown(richTextBlockToMrkdwn(blocksAsJSON(t, blocks)), false)
 
 	if want := "1. One\n2.\n3. Three"; got != want {
@@ -168,7 +168,7 @@ func TestRoundTripBeyondIndentCapStaysNested(t *testing.T) {
 	for depth := range maxListIndent + 2 {
 		src.WriteString(strings.Repeat("  ", depth) + "- item\n")
 	}
-	blocks := TextToRichTextBlocks(src.String(), RichTextOptions{})
+	blocks := textToRichText(t, src.String(), RichTextOptions{})
 	got := MrkdwnToMarkdown(richTextBlockToMrkdwn(blocksAsJSON(t, blocks)), false)
 
 	lines := strings.Split(got, "\n")

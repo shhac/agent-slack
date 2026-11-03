@@ -1,6 +1,7 @@
-// Block-level conversion: lines → preformatted / quote / section blocks, and
-// dispatch to the list collector. List nesting lives in richtext_list.go; the
-// byte-level inline scanner lives in richtext.go.
+// Block-level conversion: lines → preformatted / quote / section elements and
+// standalone heading / divider / table blocks, with dispatch to the list
+// collector. List nesting lives in richtext_list.go, the standalone structures
+// in structure_outbound.go, and the byte-level inline scanner in richtext.go.
 package render
 
 import (
@@ -13,12 +14,12 @@ var (
 	blockquoteRe = regexp.MustCompile(`^> (.*)$`)
 )
 
-// RichTextOptions controls TextToRichTextBlocks.
+// RichTextOptions controls TextToBlocks.
 type RichTextOptions struct {
 	// IncludeInlineFormatting also returns blocks when the text has inline
-	// formatting (links, mentions, bold, …) but no lists. Without it only
-	// list/code/quote structure forces the rich_text path, and plain text is
-	// left to Slack's own mrkdwn handling.
+	// formatting (links, mentions, bold, …) but no structure. Without it only
+	// structure (lists, checklists, headings, dividers, tables) forces blocks,
+	// and plain text is left to Slack's own mrkdwn handling.
 	IncludeInlineFormatting bool
 	// SlackMarkdown interprets the text as Slack mrkdwn (*bold*, _italic_,
 	// ~strike~, <url|label>) instead of the default standard Markdown
@@ -35,13 +36,12 @@ func inlineParser(opts RichTextOptions) func(string) []InlineElement {
 }
 
 // RenderOutbound converts user text in the given dialect into the outbound
-// pieces a send/edit needs: rich_text blocks (nil when a plain text field
-// suffices) and the message `text` fallback. In Markdown mode the formatting
+// pieces a send/edit needs: blocks (nil when a plain text field suffices) and the message `text` fallback. In Markdown mode the formatting
 // lives in the blocks, so the fallback is flattened to plain (no literal
 // **markers**); in Slack-mrkdwn mode the text field renders natively. This is
 // the one place the dialect→(blocks,text) rule lives, shared by send and edit.
-func RenderOutbound(text string, slackMarkdown bool) ([]RichTextBlock, string) {
-	blocks := TextToRichTextBlocks(text, RichTextOptions{
+func RenderOutbound(text string, slackMarkdown bool) ([]Block, string) {
+	blocks := TextToBlocks(text, RichTextOptions{
 		SlackMarkdown:           slackMarkdown,
 		IncludeInlineFormatting: !slackMarkdown,
 	})
@@ -52,33 +52,29 @@ func RenderOutbound(text string, slackMarkdown bool) ([]RichTextBlock, string) {
 	return blocks, fallback
 }
 
-// RichTextBlocksForText converts text to rich_text blocks, always returning at
-// least one block — unlike TextToRichTextBlocks, which returns nil when a plain
-// `text` field would do. For contexts like drafts that require `blocks` and
-// have no `text` fallback.
-func RichTextBlocksForText(text string, opts RichTextOptions) []RichTextBlock {
+// BlocksForText converts text to blocks, always returning at least one —
+// unlike TextToBlocks, which returns nil when a plain `text` field would do.
+// For contexts like drafts that require `blocks` and have no `text` fallback.
+func BlocksForText(text string, opts RichTextOptions) []Block {
 	opts.IncludeInlineFormatting = true
-	if blocks := TextToRichTextBlocks(text, opts); len(blocks) > 0 {
+	if blocks := TextToBlocks(text, opts); len(blocks) > 0 {
 		return blocks
 	}
-	return []RichTextBlock{{
-		Type: "rich_text",
-		Elements: []RichTextElement{{
-			Type:     "rich_text_section",
-			Elements: inlineToAny(inlineParser(opts)(text)),
-		}},
-	}}
+	return []Block{newRichTextBlock([]RichTextElement{{
+		Type:     "rich_text_section",
+		Elements: inlineToAny(inlineParser(opts)(text)),
+	}})}
 }
 
-// TextToRichTextBlocks converts user-authored text to rich_text blocks when
-// it contains structure Slack's plain `text` field would lose: bullet or
-// numbered lists, code fences, blockquotes (and optionally inline
-// formatting). Returns nil when plain text suffices.
-func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
+// TextToBlocks converts user-authored text to Block Kit blocks when it
+// contains structure Slack's plain `text` field would lose: lists and
+// checklists, headings, dividers, tables, code fences, blockquotes (and
+// optionally inline formatting). Returns nil when plain text suffices.
+func TextToBlocks(text string, opts RichTextOptions) []Block {
 	lines := strings.Split(text, "\n")
 	inline := inlineParser(opts)
-	var elements []RichTextElement
-	hasLists := false
+	var b blockBuilder
+	hasStructure := false
 	hasFormatting := false
 	idx := 0
 
@@ -86,24 +82,40 @@ func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
 		line := lines[idx]
 		switch {
 		case codeFenceRe.MatchString(line):
-			idx = collectCodeBlock(lines, idx, &elements)
+			idx = collectCodeBlock(lines, idx, &b.elements)
 			hasFormatting = true
+		case isDividerLine(line):
+			b.addBlock(newDividerBlock())
+			hasStructure = true
+			idx = skipBlankLines(lines, idx+1)
+		case isTableStart(lines, idx):
+			var table TableBlock
+			table, idx = collectTable(lines, idx, inline)
+			b.addBlock(table)
+			hasStructure = true
+			idx = skipBlankLines(lines, idx)
+		case isHeadingLine(line):
+			level, content, _ := parseHeadingLine(line)
+			addHeading(&b, level, content, inline)
+			hasStructure = true
+			idx = skipBlankLines(lines, idx+1)
 		case blockquoteRe.MatchString(line):
-			idx = collectBlockquote(lines, idx, inline, &elements)
+			idx = collectBlockquote(lines, idx, inline, &b.elements)
 			hasFormatting = true
 		case isListLine(line):
-			hasLists = true
-			idx = collectList(lines, idx, inline, &elements)
+			hasStructure = true
+			idx = collectList(lines, idx, inline, &b.elements)
 		default:
 			var formatted bool
-			idx, formatted = collectPlainText(lines, idx, inline, &elements)
+			idx, formatted = collectPlainText(lines, idx, inline, &b.elements)
 			if formatted {
 				hasFormatting = true
 			}
 		}
 	}
 
-	// Only lists force blocks unconditionally. Code fences and quotes set
+	// Only structure forces blocks unconditionally: the plain text field has no
+	// way to draw a list, heading, divider or table in either dialect. Code fences and quotes set
 	// hasFormatting, which is ignored when IncludeInlineFormatting is off — that
 	// combination only arises in the Slack-mrkdwn dialect, where the plain text
 	// field already renders them natively, so falling back to it loses nothing.
@@ -116,10 +128,33 @@ func TextToRichTextBlocks(text string, opts RichTextOptions) []RichTextBlock {
 		hasFormatting = true
 	}
 
-	if !hasLists && (!opts.IncludeInlineFormatting || !hasFormatting) {
+	if !hasStructure && (!opts.IncludeInlineFormatting || !hasFormatting) {
 		return nil
 	}
-	return []RichTextBlock{{Type: "rich_text", Elements: elements}}
+	return b.build()
+}
+
+// skipBlankLines steps past the blank lines that follow a standalone block. A
+// block already stands apart, so carrying them into the next section would
+// open it with an empty line.
+func skipBlankLines(lines []string, idx int) int {
+	for idx < len(lines) && strings.TrimSpace(lines[idx]) == "" {
+		idx++
+	}
+	return idx
+}
+
+func isHeadingLine(line string) bool {
+	_, _, ok := parseHeadingLine(line)
+	return ok
+}
+
+// startsStructure reports whether the line at idx opens something other than a
+// plain paragraph, which is where a run of plain text has to stop.
+func startsStructure(lines []string, idx int) bool {
+	line := lines[idx]
+	return isListLine(line) || codeFenceRe.MatchString(line) || blockquoteRe.MatchString(line) ||
+		isDividerLine(line) || isHeadingLine(line) || isTableStart(lines, idx)
 }
 
 // hasRichInlineFormatting reports whether elements carry styling or a link —
@@ -193,11 +228,10 @@ func collectPlainText(lines []string, startIdx int, inline func(string) []Inline
 	idx := startIdx
 	var textLines []string
 	for idx < len(lines) {
-		l := lines[idx]
-		if isListLine(l) || codeFenceRe.MatchString(l) || blockquoteRe.MatchString(l) {
+		if startsStructure(lines, idx) {
 			break
 		}
-		textLines = append(textLines, l)
+		textLines = append(textLines, lines[idx])
 		idx++
 	}
 	content := strings.Join(textLines, "\n")

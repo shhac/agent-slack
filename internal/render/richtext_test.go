@@ -173,3 +173,26 @@ func TestEmphasisStylesTokensInBothDialects(t *testing.T) {
 		})
 	}
 }
+
+// textToRichText is TextToBlocks for inputs that only ever produce rich_text,
+// narrowed so assertions can reach the elements directly.
+func textToRichText(t *testing.T, text string, opts RichTextOptions) []RichTextBlock {
+	t.Helper()
+	return richTextOnly(t, TextToBlocks(text, opts))
+}
+
+func richTextOnly(t *testing.T, blocks []Block) []RichTextBlock {
+	t.Helper()
+	if blocks == nil {
+		return nil
+	}
+	out := make([]RichTextBlock, 0, len(blocks))
+	for i, b := range blocks {
+		rt, ok := b.(RichTextBlock)
+		if !ok {
+			t.Fatalf("block %d is %T, want RichTextBlock", i, b)
+		}
+		out = append(out, rt)
+	}
+	return out
+}

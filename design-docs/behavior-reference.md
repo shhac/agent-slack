@@ -61,6 +61,34 @@ ever sends both.
   track depth and carry the running count across blocks.
 - Plain markdown → `rich_text` structure (preserve mentions, emoji, channel
   refs, inline bold/italic/strike/code).
+- Headings, dividers, tables, checklists (live-verified with a user token via
+  `chat.postMessage`, `chat.update` and `drafts.create`, 2026-11):
+  - `header` takes `level` 1–3 only; 0 or 4+ is `invalid_blocks` ("must be less
+    than 4"). `text` is `plain_text`, ≤150 chars. Slack's own `markdown` block
+    conversion emits `level: 4` for `####` server-side, unvalidated — a direct
+    post can't.
+  - `divider` is `{"type":"divider"}`.
+  - `table`: `rows` is `[][]cell`, cell = `rich_text` or `raw_text`. `raw_text`
+    must be non-empty; a `rich_text` cell with an empty section is fine (used
+    for blank cells). Rows must be equal width (`uneven_table_rows_not_allowed`).
+    ≤100 rows, ≤20 columns. `column_settings[]` entries must be objects (`{}`
+    for unaligned, `null` rejected), `{"align":"left|center|right"}`. Several
+    tables per message are accepted.
+  - Checklist: `rich_text_list` with `checklist: true`, items carry
+    `checked: bool`; `style: "ordered"` is accepted too. Slack's `markdown`
+    block conversion forces bullets and adds strike to checked items; we do
+    neither.
+  - Also accepted from a user token (no Markdown syntax; `--blocks` only):
+    `section` with `fields`, `context`, rich_text `date` and `color` elements —
+    by `chat.postMessage` and `drafts.update` alike. Rendering (desktop client,
+    2026-11-03): table, section fields, context and the color swatch draw
+    correctly; a `date` element shows only its `fallback`; a checklist list
+    draws as plain bullets with no box, so checked state is invisible (which is
+    why Slack's own `markdown` conversion strikes checked items). Opening a draft
+    holding table/section/context blocks shows them as read-only cards in the
+    composer, and sending it posts them intact.
+    An `image` block with an external URL was rejected (`invalid_blocks`).
+  - Bot (`xoxb`) tokens are untested for `level`/`table`.
 - Upgrade unlabeled links to the chips Slack's composer makes: a same-workspace
   message permalink → a `message_mention` element; any other unlabeled web URL
   (`[url](url)`/`<url>`) → a `link` with a scheme-stripped label + `truncated:true`.

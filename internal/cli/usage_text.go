@@ -183,14 +183,17 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        - bullets, 1. numbers, > quotes; backslash escapes a literal marker.
        Indent a list item to nest it (any depth; a sub-list does not restart
        the numbering of the ordered list it interrupts).
+       # / ## / ### headings (Slack's three sizes; a heading with a link or
+       mention is sent as a bold line), --- dividers, GFM | pipe | tables |
+       (header + |---| row; :-- :-: --: align), and - [ ] / - [x] checklists.
        For links use [label](https://…) when it has a natural name; an unlabeled
        link ([url](url) or <url>) renders as Slack's inline link chip (the
        scheme-stripped pill the composer makes from a pasted URL). A same-workspace
        message permalink (unlabeled, or bare in text) becomes a message-reference
        chip. A truly bare URL in text does not auto-link.
        Mentions: @here/@channel, @U… ids, and @name / @group handles all resolve.
-       #channel-name resolves to a channel link (a known channel only; "# " stays
-       a literal, and all-digit "#5" refs are left alone).
+       #channel-name resolves to a channel link (a known channel only; "# " is a
+       heading, and all-digit "#5" refs are left alone).
        --slack-markdown interprets text as Slack mrkdwn (*bold*, <url|label>).
        --attach <path> (repeatable; multiple files share one message and the
        text becomes their single comment), --blocks <file|-> raw Block Kit,

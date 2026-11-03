@@ -19,6 +19,9 @@ family so conventions, output contract, and credential handling are shared.
 
 - **LLM-shaped output**: NDJSON lists, JSON single resources, aggressive pruning
   of empty fields, body truncation via `--max-body-chars`.
+- **Markdown both ways**: send and read standard Markdown — including
+  headings, dividers, pipe tables and checklists, sent as the Block Kit blocks
+  Slack's own composer uses.
 - **Structured errors**: every failure is JSON on stderr with `fixable_by`
   (`agent` | `human` | `retry`) and a `hint`.
 - **Keychain-first credentials**: browser (`xoxc`/`xoxd`) and bot (`xoxb`/`xoxp`)

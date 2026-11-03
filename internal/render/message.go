@@ -59,21 +59,30 @@ func mrkdwnFromBlocks(blocks []any) string {
 				out = append(out, line)
 			}
 		case "rich_text":
-			if rich := richTextBlockToMrkdwn(b); strings.TrimSpace(rich) != "" {
+			// A section's trailing newline is its own line break; between
+			// blocks the separator already supplies the gap.
+			if rich := strings.Trim(richTextBlockToMrkdwn(b), "\n"); strings.TrimSpace(rich) != "" {
 				out = append(out, rich)
 			}
+		case "header":
+			if line := headerMarkdown(b); line != "" {
+				out = append(out, line)
+			}
 		case "divider":
-			// Structural only; it carries no prose to lose.
+			out = append(out, dividerMarkdown)
+		case "table":
+			if table := tableMarkdown(b); table != "" {
+				out = append(out, table)
+			}
 		default:
-			// header, video, file, input and whatever Slack adds next: scrape
-			// the block's text objects rather than dropping it. A `header` is
-			// the headline of most app notifications, and losing it is not
-			// visible in the output — the message just reads as if it never
-			// had a title.
+			// video, file, input and whatever Slack adds next: scrape the
+			// block's text objects rather than dropping it — losing one is not
+			// visible in the output, the message just reads as if that content
+			// never existed.
 			out = append(out, blockFallbackLines(b)...)
 		}
 	}
-	return strings.Join(out, "\n\n")
+	return strings.Join(trimDividers(out), "\n\n")
 }
 
 // blockFallbackLines scrapes the displayable prose from a block this renderer

@@ -21,7 +21,9 @@ func richTextBlockToMrkdwn(block any) string {
 	var out strings.Builder
 	prevList := false
 	for _, el := range asSlice(b["elements"]) {
-		txt := richTextElementToMrkdwn(el)
+		// A section's closing newline is its own line break; the separator
+		// below already supplies the gap, so keeping it doubles the blank line.
+		txt := strings.TrimRight(richTextElementToMrkdwn(el), "\n")
 		if strings.TrimSpace(txt) == "" {
 			continue
 		}
@@ -101,12 +103,16 @@ func richTextElementToMrkdwn(elAny any) string {
 		// from; dropping either flattens a nested list and restarts numbering.
 		prefix := strings.Repeat(listIndentUnit, asInt(el["indent"]))
 		num := asInt(el["offset"])
+		checklist := truthy(el["checklist"])
 		var items []string
 		for _, item := range asSlice(el["elements"]) {
 			num++
 			marker := "- "
 			if style == "ordered" {
 				marker = strconv.Itoa(num) + ". "
+			}
+			if checklist {
+				marker += checkboxMarker(item)
 			}
 			// An empty item still occupies its slot. Skipping it would renumber
 			// every ordered item below it — silently, and only on read.
@@ -131,11 +137,20 @@ func richTextElementToMrkdwn(elAny any) string {
 	return applyMrkdwnStyle(elementFallbackText(el), el["style"])
 }
 
+func checkboxMarker(itemAny any) string {
+	item, _ := asRecord(itemAny)
+	if truthy(item["checked"]) {
+		return "[x] "
+	}
+	return "[ ] "
+}
+
 // elementFallbackText salvages the readable part of an element this renderer
 // does not model: Slack supplies `fallback` for exactly this purpose, and the
 // rest are the conventional prose-carrying keys.
 func elementFallbackText(el map[string]any) string {
-	for _, key := range []string{"fallback", "text", "name", "url"} {
+	// value is a color element's hex — its only content.
+	for _, key := range []string{"fallback", "text", "name", "url", "value"} {
 		if v := strings.TrimSpace(str(el[key])); v != "" {
 			return v
 		}
@@ -163,6 +178,17 @@ func applyMrkdwnStyle(text string, styleAny any) string {
 			}
 		}
 		return strings.Join(lines, "\n")
+	}
+	// mrkdwn emphasis must hug its text: `*bold *` is not bold. Slack splits a
+	// styled span around a link or mention, leaving runs like "see " that end
+	// in a space, so edge whitespace goes outside the delimiters.
+	core := strings.TrimSpace(text)
+	if core == "" {
+		return text
+	}
+	if core != text {
+		start := strings.Index(text, core)
+		return text[:start] + applyMrkdwnStyle(core, styleAny) + text[start+len(core):]
 	}
 	if truthy(style["code"]) {
 		text = "`" + text + "`"

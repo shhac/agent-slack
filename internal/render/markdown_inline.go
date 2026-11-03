@@ -21,7 +21,7 @@ import "strings"
 // markdownEscapeRe matches a backslash escape of a Markdown marker. Its
 // presence means the text depends on the rich_text path: the plain text field
 // would have the escape stripped and the bare marker re-parsed by Slack.
-var markdownEscapeRe = regexp.MustCompile("\\\\[*_~`\\[\\]()>#+.!-]")
+var markdownEscapeRe = regexp.MustCompile("\\\\[*_~`\\[\\]()>#+.!|-]")
 
 func ParseMarkdownInline(text string) []InlineElement {
 	return parseMarkdownInto(text, InlineStyle{})
@@ -237,6 +237,10 @@ func PlainTextFromMarkdown(text string) string {
 		if b.Len() > 0 {
 			b.WriteByte('\n')
 		}
+		// The heading's markers are layout; a notification shows its words.
+		if _, content, ok := parseHeadingLine(line); ok {
+			line = content
+		}
 		for _, el := range ParseMarkdownInline(line) {
 			switch el.Type {
 			case "text":
@@ -265,7 +269,9 @@ func PlainTextFromMarkdown(text string) string {
 
 func isMarkdownEscapable(b byte) bool {
 	switch b {
-	case '\\', '*', '_', '~', '`', '[', ']', '(', ')', '<', '>', '@', ':':
+	// # - | escape the line-level structures (a heading, a divider, a table
+	// row) so an author can write them literally.
+	case '\\', '*', '_', '~', '`', '[', ']', '(', ')', '<', '>', '@', ':', '#', '-', '|':
 		return true
 	}
 	return false

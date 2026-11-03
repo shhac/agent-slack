@@ -277,6 +277,27 @@ opts into Slack mrkdwn, independently per direction.**
   one silently renumbers everything below it), and joins consecutive list blocks
   with a single newline (a blank line would split one logical list back into
   several), so send → read-back reproduces the source text.
+- **Standalone structures (decision): headings, dividers and tables are their
+  own blocks; checklists ride on lists.** Slack's composer writes a heading as a
+  `header` block with `level` 1–3 and a rule as a `divider` block, so `#`–`###`
+  and `---` map to exactly those (deeper `####` clamps to 3 — Slack rejects
+  other levels). GFM pipe tables become a `table` block, which the composer
+  can't produce but user tokens can post. `- [ ]`/`- [x]` set `checklist` on the
+  list run and `checked` on each item; ordered checklists stay ordered so a box
+  mid-list doesn't break the numbering. Prose between these blocks is flushed
+  into its own `rich_text` block, preserving order. A heading that a plain-text
+  header can't hold (a link, a mention, over 150 chars) becomes a bold line
+  rather than dropping the link — Slack's own `markdown` block conversion
+  instead mangles a mention into literal text. Setext headings aren't
+  supported: `---` under a paragraph is a divider. Structure is recognised in
+  both dialects (like lists): it's line-level, and the mrkdwn text field can't
+  draw any of it. `\#`, `\-` and `\|` escape it. The 50-blocks-per-message
+  limit is not pre-checked; Slack's `invalid_blocks` error names the field and
+  is already agent-fixable. Inbound, headers render as ATX headings (a
+  level-less app header as `#`), dividers as `---` only between content (so a
+  dividers-only message still falls back to `text`), tables as pipe tables with
+  alignment, and checklist items with their box — so send → read-back
+  reproduces the source.
 - **`--slack-markdown`** is a per-command flag (each invocation is one direction,
   so per-command flags give independent in/out control). Outbound: interpret text
   as Slack mrkdwn (current single-delimiter scanner). Inbound: return the native

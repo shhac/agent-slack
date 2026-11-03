@@ -114,9 +114,10 @@ table-tested for behavior coverage:
 - Message → one Markdown string in priority order rich_text → Block Kit →
   legacy text+attachments, including forwarded-message handling
   (`message.go`, `richtext_mrkdwn.go`).
-- Outbound: text → `rich_text` blocks (list/code/quote detection, inline
-  parsing) and mrkdwn escaping/mention promotion (`richtext.go`,
-  `outbound.go`). Inline parsing uses lookarounds RE2 lacks, so the scanner is
+- Outbound: text → Block Kit blocks — `rich_text` (list/checklist/code/quote
+  detection, inline parsing) plus standalone `header`/`divider`/`table` blocks
+  (`blocks_outbound.go`, `structure_outbound.go`) — and mrkdwn
+  escaping/mention promotion (`richtext.go`, `outbound.go`). Inline parsing uses lookarounds RE2 lacks, so the scanner is
   hand-written, and differentially fuzzed against a second implementation of
   the same grammar to shake out divergences.
 - Raw message JSON → `MessageSummary` / `CompactMessage` shaping
