@@ -82,9 +82,10 @@ ever sends both.
     `section` with `fields`, `context`, rich_text `date` and `color` elements —
     by `chat.postMessage` and `drafts.update` alike. Rendering (desktop client,
     2026-11-03): table, section fields, context and the color swatch draw
-    correctly; a `date` element shows only its `fallback`; a checklist list
-    draws as plain bullets with no box, so checked state is invisible (which is
-    why Slack's own `markdown` conversion strikes checked items). Opening a draft
+    correctly; a `date` element shows only its `fallback`. A checklist list
+    first drew as plain bullets on desktop, but by the evening of 2026-11-03 it
+    drew real ticked and unticked boxes on desktop and mobile (nothing
+    changed on our side). Opening a draft
     holding table/section/context blocks shows them as read-only cards in the
     composer, and sending it posts them intact.
     An `image` block's `image_url` must be publicly fetchable by Slack: a

@@ -82,9 +82,9 @@ Slack's composer writes for its heading and divider buttons.
   header's width (Slack rejects ragged tables). Slack caps a table at 100 rows
   and 20 columns.
 - **Checklists** — `[ ]`/`[x]` (or `[X]`) followed by a space, right after a list
-  marker. Checked state is stored and round-trips through agent-slack, but
-  Slack's client currently draws checklist items as plain bullets — readers
-  can't see which are ticked, so say so in the text when it matters.
+  marker. Current Slack clients (desktop and mobile) draw real ticked and
+  unticked boxes; checked state round-trips through agent-slack. An older
+  client may show plain bullets instead.
 
 ```
 ## Release 4.2
@@ -244,7 +244,7 @@ exhaustive:
 
 | Renders well | Accepted, but caveat | Rejected |
 |---|---|---|
-| `section` text + two-column `fields`; `context` footer lines; `table`; `header` levels 1–3; `divider`; rich_text `color` (a swatch beside the hex); `image` by `slack_file.id` or public `image_url` | rich_text `date` shows only its `fallback`, not a localised time; checklists draw as plain bullets | `image_url` on a host Slack can't fetch |
+| `section` text + two-column `fields`; `context` footer lines; `table`; `header` levels 1–3; `divider`; rich_text `color` (a swatch beside the hex); `image` by `slack_file.id` or public `image_url` | rich_text `date` shows only its `fallback`, not a localised time; checklists may draw as plain bullets on older clients | `image_url` on a host Slack can't fetch |
 
 Interactive elements (buttons, menus, inputs) belong to apps; a user token
 posting them is untested here, and nothing would handle a click. A draft
