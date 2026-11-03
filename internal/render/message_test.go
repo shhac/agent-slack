@@ -388,7 +388,7 @@ func TestUnknownBlocksAndElementsDegradeRatherThanVanish(t *testing.T) {
 		name: "an image with no url still has its alt text",
 		blocks: []any{map[string]any{"type": "image", "alt_text": "chart of errors",
 			"slack_file": map[string]any{"id": "F0FAKEFILE"}}},
-		want: "chart of errors: F0FAKEFILE",
+		want: "![chart of errors](F0FAKEFILE)",
 	}}
 
 	for _, c := range cases {

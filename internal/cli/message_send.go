@@ -63,6 +63,9 @@ func registerMessageSend(parent *cobra.Command, globals *GlobalFlags) {
 			if err != nil {
 				return err
 			}
+			if err := uploadInlineImages(ctx, cc.Client, send.blocks); err != nil {
+				return err
+			}
 			send.channelID = channelID
 			if target.Kind == render.TargetURL {
 				// Permalink sends always reply in that message's thread.

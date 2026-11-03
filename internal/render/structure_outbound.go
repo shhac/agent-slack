@@ -15,6 +15,11 @@ var (
 	headingLineRe = regexp.MustCompile(`^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$`)
 	dividerLineRe = regexp.MustCompile(`^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$`)
 	tableAlignRe  = regexp.MustCompile(`^:?-+:?$`)
+	// ![alt](src) or ![alt](src "title") alone on a line; <…> around src
+	// allows a path with spaces.
+	imageLineRe = regexp.MustCompile(`^ {0,3}!\[([^\]]*)\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+"([^"]*)")?\s*\)[ \t]*$`)
+	// slackFileIDRe is an id from a message's files[].id, reusable as-is.
+	slackFileIDRe = regexp.MustCompile(`^F[A-Z0-9]{8,}$`)
 )
 
 const (
@@ -193,4 +198,46 @@ func columnSettings(aligns []string) []ColumnSetting {
 		return nil
 	}
 	return settings
+}
+
+// parseImageLine reads a Markdown image standing alone on its line. Its source
+// is a public URL, a Slack file id, or a local path to upload — which of those
+// is decided here, but the upload itself belongs to the caller.
+func parseImageLine(line string) (ImageBlock, bool) {
+	m := imageLineRe.FindStringSubmatch(line)
+	if m == nil {
+		return ImageBlock{}, false
+	}
+	src := strings.TrimSuffix(strings.TrimPrefix(m[2], "<"), ">")
+	img := ImageBlock{Type: "image", AltText: strings.TrimSpace(m[1])}
+	lower := strings.ToLower(src)
+	switch {
+	case strings.HasPrefix(lower, "https://"), strings.HasPrefix(lower, "http://"):
+		img.ImageURL = src
+	case slackFileIDRe.MatchString(src):
+		img.SlackFile = &SlackFile{ID: src}
+	default:
+		img.LocalPath = src
+	}
+	if img.AltText == "" {
+		// Slack requires alt text; the file's name is the honest default.
+		img.AltText = imageNameFallback(src)
+	}
+	if title := strings.TrimSpace(m[3]); title != "" {
+		img.Title = &PlainText{Type: "plain_text", Text: title, Emoji: true}
+	}
+	return img, true
+}
+
+func imageNameFallback(src string) string {
+	name := src[strings.LastIndex(src, "/")+1:]
+	if name == "" {
+		return "image"
+	}
+	return name
+}
+
+func isImageLine(line string) bool {
+	_, ok := parseImageLine(line)
+	return ok
 }

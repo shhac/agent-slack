@@ -140,7 +140,9 @@ Message text is standard Markdown — `**bold**`, `*italic*`/`_italic_`,
 Indent a list item to nest it (any depth; bullets and numbers mix freely, and a
 sub-list doesn't restart the numbering above it). `#`/`##`/`###` headings,
 `---` dividers, GFM pipe tables and `- [ ]`/`- [x]` checklists work too, in
-both directions.
+both directions. An image on its own line — `![alt](./chart.png)` — is placed
+inline: a local file is uploaded on send; an `https://` URL or a Slack file id
+(`F…`) works too.
 **Beyond Markdown:** for layouts it can't express — two-column `section`
 fields, `context` footer lines, colour swatches, and anything else Block Kit
 offers — pass a JSON array of blocks with `--blocks <file|->` (the text

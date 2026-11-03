@@ -68,7 +68,7 @@ func BlocksForText(text string, opts RichTextOptions) []Block {
 
 // TextToBlocks converts user-authored text to Block Kit blocks when it
 // contains structure Slack's plain `text` field would lose: lists and
-// checklists, headings, dividers, tables, code fences, blockquotes (and
+// checklists, headings, dividers, tables, images, code fences, blockquotes (and
 // optionally inline formatting). Returns nil when plain text suffices.
 func TextToBlocks(text string, opts RichTextOptions) []Block {
 	lines := strings.Split(text, "\n")
@@ -94,6 +94,11 @@ func TextToBlocks(text string, opts RichTextOptions) []Block {
 			b.addBlock(table)
 			hasStructure = true
 			idx = skipBlankLines(lines, idx)
+		case isImageLine(line):
+			img, _ := parseImageLine(line)
+			b.addBlock(img)
+			hasStructure = true
+			idx = skipBlankLines(lines, idx+1)
 		case isHeadingLine(line):
 			level, content, _ := parseHeadingLine(line)
 			addHeading(&b, level, content, inline)
@@ -154,7 +159,7 @@ func isHeadingLine(line string) bool {
 func startsStructure(lines []string, idx int) bool {
 	line := lines[idx]
 	return isListLine(line) || codeFenceRe.MatchString(line) || blockquoteRe.MatchString(line) ||
-		isDividerLine(line) || isHeadingLine(line) || isTableStart(lines, idx)
+		isDividerLine(line) || isHeadingLine(line) || isImageLine(line) || isTableStart(lines, idx)
 }
 
 // hasRichInlineFormatting reports whether elements carry styling or a link —

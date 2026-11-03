@@ -267,3 +267,84 @@ func TestStructureRoundTrip(t *testing.T) {
 		t.Errorf("round trip:\n got %q\nwant %q", got, src)
 	}
 }
+
+func TestImageLines(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want ImageBlock
+	}{
+		{"a local path is left for the caller to upload", "![latency chart](./out/chart.png)",
+			ImageBlock{Type: "image", AltText: "latency chart", LocalPath: "./out/chart.png"}},
+		{"a public URL is fetched by Slack", "![logo](https://example.com/logo.png)",
+			ImageBlock{Type: "image", AltText: "logo", ImageURL: "https://example.com/logo.png"}},
+		{"a Slack file id is reused as-is", "![swatch](F0ABCDEF12)",
+			ImageBlock{Type: "image", AltText: "swatch", SlackFile: &SlackFile{ID: "F0ABCDEF12"}}},
+		{"a title becomes the caption", `![chart](F0ABCDEF12 "Q3 latency")`,
+			ImageBlock{Type: "image", AltText: "chart", SlackFile: &SlackFile{ID: "F0ABCDEF12"},
+				Title: &PlainText{Type: "plain_text", Text: "Q3 latency", Emoji: true}}},
+		{"angle brackets allow spaces in a path", "![x](<./my chart.png>)",
+			ImageBlock{Type: "image", AltText: "x", LocalPath: "./my chart.png"}},
+		{"empty alt text falls back to the file name, as Slack requires one", "![](./out/chart.png)",
+			ImageBlock{Type: "image", AltText: "chart.png", LocalPath: "./out/chart.png"}},
+	}
+	for _, tc := range cases {
+		blocks := TextToBlocks(tc.line, RichTextOptions{})
+		if len(blocks) != 1 {
+			t.Errorf("%s: %d blocks", tc.name, len(blocks))
+			continue
+		}
+		got, ok := blocks[0].(ImageBlock)
+		if !ok {
+			t.Errorf("%s: %T, want an image", tc.name, blocks[0])
+			continue
+		}
+		jsonEqual(t, tc.name, got, marshalString(t, tc.want))
+		if got.LocalPath != tc.want.LocalPath {
+			t.Errorf("%s: LocalPath %q, want %q", tc.name, got.LocalPath, tc.want.LocalPath)
+		}
+	}
+
+	// Only an image alone on its line is a block; mid-sentence or escaped, it's text.
+	for _, text := range []string{"see ![x](./a.png) here", `\![x](./a.png)`} {
+		for _, b := range TextToBlocks(text, RichTextOptions{IncludeInlineFormatting: true}) {
+			if _, ok := b.(ImageBlock); ok {
+				t.Errorf("%q became an image block", text)
+			}
+		}
+	}
+
+	if _, fallback := RenderOutbound("Report\n![latency chart](./chart.png)", false); fallback != "Report\nlatency chart" {
+		t.Errorf("fallback = %q, want the alt text in place of the image", fallback)
+	}
+}
+
+func marshalString(t *testing.T, v any) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// An image held by Slack reads back as the same `![alt](F… "title")` that
+// would send it again.
+func TestImageRoundTrip(t *testing.T) {
+	src := "Report\n\n" + `![latency chart](F0ABCDEF12 "Q3 latency")`
+	raw, _ := json.Marshal(TextToBlocks(src, RichTextOptions{}))
+	var blocks []any
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		t.Fatal(err)
+	}
+	if got := RenderMessageContent(map[string]any{"blocks": blocks}); got != src {
+		t.Errorf("round trip:\n got %q\nwant %q", got, src)
+	}
+	// A stored block carries Slack's files-pri URL too; the id wins.
+	stored := map[string]any{"type": "image", "alt_text": "swatch",
+		"image_url":  "https://files.slack.com/files-pri/T0FAKE-F0ABCDEF12/swatch.png",
+		"slack_file": map[string]any{"id": "F0ABCDEF12"}}
+	if got := RenderMessageContent(map[string]any{"blocks": []any{stored}}); got != "![swatch](F0ABCDEF12)" {
+		t.Errorf("stored image = %q", got)
+	}
+}

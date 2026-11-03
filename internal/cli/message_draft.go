@@ -318,9 +318,12 @@ func buildDraftContent(ctx context.Context, cmd *cobra.Command, cc *clientContex
 	if err != nil {
 		return sendRequest{}, err
 	}
+	if err := uploadInlineImages(ctx, cc.Client, req.blocks); err != nil {
+		return sendRequest{}, err
+	}
 	req.channelID = channelID
 	if len(req.attachPaths) > 0 {
-		ids, uerr := cc.Client.UploadDraftFiles(ctx, req.attachPaths)
+		ids, uerr := cc.Client.UploadUnsharedFiles(ctx, req.attachPaths)
 		if uerr != nil {
 			return sendRequest{}, uerr
 		}

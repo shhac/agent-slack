@@ -8,11 +8,48 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	agenterrors "github.com/shhac/agent-slack/internal/errors"
 )
 
 const maxUploadBytes = 100 * 1024 * 1024 // Slack's upload limit
+
+// imageReadyTimeout bounds the wait for Slack to finish processing uploaded
+// images; imageReadyPoll is the gap between checks.
+const imageReadyTimeout = 15 * time.Second
+
+var imageReadyPoll = 250 * time.Millisecond
+
+// WaitForImages blocks until Slack has processed each uploaded image. An image
+// block naming a file Slack is still processing fails the whole message with
+// "invalid slack file" (seen live, well under a second after the upload
+// completes); processing is done once files.info reports the image's
+// dimensions, which the image block then carries.
+func (c *Client) WaitForImages(ctx context.Context, ids []string) error {
+	deadline := time.Now().Add(imageReadyTimeout)
+	for _, id := range ids {
+		for {
+			resp, err := c.API(ctx, "files.info", map[string]any{"file": id})
+			if err != nil {
+				return err
+			}
+			if getNum(getRec(resp, "file"), "original_w") > 0 {
+				break
+			}
+			if time.Now().After(deadline) {
+				return agenterrors.Newf(agenterrors.FixableByRetry, "uploaded image %s is still being processed by Slack", id).
+					WithHint("retry the send in a few seconds")
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(imageReadyPoll):
+			}
+		}
+	}
+	return nil
+}
 
 // UploadLocalFiles pushes one or more local files to a channel and posts them
 // as a SINGLE message: each file's bytes go up via Slack's external upload flow
@@ -51,14 +88,16 @@ func (c *Client) UploadLocalFiles(ctx context.Context, channelID string, filePat
 	return err
 }
 
-// UploadDraftFiles uploads each local file's bytes, finalizes them, and returns
-// the resulting file ids ready to attach to a draft. The byte uploads run in
+// UploadUnsharedFiles uploads each local file's bytes, finalizes them, and returns
+// the resulting file ids — real files that are not yet in any conversation,
+// ready to attach to a draft or an edit, or to place in an image block (which
+// shares the file into the conversation it's posted to). The byte uploads run in
 // parallel, then a single files.completeUploadExternal with NO channel_id
 // finalizes them: that turns the pending uploads into real files WITHOUT
 // posting them anywhere. The completion is the load-bearing step — drafts.create
 // rejects a still-pending file_id with file_not_found (it races Slack
 // registering the upload), but reliably accepts a completed one.
-func (c *Client) UploadDraftFiles(ctx context.Context, paths []string) ([]string, error) {
+func (c *Client) UploadUnsharedFiles(ctx context.Context, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}

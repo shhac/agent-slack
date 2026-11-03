@@ -34,6 +34,9 @@ func runForward(ctx context.Context, globals *GlobalFlags, cc *clientContext, de
 	caption = slack.ResolveMentions(ctx, cc.Client, caption)
 	caption = slack.ResolveChannelMentions(ctx, cc.Client, caption)
 	outboundText, blocks := outboundTextAndBlocks(caption, flags.slackMarkdown, cc.WorkspaceURL)
+	if err := uploadInlineImages(ctx, cc.Client, blocks); err != nil {
+		return err
+	}
 	capMsg := slack.OutgoingMessage{Text: outboundText, Blocks: blocks}
 
 	res, err := slack.ForwardMessage(ctx, cc.Client, destChannelID, slack.ForwardSource{

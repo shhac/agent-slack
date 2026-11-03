@@ -185,7 +185,9 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        the numbering of the ordered list it interrupts).
        # / ## / ### headings (Slack's three sizes; a heading with a link or
        mention is sent as a bold line), --- dividers, GFM | pipe | tables |
-       (header + |---| row; :-- :-: --: align), and - [ ] / - [x] checklists.
+       (header + |---| row; :-- :-: --: align), - [ ] / - [x] checklists, and
+       ![alt](src "title") images on their own line — src is a local image
+       file (uploaded on send), an https:// URL, or a Slack file id (F…).
        For links use [label](https://…) when it has a natural name; an unlabeled
        link ([url](url) or <url>) renders as Slack's inline link chip (the
        scheme-stripped pill the composer makes from a pasted URL). A same-workspace

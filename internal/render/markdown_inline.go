@@ -241,6 +241,9 @@ func PlainTextFromMarkdown(text string) string {
 		if _, content, ok := parseHeadingLine(line); ok {
 			line = content
 		}
+		if img, ok := parseImageLine(line); ok {
+			line = img.AltText
+		}
 		for _, el := range ParseMarkdownInline(line) {
 			switch el.Type {
 			case "text":
@@ -269,9 +272,9 @@ func PlainTextFromMarkdown(text string) string {
 
 func isMarkdownEscapable(b byte) bool {
 	switch b {
-	// # - | escape the line-level structures (a heading, a divider, a table
-	// row) so an author can write them literally.
-	case '\\', '*', '_', '~', '`', '[', ']', '(', ')', '<', '>', '@', ':', '#', '-', '|':
+	// # - | ! escape the line-level structures (a heading, a divider, a table
+	// row, an image) so an author can write them literally.
+	case '\\', '*', '_', '~', '`', '[', ']', '(', ')', '<', '>', '@', ':', '#', '-', '|', '!':
 		return true
 	}
 	return false

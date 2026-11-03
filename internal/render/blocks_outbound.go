@@ -42,10 +42,28 @@ type ColumnSetting struct {
 	Align string `json:"align,omitempty"`
 }
 
+// ImageBlock is a standalone image: a public URL Slack fetches, or a file
+// Slack already holds, referenced by id.
+type ImageBlock struct {
+	Type      string     `json:"type"`
+	AltText   string     `json:"alt_text"`
+	ImageURL  string     `json:"image_url,omitempty"`
+	SlackFile *SlackFile `json:"slack_file,omitempty"`
+	Title     *PlainText `json:"title,omitempty"`
+	// LocalPath is a file on disk that must be uploaded before sending; the
+	// caller uploads it and sets SlackFile. Rendering stays free of I/O.
+	LocalPath string `json:"-"`
+}
+
+type SlackFile struct {
+	ID string `json:"id"`
+}
+
 func (RichTextBlock) outboundBlock() {}
 func (HeaderBlock) outboundBlock()   {}
 func (DividerBlock) outboundBlock()  {}
 func (TableBlock) outboundBlock()    {}
+func (ImageBlock) outboundBlock()    {}
 
 func newRichTextBlock(elements []RichTextElement) RichTextBlock {
 	return RichTextBlock{Type: "rich_text", Elements: elements}

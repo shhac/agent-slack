@@ -170,26 +170,28 @@ func contextLines(b map[string]any) []string {
 // blocks carry a slack_file instead of an image_url, and when neither yields a
 // URL the alt text is still the only prose the block has — emitting nothing
 // would drop it.
+// imageLine renders an image block as Markdown image syntax. A file Slack
+// holds is named by its id rather than its files-pri URL: the id is what
+// `file get` fetches and what `![alt](F…)` re-sends, while the URL needs auth
+// and would be refused if sent back as an image_url.
 func imageLine(b map[string]any) string {
-	url := str(b["image_url"])
-	if url == "" {
-		if file, ok := asRecord(b["slack_file"]); ok {
-			if u := str(file["url"]); u != "" {
-				url = u
-			} else {
-				url = str(file["id"])
-			}
+	src := str(b["image_url"])
+	if file, ok := asRecord(b["slack_file"]); ok {
+		if id := str(file["id"]); id != "" {
+			src = id
+		} else if u := str(file["url"]); u != "" {
+			src = u
 		}
 	}
 	alt := strings.TrimSpace(str(b["alt_text"]))
-	switch {
-	case url != "" && alt != "":
-		return alt + ": " + url
-	case url != "":
-		return url
-	default:
+	if src == "" {
 		return alt
 	}
+	line := "![" + alt + "](" + src
+	if title, ok := mrkdwnTextValue(b["title"]); ok && strings.TrimSpace(title) != "" {
+		line += ` "` + strings.TrimSpace(title) + `"`
+	}
+	return line + ")"
 }
 
 func buttonLine(button map[string]any) string {

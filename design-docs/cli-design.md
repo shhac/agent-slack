@@ -298,6 +298,19 @@ opts into Slack mrkdwn, independently per direction.**
   dividers-only message still falls back to `text`), tables as pipe tables with
   alignment, and checklist items with their box — so send → read-back
   reproduces the source.
+- **Images (decision): `![alt](src)` on its own line is an `image` block.**
+  `src` is classified by shape — `http(s)://` → `image_url` (Slack fetches it),
+  `F…` → `slack_file.id`, anything else → a local path. Rendering stays free of
+  I/O: it records the path on the block (`json:"-"`), and the CLI uploads every
+  local image unshared (`completeUploadExternal` with no channel), waits until
+  Slack has processed it, then sets `slack_file.id` — on send, edit, draft and
+  forward-caption paths alike. Posting the block shares the file into that
+  conversation. A path in message text is a quieter channel than `--attach`,
+  so only content that sniffs as `image/*` is uploaded; anything else is an
+  agent-fixable error before a byte leaves. Repeated paths upload once. An
+  image mid-sentence stays text (Slack has no inline image element). Inbound,
+  an image renders as `![alt](F… "title")`, preferring the file id over the
+  auth-only files-pri URL, so a read image re-sends unchanged.
 - **`--slack-markdown`** is a per-command flag (each invocation is one direction,
   so per-command flags give independent in/out control). Outbound: interpret text
   as Slack mrkdwn (current single-delimiter scanner). Inbound: return the native

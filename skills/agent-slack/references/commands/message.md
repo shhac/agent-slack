@@ -161,6 +161,8 @@ and `@name`/`@group` handles and `#channel` names resolve to real
 mentions/links; `--slack-markdown` switches to Slack's native mrkdwn dialect.
 Headings (`#`–`###`), `---` dividers, pipe tables and `- [ ]` checklists are
 sent as the blocks Slack's composer uses and read back as the same Markdown.
+`![alt](src)` on its own line places an image inline — a local file (uploaded
+on send; images only), a public URL, or a Slack file id `F…`.
 For layouts Markdown can't express, `--blocks <file|->` (send, draft
 create/edit) posts raw Block Kit verbatim, with the text argument as the
 notification fallback; `message edit` is text-only (use `api call chat.update`

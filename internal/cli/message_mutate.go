@@ -94,6 +94,9 @@ func buildEditParams(ctx context.Context, c *slack.Client, ref *render.MessageRe
 		resolved := slack.ResolveMentions(ctx, c, text)
 		resolved = slack.ResolveChannelMentions(ctx, c, resolved)
 		outboundText, blocks := outboundTextAndBlocks(resolved, slackMarkdown, ref.WorkspaceURL)
+		if err := uploadInlineImages(ctx, c, blocks); err != nil {
+			return nil, err
+		}
 		params["text"] = outboundText
 		if blocks != nil {
 			params["blocks"] = blocks
@@ -157,7 +160,7 @@ func editedFileIDs(ctx context.Context, c *slack.Client, msg render.MessageSumma
 	}
 
 	if len(attach) > 0 {
-		uploaded, err := c.UploadDraftFiles(ctx, attach)
+		uploaded, err := c.UploadUnsharedFiles(ctx, attach)
 		if err != nil {
 			return nil, err
 		}

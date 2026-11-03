@@ -35,7 +35,8 @@ Two ways to compose a message:
 | Divider       | `---` (or `***`, `___`) | a line on its own; see [Structure](#structure) |
 | Table         | `\| a \| b \|` + `\|---\|---\|` | GFM pipe table; the composer can't make these |
 | Checklist     | `- [ ] todo` / `- [x] done` | works on bullets and numbers, nests like any list |
-| Escape        | `\*literal\*`           | backslash before `* _ ~ \` [ ] ( ) @ : # - \|` |
+| Image         | `![alt](./chart.png)`   | on its own line; local file (uploaded), `https://` URL, or Slack file id `F…`. See [Images](#images) |
+| Escape        | `\*literal\*`           | backslash before `* _ ~ \` [ ] ( ) @ : # - \| !` |
 
 Nesting works: `**bold with _italic_ and `code`**` styles each span correctly.
 
@@ -98,6 +99,39 @@ Slack's composer writes for its heading and divider buttons.
 - [ ] docs
 ```
 
+### Images
+
+Put a Markdown image **on its own line** and it becomes an image block, placed
+right there between the surrounding text, headings or tables:
+
+```
+## Latency this week
+
+![p95 latency by service](./out/latency.png "Week 44")
+
+Checkout is the outlier — details below.
+```
+
+The source can be:
+
+- **A local file** — `./chart.png`, `/tmp/x.png`, `~/Desktop/x.png`, or
+  `<./path with spaces.png>`. It's uploaded when you send and placed inline;
+  posting shares it into that conversation only. Only real images go up (PNG,
+  JPEG, GIF, WebP, BMP — checked by content, not extension); anything else is
+  refused before upload, so send other files with `--attach`.
+- **A public `https://` URL** — Slack fetches it itself, so it must be publicly
+  reachable; a host that blocks Slack's fetcher fails the send with
+  `invalid_blocks`.
+- **A Slack file id** (`F…`) — any image Slack already holds, e.g. from
+  `files[].id` on a message you read. This is also how images read back, so a
+  read message re-sends unchanged.
+
+Alt text is required by Slack — it's the notification text and what a
+screen reader says; leave it empty and the file name is used. An optional
+`"title"` becomes the caption above the image. An image mid-sentence stays
+text; `\![…](…)` keeps one literal. Works on `message send`, `edit`, drafts and
+`--forward` captions.
+
 Escape to keep any of these literal: `\# not a heading`, `\---`, `a \| b`.
 Structure applies in `--slack-markdown` mode too — it's line-level, not a
 dialect question. Slack limits a message to 50 blocks; every heading, divider
@@ -106,7 +140,8 @@ rejects the send with an agent-fixable `invalid_blocks` error.
 
 Reading returns the same syntax: headings as `#`/`##`/`###` (an app's title
 header with no size reads as `#`), dividers as `---`, tables as pipe tables with
-their alignment, and checklists as `- [ ]`/`- [x]`.
+their alignment, checklists as `- [ ]`/`- [x]`, and images as
+`![alt](F… "title")` (or the image's URL when Slack doesn't hold the file).
 
 ### Links
 
@@ -191,11 +226,9 @@ agent-slack message send "#deploys" "Deploy: api is healthy" --blocks ./card.jso
 ```
 
 Slack previews common files inline under the message (a CSV as a table, an
-image as a thumbnail). To place an image *between* blocks instead, an `image`
-block can reference a file Slack already holds by id —
-`{"type":"image","slack_file":{"id":"F…"},"alt_text":"…"}` (verified with an
-uploaded file; ids appear in `files[].id` on messages you read). A
-`--schedule`d send still can't carry files.
+image as a thumbnail). To place an image *between* blocks instead, use a
+Markdown image on its own line — see [Images](#images). A `--schedule`d send
+still can't carry `--attach` files.
 
 **Not a closed list.** Any block or rich_text element Slack accepts on
 `chat.postMessage` works — layout blocks (`section`, `context`, `header`,
@@ -211,7 +244,7 @@ exhaustive:
 
 | Renders well | Accepted, but caveat | Rejected |
 |---|---|---|
-| `section` text + two-column `fields`; `context` footer lines; `table`; `header` levels 1–3; `divider`; rich_text `color` (a swatch beside the hex); `image` with `slack_file.id` | rich_text `date` shows only its `fallback`, not a localised time; checklists draw as plain bullets | `image` with an external `image_url` |
+| `section` text + two-column `fields`; `context` footer lines; `table`; `header` levels 1–3; `divider`; rich_text `color` (a swatch beside the hex); `image` by `slack_file.id` or public `image_url` | rich_text `date` shows only its `fallback`, not a localised time; checklists draw as plain bullets | `image_url` on a host Slack can't fetch |
 
 Interactive elements (buttons, menus, inputs) belong to apps; a user token
 posting them is untested here, and nothing would handle a click. A draft

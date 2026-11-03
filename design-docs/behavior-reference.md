@@ -87,7 +87,9 @@ ever sends both.
     why Slack's own `markdown` conversion strikes checked items). Opening a draft
     holding table/section/context blocks shows them as read-only cards in the
     composer, and sending it posts them intact.
-    An `image` block with an external URL was rejected (`invalid_blocks`).
+    An `image` block's `image_url` must be publicly fetchable by Slack: a
+    Wikimedia URL was rejected (`invalid_blocks`), GitHub/Google-hosted PNGs
+    were accepted.
   - Bot (`xoxb`) tokens are untested for `level`/`table`.
 - Upgrade unlabeled links to the chips Slack's composer makes: a same-workspace
   message permalink → a `message_mention` element; any other unlabeled web URL
@@ -213,9 +215,20 @@ with a `channel_id` takes `blocks` as well as `initial_comment`, and the posted
 message carries both the blocks (header, table, section, context…) and the
 files, drawn after them; Slack derives the message `text` from the blocks. Slack
 ignores `blocks` whenever `initial_comment` is set, so we send exactly one:
-blocks when the text rendered to any, else the plain comment. An `image` block
-can also reference an already-uploaded (even unshared) file inline via
-`{"slack_file":{"id":"F…"}}` on `chat.postMessage`.
+blocks when the text rendered to any, else the plain comment.
+
+**Image blocks from uploaded files (verified).** An `image` block can place an
+already-uploaded file inline via `{"slack_file":{"id":"F…"}}`, even one
+uploaded unshared (no-channel `completeUploadExternal`). Posting it shares the
+file into that conversation (`files.info` → `shares` gains the channel with
+`source: "BK_IMAGE"`), so recipients can see it. But the file must be
+*processed* first: posting well under a second after the upload completes fails
+with `invalid_blocks` / `invalid slack file`. `files.info` shows the state —
+`mimetype: ""` and no `original_w` while processing, then `image/png` with
+`original_w`/`original_h` and thumbs once ready — so `WaitForImages` polls it
+(250ms, 15s cap, then a retry-fixable error). The stored block comes back with
+`slack_file.id`, a files-pri `image_url`, and Slack-added
+`image_width`/`image_height`/`image_bytes`.
 
 **Sending a draft.** There is no `drafts.send`. A draft that carries files goes
 via `files.share` (`draft_id` + comma-joined `files` + `blocks`) — the native
