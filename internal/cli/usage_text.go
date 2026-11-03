@@ -196,7 +196,9 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        heading, and all-digit "#5" refs are left alone).
        --slack-markdown interprets text as Slack mrkdwn (*bold*, <url|label>).
        --attach <path> (repeatable; multiple files share one message and the
-       text becomes their single comment), --blocks <file|-> raw Block Kit,
+       text becomes their single comment), --blocks <file|-> raw Block Kit
+       (sent verbatim — mentions as <@U…>, mrkdwn not Markdown; the text arg
+       becomes the notification fallback),
        --schedule <iso8601-with-tz|unix>, --schedule-in <30m|2d|tomorrow 9am>.
        --forward <permalink> forwards that message (text becomes an optional
        comment); same workspace only — a cross-workspace URL is a link, not a

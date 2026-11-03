@@ -141,6 +141,11 @@ Indent a list item to nest it (any depth; bullets and numbers mix freely, and a
 sub-list doesn't restart the numbering above it). `#`/`##`/`###` headings,
 `---` dividers, GFM pipe tables and `- [ ]`/`- [x]` checklists work too, in
 both directions.
+**Beyond Markdown:** for layouts it can't express — two-column `section`
+fields, `context` footer lines, colour swatches, and anything else Block Kit
+offers — pass a JSON array of blocks with `--blocks <file|->` (the text
+argument becomes the notification fallback). Blocks go out verbatim: mentions
+as `<@U…>`, and `mrkdwn` text objects use Slack mrkdwn, not Markdown.
 **Links:** write `[label](https://…)` for a labeled hyperlink; an unlabeled
 `[url](url)` or `<url>` renders as Slack's inline link chip (the scheme-stripped
 pill the composer makes from a pasted URL). Don't drop a truly bare URL in and
@@ -150,7 +155,8 @@ escapes a literal marker. Mentions auto-resolve: `@here`/`@channel`, `@U…` ids
 and bare `@name`/`@group` handles. Pass `--slack-markdown` for Slack's native
 mrkdwn (`*bold*`, `<url|label>`); reads return Markdown too. **Read
 [references/formatting.md](references/formatting.md) before composing any
-formatted message** — full table of links, mentions, escaping, and the
+formatted message** — full table of links, mentions, escaping, structure
+(headings/tables/checklists), raw Block Kit with a worked example, and the
 `--slack-markdown` dialect.
 Scheduling, forwarding, and the draft hand-off flow: `agent-slack message usage`.
 
@@ -299,5 +305,5 @@ pre-warm (`cache warm`) or clear it.
   [references/commands.md](references/commands.md) — full command map, split per
   domain, with flags and `--yes` gates ·
   [references/targets.md](references/targets.md) — targeting and multi-workspace ·
-  [references/formatting.md](references/formatting.md) — Markdown, mentions, `--slack-markdown` ·
+  [references/formatting.md](references/formatting.md) — Markdown, structure, raw Block Kit, mentions, `--slack-markdown` ·
   [references/output.md](references/output.md) — NDJSON/meta contract, `--full`, payload shapes, cache.
