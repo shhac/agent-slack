@@ -46,6 +46,26 @@ formula bump.**
    ```
    Install / upgrade: `brew install shhac/tap/agent-slack` · `brew upgrade shhac/tap/agent-slack`
 
+## Skill-only release
+
+To publish skill fixes (wording, examples, triggers) between CLI releases, tag
+`skill-vX.Y.Z-N`, where `vX.Y.Z` is the latest CLI release and `N` counts skill
+revisions of it from 1. Only `publish-skill.yml` runs; no binary is built.
+
+```bash
+latest=$(git tag --list 'v*' --sort=-v:refname | head -1)
+prev=$(git tag --list "skill-${latest}-*" --sort=-v:refname | head -1)
+n=$(( ${prev:+${prev##*-}} + 1 ))
+git tag "skill-${latest}-${n}" && git push origin "skill-${latest}-${n}"
+gh run watch --repo shhac/agent-slack          # Publish skill run green
+```
+
+Don't bump the patch number for a skill-only tag (`skill-v0.52.1`): it borrows
+the number of a CLI release that doesn't exist yet. The tagged skill must
+describe the released binary, so don't skill-tag a commit whose skill documents
+unreleased flags or output. Convention: `docs/publishing.md` in
+`shhac/agent-skills`.
+
 ## Manual fallback (only if the workflow itself is broken)
 
 Re-run a failed release with `gh run rerun <id> --repo shhac/agent-slack`. To bypass
