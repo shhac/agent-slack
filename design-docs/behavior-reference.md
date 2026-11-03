@@ -208,6 +208,15 @@ the pending upload into a real file *without posting it*, and `drafts.create`
 then accepts the id. (Same no-channel `files.completeUpload` step the web client
 uses.) Uploads run in parallel; the completion finalizes them.
 
+**Files with blocks on a direct send (verified).** `files.completeUploadExternal`
+with a `channel_id` takes `blocks` as well as `initial_comment`, and the posted
+message carries both the blocks (header, table, section, context…) and the
+files, drawn after them; Slack derives the message `text` from the blocks. Slack
+ignores `blocks` whenever `initial_comment` is set, so we send exactly one:
+blocks when the text rendered to any, else the plain comment. An `image` block
+can also reference an already-uploaded (even unshared) file inline via
+`{"slack_file":{"id":"F…"}}` on `chat.postMessage`.
+
 **Sending a draft.** There is no `drafts.send`. A draft that carries files goes
 via `files.share` (`draft_id` + comma-joined `files` + `blocks`) — the native
 "send message with files" path, which posts and removes the draft in one call

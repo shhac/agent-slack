@@ -113,8 +113,8 @@ func (req sendRequest) outgoing() slack.OutgoingMessage {
 }
 
 // validateSendFlags rejects unsupported flag combinations: --forward with
-// --blocks/--attach, --schedule with --attach, --blocks with --attach, and the
-// per-target --reply-broadcast rules. Pure (no I/O) so the matrix is testable
+// --blocks/--attach, --schedule with --attach, and the per-target
+// --reply-broadcast rules. Pure (no I/O) so the matrix is testable
 // in isolation.
 func validateSendFlags(targetKind render.TargetKind, threadTS string, postAt int64, flags sendFlags, attachPaths []string) error {
 	switch {
@@ -122,8 +122,6 @@ func validateSendFlags(targetKind render.TargetKind, threadTS string, postAt int
 		return agenterrors.New("--forward cannot be combined with --blocks or --attach", agenterrors.FixableByAgent)
 	case postAt != 0 && len(attachPaths) > 0:
 		return agenterrors.New("--schedule/--schedule-in cannot be combined with --attach (scheduled messages do not support uploads)", agenterrors.FixableByAgent)
-	case flags.blocksPath != "" && len(attachPaths) > 0:
-		return agenterrors.New("--blocks cannot be combined with --attach", agenterrors.FixableByAgent)
 	}
 	switch targetKind {
 	case render.TargetUser:
@@ -205,12 +203,9 @@ func sendPlain(ctx context.Context, globals *GlobalFlags, cc *clientContext, req
 }
 
 func sendAttachments(ctx context.Context, globals *GlobalFlags, cc *clientContext, req sendRequest) error {
-	if len(req.blocks) > 0 {
-		emitNotice(globals, "rich text formatting is not supported with file attachments; sending as plain text", "")
-	}
 	// All files land on one message (one completeUploadExternal), so the text
 	// is a single shared comment rather than riding only the first file.
-	if err := cc.Client.UploadLocalFiles(ctx, req.channelID, req.attachPaths, req.threadTS, req.text); err != nil {
+	if err := cc.Client.UploadLocalFiles(ctx, req.channelID, req.attachPaths, req.threadTS, req.text, req.blocks); err != nil {
 		return err
 	}
 	return printSingle(globals, basePayload(req, req.channelID))

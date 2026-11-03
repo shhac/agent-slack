@@ -25,7 +25,6 @@ func TestBuildSendRequestMatrix(t *testing.T) {
 		{"no content", render.TargetChannel, "", sendFlags{}, "text is required"},
 		{"attach without text ok", render.TargetChannel, "", sendFlags{attach: []string{"/tmp/x"}}, ""},
 		{"schedule + attach", render.TargetChannel, "hi", sendFlags{attach: []string{"/tmp/x"}, scheduleFlags: scheduleFlags{scheduleIn: "3h"}}, "cannot be combined with --attach"},
-		{"blocks + attach", render.TargetChannel, "hi", sendFlags{attach: []string{"/tmp/x"}, blocksPath: "/tmp/b.json"}, "--blocks cannot be combined"},
 		{"broadcast to DM", render.TargetUser, "hi", sendFlags{replyBroadcast: true}, "not supported for DM targets"},
 		{"broadcast without thread", render.TargetChannel, "hi", sendFlags{replyBroadcast: true}, "requires --thread-ts"},
 		{"broadcast with thread ok", render.TargetChannel, "hi", sendFlags{replyBroadcast: true, threadTS: "1.000001"}, ""},

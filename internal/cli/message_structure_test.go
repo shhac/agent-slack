@@ -2,6 +2,10 @@ package cli
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -73,4 +77,62 @@ func TestStructureReachesTheWire(t *testing.T) {
 		}
 		assertBlockTypes(t, "draft", f.server.CallsFor("drafts.create")[0].Params.Get("blocks"))
 	})
+}
+
+// Rich text on an attachment send rides as completeUploadExternal blocks — the
+// public upload API takes them — instead of degrading to a plain comment.
+// Slack ignores blocks whenever initial_comment is present, so only blocks go.
+func TestAttachSendCarriesBlocks(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"markdown structure", []string{structureSource}},
+		{"--blocks file", []string{"fallback", "--blocks", "BLOCKS"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newCLIFixture(t)
+			uploadHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			t.Cleanup(uploadHost.Close)
+			f.resolvableChannel("C12345678")
+			f.server.HandleBody("files.getUploadURLExternal", map[string]any{
+				"ok": true, "upload_url": uploadHost.URL + "/upload", "file_id": "F0UPLOAD1",
+			})
+			f.server.HandleBody("files.completeUploadExternal", map[string]any{"ok": true})
+
+			dir := t.TempDir()
+			attachment := filepath.Join(dir, "latency.csv")
+			blocksFile := filepath.Join(dir, "blocks.json")
+			if err := os.WriteFile(attachment, []byte("a,b\n1,2\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(blocksFile, []byte(`[{"type":"divider"},{"type":"context","elements":[{"type":"mrkdwn","text":"x"}]}]`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"message", "send", "#general"}
+			for _, a := range tc.args {
+				if a == "BLOCKS" {
+					a = blocksFile
+				}
+				args = append(args, a)
+			}
+			if _, _, err := f.run(t, append(args, "--attach", attachment)...); err != nil {
+				t.Fatal(err)
+			}
+
+			complete := f.server.CallsFor("files.completeUploadExternal")[0]
+			if complete.Params.Has("initial_comment") {
+				t.Errorf("initial_comment would make Slack drop the blocks: %q", complete.Params.Get("initial_comment"))
+			}
+			if !complete.Params.Has("blocks") {
+				t.Fatalf("no blocks on the upload: %v", complete.Params)
+			}
+			if tc.name == "markdown structure" {
+				assertBlockTypes(t, "attach", complete.Params.Get("blocks"))
+			}
+		})
+	}
 }

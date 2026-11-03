@@ -146,6 +146,7 @@ fields, `context` footer lines, colour swatches, and anything else Block Kit
 offers — pass a JSON array of blocks with `--blocks <file|->` (the text
 argument becomes the notification fallback). Blocks go out verbatim: mentions
 as `<@U…>`, and `mrkdwn` text objects use Slack mrkdwn, not Markdown.
+`--attach` combines with both: files ride alongside the blocks, drawn after them.
 **Links:** write `[label](https://…)` for a labeled hyperlink; an unlabeled
 `[url](url)` or `<url>` renders as Slack's inline link chip (the scheme-stripped
 pill the composer makes from a pasted URL). Don't drop a truly bare URL in and

@@ -18,8 +18,13 @@ const maxUploadBytes = 100 * 1024 * 1024 // Slack's upload limit
 // as a SINGLE message: each file's bytes go up via Slack's external upload flow
 // (files.getUploadURLExternal → raw POST), then one files.completeUploadExternal
 // lists every file_id. So multiple attachments share one message and one
-// initial_comment, instead of fanning out to a message per file.
-func (c *Client) UploadLocalFiles(ctx context.Context, channelID string, filePaths []string, threadTS, initialComment string) error {
+// comment, instead of fanning out to a message per file.
+//
+// The comment is blocks when the text needed them (formatting, headings,
+// tables, or --blocks), else the plain initialComment. completeUploadExternal
+// takes both, but Slack ignores blocks whenever initial_comment is present, so
+// only one is ever sent.
+func (c *Client) UploadLocalFiles(ctx context.Context, channelID string, filePaths []string, threadTS, initialComment string, blocks []any) error {
 	files := make([]any, 0, len(filePaths))
 	for _, path := range filePaths {
 		fileID, filename, err := c.uploadFileBytes(ctx, path)
@@ -36,7 +41,10 @@ func (c *Client) UploadLocalFiles(ctx context.Context, channelID string, filePat
 	if threadTS != "" {
 		completeParams["thread_ts"] = threadTS
 	}
-	if initialComment != "" {
+	switch {
+	case len(blocks) > 0:
+		completeParams["blocks"] = blocks
+	case initialComment != "":
 		completeParams["initial_comment"] = initialComment
 	}
 	_, err := c.API(ctx, "files.completeUploadExternal", completeParams)

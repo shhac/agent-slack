@@ -173,7 +173,29 @@ How it differs from Markdown text:
   back with `message get <permalink> --full`.
 - `message edit` is text-only. To change a raw-blocks message, call
   `agent-slack api call chat.update --params '{"channel":"C…","ts":"…","blocks":[…]}'`.
-  `--blocks` can't be combined with `--attach`.
+- `--blocks` combines with `--attach` (see [Attachments](#attachments)).
+
+### Attachments
+
+Files aren't blocks: a message carries its `blocks` and its `files` side by
+side, and Slack draws the files after the blocks. So `--attach` works with
+everything above — Markdown structure or `--blocks` — on `message send` and on
+drafts:
+
+```bash
+agent-slack message send "#perf" "## Latency report
+| Service | p95 |
+| :--- | ---: |
+| checkout | 412 |" --attach ./latency.csv
+agent-slack message send "#deploys" "Deploy: api is healthy" --blocks ./card.json --attach ./graph.png
+```
+
+Slack previews common files inline under the message (a CSV as a table, an
+image as a thumbnail). To place an image *between* blocks instead, an `image`
+block can reference a file Slack already holds by id —
+`{"type":"image","slack_file":{"id":"F…"},"alt_text":"…"}` (verified with an
+uploaded file; ids appear in `files[].id` on messages you read). A
+`--schedule`d send still can't carry files.
 
 **Not a closed list.** Any block or rich_text element Slack accepts on
 `chat.postMessage` works — layout blocks (`section`, `context`, `header`,
@@ -189,7 +211,7 @@ exhaustive:
 
 | Renders well | Accepted, but caveat | Rejected |
 |---|---|---|
-| `section` text + two-column `fields`; `context` footer lines; `table`; `header` levels 1–3; `divider`; rich_text `color` (a swatch beside the hex) | rich_text `date` shows only its `fallback`, not a localised time; checklists draw as plain bullets | `image` with an external `image_url` |
+| `section` text + two-column `fields`; `context` footer lines; `table`; `header` levels 1–3; `divider`; rich_text `color` (a swatch beside the hex); `image` with `slack_file.id` | rich_text `date` shows only its `fallback`, not a localised time; checklists draw as plain bullets | `image` with an external `image_url` |
 
 Interactive elements (buttons, menus, inputs) belong to apps; a user token
 posting them is untested here, and nothing would handle a click. A draft
@@ -248,5 +270,5 @@ the *formatting* dialect.
 - When Markdown formatting is present, it is sent as rich_text blocks and the
   notification/`text` fallback is the marker-stripped plain text (heading
   markers included).
-- Sending with `--attach` posts plain text, so headings, tables and the rest
-  degrade to their text. A draft with `--attach` keeps them.
+- Sending with `--attach` keeps all of it: the rendered blocks ride on the
+  upload, with the files drawn after them.

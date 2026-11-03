@@ -270,9 +270,8 @@ func runDraftSend(ctx context.Context, globals *GlobalFlags, cc *clientContext, 
 
 // buildDraftRequest parses the target and validates the text/--blocks into a
 // sendRequest (reusing the send build path, minus scheduling). Any --attach
-// files are uploaded to file ids and attached to the draft directly (drafts
-// keep their rich_text blocks, so links/formatting survive — unlike a direct
-// attachment send, which posts plain text).
+// files are uploaded to file ids and attached to the draft directly, beside
+// its blocks.
 func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalFlags, args []string, blocksPath string, slackMarkdown bool, forward string, attach []string, threadTS string) (sendRequest, *clientContext, error) {
 	target, err := render.ParseTarget(args[0])
 	if err != nil {
@@ -304,8 +303,7 @@ func buildDraftRequest(ctx context.Context, cmd *cobra.Command, globals *GlobalF
 // buildDraftContent turns text/--blocks/--forward/--attach into a sendRequest
 // bound to channelID. It is the shared body of create (target → channel) and
 // edit (resolved draft → channel): mentions resolve, attachments upload to file
-// ids (drafts keep their rich_text blocks, so links/formatting survive — unlike
-// a direct attachment send, which posts plain text).
+// ids that sit beside the draft's blocks.
 func buildDraftContent(ctx context.Context, cmd *cobra.Command, cc *clientContext, channelID string, targetKind render.TargetKind, text, blocksPath string, slackMarkdown bool, forward string, attach []string, threadTS string) (sendRequest, error) {
 	if forward != "" {
 		var err error

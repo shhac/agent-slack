@@ -196,7 +196,8 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        heading, and all-digit "#5" refs are left alone).
        --slack-markdown interprets text as Slack mrkdwn (*bold*, <url|label>).
        --attach <path> (repeatable; multiple files share one message and the
-       text becomes their single comment), --blocks <file|-> raw Block Kit
+       text — formatting, tables and all — becomes their single comment;
+       combines with --blocks), --blocks <file|-> raw Block Kit
        (sent verbatim — mentions as <@U…>, mrkdwn not Markdown; the text arg
        becomes the notification fallback),
        --schedule <iso8601-with-tz|unix>, --schedule-in <30m|2d|tomorrow 9am>.
@@ -208,8 +209,8 @@ SEND   message send <target> [text] [--thread-ts …] [--reply-broadcast]
        return Markdown too; --slack-markdown keeps native Slack mrkdwn.
 DRAFT  message draft create <target> [text] [--blocks <file|->] [--forward <permalink>] [--attach <path>] [--thread-ts <ts>]
        message draft list | get <target|id> | edit <target|id> [text] | send <target|id>
-       --attach (repeatable) attaches files to the draft, keeping its rich text
-       (links/formatting) — unlike a direct attachment send, which posts plain text.
+       --attach (repeatable) attaches files to the draft beside its blocks;
+       combines with --blocks.
        --thread-ts <ts> drafts a thread reply (or pass a message permalink as the
        target); edit keeps the thread unless --thread-ts overrides it.
        message draft delete <target|id> --yes   (destructive)

@@ -28,7 +28,7 @@ func TestValidateSendFlags(t *testing.T) {
 		{"forward + blocks", render.TargetChannel, "", 0, sendFlags{forward: "url", blocksPath: "b.json"}, nil, true},
 		{"forward + attach", render.TargetChannel, "", 0, sendFlags{forward: "url"}, []string{"a.txt"}, true},
 		{"schedule + attach", render.TargetChannel, "", 100, sendFlags{}, []string{"a.txt"}, true},
-		{"blocks + attach", render.TargetChannel, "", 0, sendFlags{blocksPath: "b.json"}, []string{"a.txt"}, true},
+		{"blocks + attach", render.TargetChannel, "", 0, sendFlags{blocksPath: "b.json"}, []string{"a.txt"}, false},
 		{"reply-broadcast to DM", render.TargetUser, "", 0, sendFlags{replyBroadcast: true}, nil, true},
 		{"reply-broadcast to channel without thread", render.TargetChannel, "", 0, sendFlags{replyBroadcast: true}, nil, true},
 		{"reply-broadcast to channel with thread", render.TargetChannel, "1.0", 0, sendFlags{replyBroadcast: true}, nil, false},
