@@ -12,8 +12,6 @@ import (
 // app from reading another app's sandbox container without Full Disk Access.
 const macOSContainerProtectionMajor = 14
 
-const desktopImportAlternative = "Or skip this by importing from a browser signed into Slack: agent-slack auth import-browser <name>"
-
 // desktopFailure is one Slack Desktop candidate that could not be read.
 type desktopFailure struct {
 	baseDir string
@@ -46,17 +44,20 @@ func desktopPermissionHint(failures []desktopFailure, macOSMajor int) string {
 		return ""
 	}
 
-	const grant = "Grant the terminal app you run agent-slack from Full Disk Access " +
-		"(System Settings → Privacy & Security → Full Disk Access), quit and reopen that terminal, " +
-		"then re-run: agent-slack auth import-desktop."
-	const noSudo = "sudo does not help: this is a macOS privacy setting, not a file permission, and it applies to root too."
-
+	cause := "macOS privacy controls blocked reading Slack Desktop's data."
 	if inContainer && macOSMajor >= macOSContainerProtectionMajor {
-		return "This is the Mac App Store build of Slack, which keeps its data in a sandbox container. " +
-			"macOS " + strconv.Itoa(macOSMajor) + " (like every macOS since 14 Sonoma) blocks other apps, your terminal included, " +
-			"from reading another app's container. " + noSudo + " " + grant + " " + desktopImportAlternative
+		cause = "This is the Mac App Store build of Slack, which keeps its data in a sandbox container. " +
+			"macOS " + strconv.Itoa(macOSMajor) + " (like every macOS since 14 Sonoma) blocks other apps, " +
+			"your terminal included, from reading another app's container."
 	}
-	return "macOS privacy controls blocked reading Slack Desktop's data. " + noSudo + " " + grant + " " + desktopImportAlternative
+	return strings.Join([]string{
+		cause,
+		"sudo does not help: this is a macOS privacy setting, not a file permission, and it applies to root too.",
+		"Grant the terminal app you run agent-slack from Full Disk Access " +
+			"(System Settings → Privacy & Security → Full Disk Access), quit and reopen that terminal, " +
+			"then re-run: agent-slack auth import-desktop.",
+		"Or skip this by importing from a browser signed into Slack: agent-slack auth import-browser <name>",
+	}, " ")
 }
 
 func parseMajorVersion(v string) int {

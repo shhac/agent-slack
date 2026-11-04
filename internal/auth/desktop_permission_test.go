@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"syscall"
@@ -72,6 +73,20 @@ func TestDesktopExtractErrorHint(t *testing.T) {
 			goos:       "darwin",
 			macOSMajor: 15,
 			wantHint:   []string{"Mac App Store"},
+		},
+		{
+			name:       "wrapped denial is still recognised",
+			failures:   []desktopFailure{{baseDir: containerDir, err: fmt.Errorf("sqlite read: %w", pathErr(containerDir, syscall.EPERM))}},
+			goos:       "darwin",
+			macOSMajor: 15,
+			wantHint:   []string{"Mac App Store"},
+		},
+		{
+			name:       "denial text without the errno is not matched",
+			failures:   []desktopFailure{{baseDir: containerDir, err: errors.New("open x: operation not permitted")}},
+			goos:       "darwin",
+			macOSMajor: 15,
+			noHint:     true,
 		},
 		{
 			name:       "plain file-mode denial is not a privacy hint",

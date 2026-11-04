@@ -46,7 +46,9 @@ func slackDesktopCandidates() ([]slackDesktopPaths, error) {
 	var out []slackDesktopPaths
 	for _, base := range baseDirs {
 		leveldbDir := filepath.Join(base, "Local Storage", "leveldb")
-		if _, err := os.Stat(leveldbDir); err != nil {
+		// A privacy denial means the data exists but is blocked; keep the
+		// candidate so the read fails with EPERM and gets the hint.
+		if _, err := os.Stat(leveldbDir); err != nil && !isPrivacyDenial(err) {
 			continue
 		}
 		cookiesDB := filepath.Join(base, "Network", "Cookies")
