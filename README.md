@@ -87,7 +87,7 @@ Installs the `agent-slack` skill globally so Claude Code (and other AI agents) c
 ## Getting started
 
 ```bash
-agent-slack auth import-desktop            # from Slack Desktop (macOS/Linux/Windows)
+agent-slack auth import-desktop            # from Slack Desktop (macOS/Linux/Windows; App Store Slack on macOS 14+ needs Full Disk Access for your terminal)
 agent-slack auth import-browser firefox    # or a browser: chrome|brave|firefox|zen|opera|safari
 agent-slack auth test                      # verify credentials
 agent-slack auth usage                     # every auth method (browser caveats, bot tokens, cURL, env vars)

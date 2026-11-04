@@ -79,19 +79,34 @@ func ExtractFromSlackDesktop() (*Extracted, error) {
 		return nil, err
 	}
 
-	var failures []string
+	var failures []desktopFailure
 	for _, c := range candidates {
 		extracted, err := extractChromiumFromFiles(c.leveldbDir, c.cookiesDB, desktopSafeStorageQueries,
 			map[string]string{"leveldb_path": c.leveldbDir, "cookies_path": c.cookiesDB})
 		if err != nil {
-			failures = append(failures, fmt.Sprintf("%s: %v", c.baseDir, err))
+			failures = append(failures, desktopFailure{baseDir: c.baseDir, err: err})
 			continue
 		}
 		return extracted, nil
 	}
 
-	return nil, agenterrors.Newf(agenterrors.FixableByHuman,
-		"could not extract Slack Desktop credentials:\n  - %s", strings.Join(failures, "\n  - "))
+	return nil, desktopExtractError(failures, runtime.GOOS, macOSMajorVersion())
+}
+
+func desktopExtractError(failures []desktopFailure, goos string, macOSMajor int) error {
+	lines := make([]string, len(failures))
+	for i, f := range failures {
+		lines[i] = fmt.Sprintf("%s: %v", f.baseDir, f.err)
+	}
+	err := agenterrors.Newf(agenterrors.FixableByHuman,
+		"could not extract Slack Desktop credentials:\n  - %s", strings.Join(lines, "\n  - "))
+	if goos != "darwin" {
+		return err
+	}
+	if hint := desktopPermissionHint(failures, macOSMajor); hint != "" {
+		return err.WithHint(hint)
+	}
+	return err
 }
 
 // extractChromiumFromFiles reads Slack credentials from a Chromium-family

@@ -142,6 +142,18 @@ ever sends both.
 - Snapshots the LevelDB dir to a temp location before reading, because a running
   Slack Desktop holds the DB lock.
 - Uses a pure-Go LevelDB reader (`github.com/syndtr/goleveldb/leveldb`), no cgo.
+- macOS candidates: the direct-download build's
+  `~/Library/Application Support/Slack`, then the Mac App Store build's sandbox
+  container `~/Library/Containers/com.tinyspeck.slackmacgap/Data/Library/Application Support/Slack`.
+- macOS 14 (Sonoma) and later block one app from reading another app's
+  sandbox container unless the reader has Full Disk Access. The block is TCC
+  (privacy control), so it surfaces as `EPERM` ("operation not permitted"),
+  not `EACCES`, and applies to root too, so `sudo` doesn't help. The import detects `EPERM`
+  and attaches a hint: when the failing path is a container and
+  `kern.osproductversion` is ≥ 14, the hint names the App Store sandbox and the
+  running macOS version; otherwise it gives a generic privacy-control hint.
+  Both say to grant the terminal Full Disk Access and relaunch it, and offer
+  `auth import-browser` as the fallback.
 
 The `chrome`/`brave`/`firefox` import paths instead read the same
 `localConfig_v2/v3` from the browser's live `localStorage` via AppleScript /

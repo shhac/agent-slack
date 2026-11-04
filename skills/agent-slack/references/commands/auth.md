@@ -7,7 +7,7 @@ In-binary version: `agent-slack auth usage`.
 |---|---|
 | `auth list` (aliases `ls`, `whoami`) | configured credential sets (each a unique `alias` + workspace URL) + where each secret is stored (`keychain`/`file`/`missing`); no secret material printed |
 | `auth test` | calls Slack `auth.test` with the resolved credentials |
-| `auth import-desktop` | extract xoxc/xoxd from Slack Desktop (best); macOS/Linux/Windows |
+| `auth import-desktop` | extract xoxc/xoxd from Slack Desktop (best); macOS/Linux/Windows. The Mac App Store build on macOS 14+ keeps its data in a sandbox container: a `fixable_by: human` "operation not permitted" error means the human must grant their terminal Full Disk Access and relaunch it (`sudo` doesn't help); the hint spells it out. Fall back to `auth import-browser` meanwhile |
 | `auth import-browser <name>` | from a browser — `chrome`, `brave` (running tab, macOS); `firefox`, `zen` (profile on disk, `--profile <sel>`); `opera` (profile on disk); `safari` (running tab + cookie store, macOS, needs Full Disk Access) |
 | `auth parse-curl` | read a "Copy as cURL" Slack request on stdin, import its xoxc/xoxd |
 | `auth add [--alias <alias>] --workspace-url <url> (--token … \| --xoxc … --xoxd …)` | add credentials directly; `--alias` names the credential set (derived from the workspace when omitted) — several aliases may hold the same workspace URL (e.g. two humans in one Slack) |
